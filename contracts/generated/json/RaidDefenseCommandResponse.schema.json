@@ -1,0 +1,1295 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RaidDefenseCommandResponse",
+  "type": "object",
+  "required": [
+    "accepted",
+    "checksum",
+    "events",
+    "version",
+    "view"
+  ],
+  "properties": {
+    "accepted": {
+      "type": "boolean"
+    },
+    "checksum": {
+      "type": "string"
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/GameEvent"
+      }
+    },
+    "version": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "view": {
+      "$ref": "#/definitions/RaidDefenseView"
+    }
+  },
+  "definitions": {
+    "AlertView": {
+      "type": "object",
+      "required": [
+        "message",
+        "severity"
+      ],
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string"
+        }
+      }
+    },
+    "AreaId": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "AreaView": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "tiles"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "kind": {
+          "type": "string"
+        },
+        "tiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MapLocation"
+          }
+        }
+      }
+    },
+    "BuildingFootprint": {
+      "type": "object",
+      "required": [
+        "depth",
+        "width"
+      ],
+      "properties": {
+        "depth": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "width": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "BuildingId": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "BuildingLogisticsView": {
+      "type": "object",
+      "required": [
+        "active_routes",
+        "blocked",
+        "role",
+        "route_slots",
+        "spoiling"
+      ],
+      "properties": {
+        "active_routes": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "blocked": {
+          "type": "boolean"
+        },
+        "connected_storage_id": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "role": {
+          "type": "string"
+        },
+        "route_slots": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "service_radius": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "spoiling": {
+          "type": "boolean"
+        }
+      }
+    },
+    "BuildingView": {
+      "type": "object",
+      "required": [
+        "assigned_workers",
+        "footprint",
+        "height",
+        "id",
+        "inventory",
+        "kind",
+        "label",
+        "level",
+        "location",
+        "manned",
+        "production",
+        "required_workers",
+        "stats",
+        "status"
+      ],
+      "properties": {
+        "assigned_workers": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "footprint": {
+          "$ref": "#/definitions/BuildingFootprint"
+        },
+        "height": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "id": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "inventory": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ResourceView"
+          }
+        },
+        "kind": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "location": {
+          "$ref": "#/definitions/MapLocation"
+        },
+        "logistics": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/BuildingLogisticsView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "manned": {
+          "type": "boolean"
+        },
+        "production": {
+          "type": "string"
+        },
+        "required_workers": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "stats": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "status": {
+          "type": "string"
+        }
+      }
+    },
+    "EntityBlueprintRef": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "Unit"
+          ],
+          "properties": {
+            "Unit": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Npc"
+          ],
+          "properties": {
+            "Npc": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "EntityId": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "EntityView": {
+      "type": "object",
+      "required": [
+        "blueprint",
+        "id",
+        "kind",
+        "label",
+        "location",
+        "stats"
+      ],
+      "properties": {
+        "assigned_building": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "assigned_job": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "blueprint": {
+          "$ref": "#/definitions/EntityBlueprintRef"
+        },
+        "id": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "kind": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/definitions/MapLocation"
+        },
+        "stats": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      }
+    },
+    "FenceId": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "FoodLogisticsView": {
+      "type": "object",
+      "required": [
+        "blocked_farms",
+        "delivered_last_minute",
+        "reserve_state",
+        "spoiled_last_minute",
+        "strained_storage"
+      ],
+      "properties": {
+        "blocked_farms": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "delivered_last_minute": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "reserve_state": {
+          "type": "string"
+        },
+        "spoiled_last_minute": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "strained_storage": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "GameEvent": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "MapChanged"
+          ]
+        },
+        {
+          "type": "object",
+          "required": [
+            "TimeAdvanced"
+          ],
+          "properties": {
+            "TimeAdvanced": {
+              "type": "object",
+              "required": [
+                "delta_seconds",
+                "now_seconds"
+              ],
+              "properties": {
+                "delta_seconds": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0.0
+                },
+                "now_seconds": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0.0
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "ResourceSpent"
+          ],
+          "properties": {
+            "ResourceSpent": {
+              "type": "object",
+              "required": [
+                "amounts"
+              ],
+              "properties": {
+                "amounts": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/ResourceAmount"
+                  }
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "ResourceAdded"
+          ],
+          "properties": {
+            "ResourceAdded": {
+              "type": "object",
+              "required": [
+                "amounts"
+              ],
+              "properties": {
+                "amounts": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/ResourceAmount"
+                  }
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "BuildingConstructionStarted"
+          ],
+          "properties": {
+            "BuildingConstructionStarted": {
+              "type": "object",
+              "required": [
+                "building",
+                "job"
+              ],
+              "properties": {
+                "building": {
+                  "$ref": "#/definitions/BuildingId"
+                },
+                "job": {
+                  "$ref": "#/definitions/JobId"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "BuildingConstructionCanceled"
+          ],
+          "properties": {
+            "BuildingConstructionCanceled": {
+              "type": "object",
+              "required": [
+                "building",
+                "job"
+              ],
+              "properties": {
+                "building": {
+                  "$ref": "#/definitions/BuildingId"
+                },
+                "job": {
+                  "$ref": "#/definitions/JobId"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "BuildingUpgradeStarted"
+          ],
+          "properties": {
+            "BuildingUpgradeStarted": {
+              "type": "object",
+              "required": [
+                "building",
+                "job"
+              ],
+              "properties": {
+                "building": {
+                  "$ref": "#/definitions/BuildingId"
+                },
+                "job": {
+                  "$ref": "#/definitions/JobId"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "BuildingUpgradeCanceled"
+          ],
+          "properties": {
+            "BuildingUpgradeCanceled": {
+              "type": "object",
+              "required": [
+                "building",
+                "job"
+              ],
+              "properties": {
+                "building": {
+                  "$ref": "#/definitions/BuildingId"
+                },
+                "job": {
+                  "$ref": "#/definitions/JobId"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "JobCompleted"
+          ],
+          "properties": {
+            "JobCompleted": {
+              "$ref": "#/definitions/JobCompletion"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "ProductionQueued"
+          ],
+          "properties": {
+            "ProductionQueued": {
+              "type": "object",
+              "required": [
+                "building",
+                "rule"
+              ],
+              "properties": {
+                "building": {
+                  "$ref": "#/definitions/BuildingId"
+                },
+                "rule": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "ProductionStarted"
+          ],
+          "properties": {
+            "ProductionStarted": {
+              "type": "object",
+              "required": [
+                "building"
+              ],
+              "properties": {
+                "building": {
+                  "$ref": "#/definitions/BuildingId"
+                },
+                "rule": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "ProductionCanceled"
+          ],
+          "properties": {
+            "ProductionCanceled": {
+              "type": "object",
+              "required": [
+                "building",
+                "rule"
+              ],
+              "properties": {
+                "building": {
+                  "$ref": "#/definitions/BuildingId"
+                },
+                "rule": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "ProductionCollected"
+          ],
+          "properties": {
+            "ProductionCollected": {
+              "type": "object",
+              "required": [
+                "building"
+              ],
+              "properties": {
+                "building": {
+                  "$ref": "#/definitions/BuildingId"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "BuildingStatChanged"
+          ],
+          "properties": {
+            "BuildingStatChanged": {
+              "type": "object",
+              "required": [
+                "building",
+                "stat",
+                "value"
+              ],
+              "properties": {
+                "building": {
+                  "$ref": "#/definitions/BuildingId"
+                },
+                "stat": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "EntityCreated"
+          ],
+          "properties": {
+            "EntityCreated": {
+              "$ref": "#/definitions/EntityId"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "EntityMoved"
+          ],
+          "properties": {
+            "EntityMoved": {
+              "$ref": "#/definitions/EntityId"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "EntityAssigned"
+          ],
+          "properties": {
+            "EntityAssigned": {
+              "type": "object",
+              "required": [
+                "entity"
+              ],
+              "properties": {
+                "entity": {
+                  "$ref": "#/definitions/EntityId"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "EntityUnassigned"
+          ],
+          "properties": {
+            "EntityUnassigned": {
+              "$ref": "#/definitions/EntityId"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "EntityStatChanged"
+          ],
+          "properties": {
+            "EntityStatChanged": {
+              "type": "object",
+              "required": [
+                "entity",
+                "stat",
+                "value"
+              ],
+              "properties": {
+                "entity": {
+                  "$ref": "#/definitions/EntityId"
+                },
+                "stat": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "UpgradePurchased"
+          ],
+          "properties": {
+            "UpgradePurchased": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "TechNodeUnlocked"
+          ],
+          "properties": {
+            "TechNodeUnlocked": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "TileSet"
+          ],
+          "properties": {
+            "TileSet": {
+              "type": "object",
+              "required": [
+                "location"
+              ],
+              "properties": {
+                "location": {
+                  "$ref": "#/definitions/MapLocation"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "PathCreated"
+          ],
+          "properties": {
+            "PathCreated": {
+              "$ref": "#/definitions/PathId"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "AreaCreated"
+          ],
+          "properties": {
+            "AreaCreated": {
+              "$ref": "#/definitions/AreaId"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "FencePlaced"
+          ],
+          "properties": {
+            "FencePlaced": {
+              "$ref": "#/definitions/FenceId"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "InventoryTransferred"
+          ],
+          "properties": {
+            "InventoryTransferred": {
+              "type": "object",
+              "required": [
+                "amount",
+                "resource"
+              ],
+              "properties": {
+                "amount": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0.0
+                },
+                "resource": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "DomainEvent"
+          ],
+          "properties": {
+            "DomainEvent": {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "EntityRemoved"
+          ],
+          "properties": {
+            "EntityRemoved": {
+              "type": "object",
+              "required": [
+                "id",
+                "kind"
+              ],
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0.0
+                },
+                "kind": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "JobCompletion": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "ConstructionFinished"
+          ],
+          "properties": {
+            "ConstructionFinished": {
+              "type": "object",
+              "required": [
+                "building",
+                "level"
+              ],
+              "properties": {
+                "building": {
+                  "$ref": "#/definitions/BuildingId"
+                },
+                "level": {
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0.0
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "UpgradeFinished"
+          ],
+          "properties": {
+            "UpgradeFinished": {
+              "type": "object",
+              "required": [
+                "building",
+                "level"
+              ],
+              "properties": {
+                "building": {
+                  "$ref": "#/definitions/BuildingId"
+                },
+                "level": {
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0.0
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "JobId": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "JobView": {
+      "type": "object",
+      "required": [
+        "assigned_entities",
+        "completes_at_seconds",
+        "id",
+        "kind"
+      ],
+      "properties": {
+        "assigned_entities": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          }
+        },
+        "completes_at_seconds": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "id": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "kind": {
+          "type": "string"
+        }
+      }
+    },
+    "MapLocation": {
+      "type": "object",
+      "required": [
+        "elevation",
+        "x",
+        "y"
+      ],
+      "properties": {
+        "elevation": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "x": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "y": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "ObjectiveView": {
+      "type": "object",
+      "required": [
+        "complete",
+        "current",
+        "id",
+        "label",
+        "target"
+      ],
+      "properties": {
+        "complete": {
+          "type": "boolean"
+        },
+        "current": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "target": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "PathId": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "PathView": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "waypoints"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "kind": {
+          "type": "string"
+        },
+        "waypoints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MapLocation"
+          }
+        }
+      }
+    },
+    "RaidDefenseSummary": {
+      "type": "object",
+      "required": [
+        "active_legions",
+        "average_control",
+        "average_loyalty",
+        "critical",
+        "influence_rank",
+        "province_count",
+        "tax_rate",
+        "total_threat",
+        "won"
+      ],
+      "properties": {
+        "active_legions": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "average_control": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "average_loyalty": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "critical": {
+          "type": "boolean"
+        },
+        "influence_rank": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "province_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "tax_rate": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "total_threat": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "won": {
+          "type": "boolean"
+        }
+      }
+    },
+    "RaidDefenseView": {
+      "type": "object",
+      "required": [
+        "alerts",
+        "areas",
+        "available_tech_nodes",
+        "buildings",
+        "entities",
+        "food_logistics",
+        "jobs",
+        "now_seconds",
+        "objectives",
+        "paths",
+        "resources",
+        "summary",
+        "tech_nodes",
+        "upgrades"
+      ],
+      "properties": {
+        "alerts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AlertView"
+          }
+        },
+        "areas": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AreaView"
+          }
+        },
+        "available_tech_nodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "buildings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BuildingView"
+          }
+        },
+        "entities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/EntityView"
+          }
+        },
+        "food_logistics": {
+          "$ref": "#/definitions/FoodLogisticsView"
+        },
+        "jobs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/JobView"
+          }
+        },
+        "now_seconds": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "objectives": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ObjectiveView"
+          }
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PathView"
+          }
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ResourceView"
+          }
+        },
+        "summary": {
+          "$ref": "#/definitions/RaidDefenseSummary"
+        },
+        "tech_nodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "upgrades": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ResourceAmount": {
+      "type": "object",
+      "required": [
+        "amount",
+        "resource"
+      ],
+      "properties": {
+        "amount": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "resource": {
+          "type": "string"
+        }
+      }
+    },
+    "ResourceView": {
+      "type": "object",
+      "required": [
+        "amount",
+        "id",
+        "label"
+      ],
+      "properties": {
+        "amount": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "capacity": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
