@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "wasm-pack build .. --dev --target web --out-dir visualization/src/generated/raid-defense-wasm --out-name raid_defense_wasm -- --features wasm",
     "dev": "vite --host 127.0.0.1 --port 5173",
+    "prebuild": "wasm-pack build .. --release --target web --out-dir visualization/src/generated/raid-defense-wasm --out-name raid_defense_wasm -- --features wasm",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173"
   },

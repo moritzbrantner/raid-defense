@@ -292,7 +292,19 @@ fn stat_from_entity(entity: &EntityView, stat: &str) -> i64 {
 }
 
 fn resource_ids() -> Vec<&'static str> {
-    vec![TIMBER, STONE, GRAIN]
+    vec![
+        CROWNS,
+        GRAIN,
+        TIMBER,
+        STONE,
+        IRON,
+        INFLUENCE,
+        LEGION_STRENGTH,
+        STABILITY,
+        INTELLIGENCE,
+        TRADE_GOODS,
+        CITIZENS,
+    ]
 }
 
 fn stringify_stats(stats: &BTreeMap<StatId, i64>) -> BTreeMap<String, i64> {
