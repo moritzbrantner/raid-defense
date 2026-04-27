@@ -38,6 +38,8 @@ pub fn raid_defense_view(state: &GameState) -> RaidDefenseView {
         .filter(|entity| entity.kind == PROVINCE)
         .map(province_view)
         .collect::<Vec<_>>();
+    let encountered_units = encountered_unit_views(state);
+    let encountered_attack_waves = attack_wave_views(state);
     let food_logistics = food_logistics_view(state);
     let summary = raid_defense_summary(state, &provinces);
     let alerts = raid_defense_alerts(state, &summary, &food_logistics);
@@ -65,6 +67,8 @@ pub fn raid_defense_view(state: &GameState) -> RaidDefenseView {
             .upgrades()
             .map(|upgrade| upgrade.kind.to_string())
             .collect::<Vec<_>>(),
+        encountered_units,
+        encountered_attack_waves,
         alerts,
         objectives,
         summary,
@@ -154,6 +158,76 @@ fn province_view(entity: &EntityView) -> ProvinceView {
         prosperity: stat_from_entity(entity, PROSPERITY),
         stats: entity.stats.clone(),
     }
+}
+
+fn encountered_unit_views(state: &GameState) -> Vec<EncounteredUnitView> {
+    let mut encountered = encountered_units(state)
+        .into_iter()
+        .collect::<BTreeMap<_, _>>();
+
+    for entity in state.entities() {
+        if let EntityBlueprintRef::Unit(kind) = &entity.blueprint {
+            encountered.entry(kind.to_string()).or_insert(0);
+        }
+    }
+
+    let current_counts = state
+        .entities()
+        .filter_map(|entity| match &entity.blueprint {
+            EntityBlueprintRef::Unit(kind) => Some(kind.to_string()),
+            EntityBlueprintRef::Npc(_) => None,
+        })
+        .fold(BTreeMap::new(), |mut counts, kind| {
+            *counts.entry(kind).or_insert(0) += 1;
+            counts
+        });
+
+    let mut units = encountered
+        .into_iter()
+        .map(|(kind, encountered_at_seconds)| EncounteredUnitView {
+            label: label_for(kind.as_str()).to_owned(),
+            current_count: current_counts.get(&kind).copied().unwrap_or(0),
+            encountered_at_seconds,
+            kind,
+        })
+        .collect::<Vec<_>>();
+    units.sort_by(|left, right| {
+        left.encountered_at_seconds
+            .cmp(&right.encountered_at_seconds)
+            .then_with(|| left.label.cmp(&right.label))
+    });
+    units
+}
+
+fn attack_wave_views(state: &GameState) -> Vec<AttackWaveView> {
+    let mut waves = encountered_attack_waves(state)
+        .into_iter()
+        .map(|wave| {
+            let total_units = wave.unit_counts.values().copied().sum::<u32>();
+            let units = wave
+                .unit_counts
+                .into_iter()
+                .map(|(kind, count)| AttackWaveUnitView {
+                    label: label_for(kind.as_str()).to_owned(),
+                    kind,
+                    count,
+                })
+                .collect::<Vec<_>>();
+            AttackWaveView {
+                id: wave.id,
+                label: attack_wave_label(wave.id, total_units),
+                encountered_at_seconds: wave.encountered_at_seconds,
+                entry: wave.entry,
+                units,
+            }
+        })
+        .collect::<Vec<_>>();
+    waves.sort_by(|left, right| {
+        left.encountered_at_seconds
+            .cmp(&right.encountered_at_seconds)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    waves
 }
 
 fn resource_view(id: &str, amount: u64, capacity: Option<u64>) -> ResourceView {
@@ -330,6 +404,15 @@ fn production_status_label(status: &ProductionStatus) -> String {
             completes_at_seconds,
         } => format!("In progress until {completes_at_seconds}s"),
     }
+}
+
+fn attack_wave_label(id: u32, total_units: u32) -> String {
+    let class = match total_units {
+        0 | 1 => "Scout Wave",
+        2..=3 => "Raid Party",
+        _ => "Assault Wave",
+    };
+    format!("{class} {id}")
 }
 
 fn label_for(id: &str) -> &str {

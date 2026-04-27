@@ -7,6 +7,8 @@
     "areas",
     "available_tech_nodes",
     "buildings",
+    "encountered_attack_waves",
+    "encountered_units",
     "entities",
     "food_logistics",
     "jobs",
@@ -41,6 +43,18 @@
       "type": "array",
       "items": {
         "$ref": "#/definitions/BuildingView"
+      }
+    },
+    "encountered_attack_waves": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AttackWaveView"
+      }
+    },
+    "encountered_units": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/EncounteredUnitView"
       }
     },
     "entities": {
@@ -133,6 +147,61 @@
           "type": "array",
           "items": {
             "$ref": "#/definitions/MapLocation"
+          }
+        }
+      }
+    },
+    "AttackWaveUnitView": {
+      "type": "object",
+      "required": [
+        "count",
+        "kind",
+        "label"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "kind": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      }
+    },
+    "AttackWaveView": {
+      "type": "object",
+      "required": [
+        "encountered_at_seconds",
+        "entry",
+        "id",
+        "label",
+        "units"
+      ],
+      "properties": {
+        "encountered_at_seconds": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "entry": {
+          "$ref": "#/definitions/MapLocation"
+        },
+        "id": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "label": {
+          "type": "string"
+        },
+        "units": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AttackWaveUnitView"
           }
         }
       }
@@ -289,6 +358,33 @@
           }
         },
         "status": {
+          "type": "string"
+        }
+      }
+    },
+    "EncounteredUnitView": {
+      "type": "object",
+      "required": [
+        "current_count",
+        "encountered_at_seconds",
+        "kind",
+        "label"
+      ],
+      "properties": {
+        "current_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "encountered_at_seconds": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "kind": {
+          "type": "string"
+        },
+        "label": {
           "type": "string"
         }
       }

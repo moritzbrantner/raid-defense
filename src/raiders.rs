@@ -34,6 +34,7 @@ pub(crate) fn spawn_raider(
         location,
     )?;
     initialize_raider(state, raider)?;
+    record_attack_wave(state, BASIC_RAIDER, location)?;
     Ok(CommandOutcome {
         events: vec![GameEvent::EntityCreated(raider)],
     })

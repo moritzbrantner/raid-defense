@@ -96,6 +96,17 @@ fn apply_raid_defense_engine_command(
         } if kind.as_str() == ENGINEER => {
             apply_raid_defense_command(state, RaidDefenseCommand::RecruitEngineer { location })
         }
+        GameCommand::SpawnEntity {
+            blueprint: EntityBlueprintRef::Unit(kind),
+            name,
+            location,
+        } => state.transact(|state| {
+            let unit = state.spawn_entity(EntityBlueprintRef::Unit(kind.clone()), name, location)?;
+            record_unit_encounter(state, kind.as_str());
+            Ok(CommandOutcome {
+                events: vec![GameEvent::EntityCreated(unit)],
+            })
+        }),
         GameCommand::ConstructBuilding { kind, location } => state.transact(|state| {
             let building = state.start_construction_at(kind, location)?;
             initialize_construction_logistics_for_building(state, building)?;

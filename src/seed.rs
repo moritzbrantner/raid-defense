@@ -68,6 +68,7 @@ fn seed_raid_defense_state(state: &mut GameState, seed: u64) -> Result<(), Engin
         initialize_worker_hunger(state, worker)?;
         state.inventory_mut().add(GRAIN, 5)?;
     }
+    record_unit_encounter(state, ENGINEER);
 
     Ok(())
 }

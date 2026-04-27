@@ -69,6 +69,27 @@ export type RuntimeEntityView = {
   stats: Record<string, number>;
 };
 
+export type RuntimeEncounteredUnitView = {
+  kind: string;
+  label: string;
+  encountered_at_seconds: number;
+  current_count: number;
+};
+
+export type RuntimeAttackWaveUnitView = {
+  kind: string;
+  label: string;
+  count: number;
+};
+
+export type RuntimeAttackWaveView = {
+  id: number;
+  label: string;
+  encountered_at_seconds: number;
+  entry: RuntimeMapLocation;
+  units: RuntimeAttackWaveUnitView[];
+};
+
 export type RuntimeProvinceView = {
   id: number;
   name: string;
@@ -131,6 +152,8 @@ export type RuntimeRaidDefenseView = {
   tech_nodes: string[];
   available_tech_nodes: string[];
   upgrades: string[];
+  encountered_units: RuntimeEncounteredUnitView[];
+  encountered_attack_waves: RuntimeAttackWaveView[];
   alerts: RuntimeAlertView[];
   objectives: RuntimeObjectiveView[];
   summary: RuntimeRaidDefenseSummary;

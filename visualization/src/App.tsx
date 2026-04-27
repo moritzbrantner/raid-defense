@@ -1,5 +1,13 @@
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { BattlefieldScene } from "./components/BattlefieldScene";
+import {
+  parseSimulationFileText,
+  sanitizeSimulationFileName,
+  serializeSimulationFile,
+  simulationFileFromSaveState,
+  toImportedSimulationSaveState,
+  type SimulationJsonFile,
+} from "./simulationSaveFormat";
 import { RaidDefenseSimulationClient } from "./simulationClient";
 import {
   provincesFromView,
@@ -9,6 +17,19 @@ import {
   type RuntimeRaidDefenseView,
   type SimulationSaveState,
 } from "./simulationTypes";
+
+declare global {
+  interface Window {
+    __RAID_DEFENSE_E2E__?: {
+      exportCurrentSimulation: () => SimulationJsonFile | null;
+      loadSimulationFile: (input: SimulationJsonFile | string) => Promise<{
+        name: string;
+        now_seconds: number;
+        seed: string;
+      }>;
+    };
+  }
+}
 
 const numberFormatter = new Intl.NumberFormat("en-US");
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
@@ -157,16 +178,13 @@ const recruitableUnits = [
   { kind: "legate", label: "Recruit Legate" },
 ] as const;
 
-const wikiResources = [
-  { label: "Food", note: "Keeps your settlements and logistics network running." },
-  { label: "Wood", note: "The fastest way to get early structures online." },
-  { label: "Stone", note: "Supports sturdier construction and defensive growth." },
-  { label: "Iron", note: "Feeds the military and stronger frontier infrastructure." },
-  { label: "Crowns", note: "Represents treasury pressure and long-term upkeep capacity." },
-  { label: "Influence", note: "Tracks political leverage and unlock tempo." },
-  { label: "Legion Strength", note: "Measures military pressure available to stabilize the line." },
-  { label: "Stability", note: "Absorbs crises before the campaign starts to unravel." },
-] as const;
+const unitIntel: Record<string, string> = {
+  worker: "Workers keep construction, hauling, and food consumption moving through the settlement core.",
+  prefect: "Prefects anchor civic production and improve how well frontier administration keeps pace.",
+  legate: "Legates staff military buildings and turn iron and food into usable legion strength.",
+  envoy: "Envoys push diplomacy and expansion once the campaign reaches its second rank.",
+  basic_raider: "Raiders probe for weak storage, break blockers, loot what they can carry, and then retreat.",
+};
 
 type Screen = "home" | "main" | "simulations" | "settings" | "wiki";
 type GameMode = "main" | "simulation";
@@ -213,6 +231,7 @@ export default function App() {
   const [selectedBuildingId, setSelectedBuildingId] = useState<number | null>(null);
   const [selectedTile, setSelectedTile] = useState<RuntimeMapLocation | null>(null);
   const [placementKind, setPlacementKind] = useState<string | null>(null);
+  const simulationImportInputRef = useRef<HTMLInputElement | null>(null);
 
   const provinces = view ? provincesFromView(view) : [];
   const rivals = view ? rivalsFromView(view) : [];
@@ -256,6 +275,46 @@ export default function App() {
   }, [provinces, view]);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.__RAID_DEFENSE_E2E__ = {
+      exportCurrentSimulation: () => {
+        if (activeMode !== "simulation") {
+          return null;
+        }
+
+        const saveState = buildSimulationSaveState("E2E Snapshot");
+        return saveState ? simulationFileFromSaveState(saveState) : null;
+      },
+      loadSimulationFile: async (input) => {
+        const imported =
+          typeof input === "string"
+            ? parseSimulationFileText(input)
+            : parseSimulationFileText(JSON.stringify(input));
+        const saveState = toImportedSimulationSaveState(imported, createSaveId);
+        rememberSimulationSaveState(saveState);
+        await bootMode({
+          mode: "simulation",
+          seed: parseSeedOrDefault(imported.seed, defaultSeed),
+          snapshotJson: imported.snapshot_json,
+          successNotice: `Loaded ${imported.name}.`,
+        });
+        return {
+          name: imported.name,
+          now_seconds: imported.now_seconds,
+          seed: imported.seed,
+        };
+      },
+    };
+
+    return () => {
+      delete window.__RAID_DEFENSE_E2E__;
+    };
+  }, [activeMode, client, settings.showNotifications, view]);
+
+  useEffect(() => {
     if (activeMode !== "main" || !client || !view) {
       return;
     }
@@ -288,6 +347,55 @@ export default function App() {
     (selectedBuilding.kind === "frontier_fort" || selectedBuilding.kind === "embassy") &&
     !provinces.some((province) => province.stats.outpost_id === selectedBuilding.id);
   const castle = view?.buildings.find((building) => building.kind === "castle") ?? null;
+
+  function createSaveId() {
+    return typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}`;
+  }
+
+  function buildSimulationSaveState(name: string): SimulationSaveState | null {
+    if (!client || !view) {
+      return null;
+    }
+
+    return {
+      id: createSaveId(),
+      name,
+      seed: client.seed.toString(),
+      created_at: new Date().toISOString(),
+      now_seconds: view.now_seconds,
+      snapshot_json: client.saveSnapshot(),
+    };
+  }
+
+  function rememberSimulationSaveState(nextSave: SimulationSaveState) {
+    startTransition(() => {
+      setSaveStates((current) => {
+        const duplicateIndex = current.findIndex(
+          (saveState) =>
+            saveState.seed === nextSave.seed &&
+            saveState.now_seconds === nextSave.now_seconds &&
+            saveState.snapshot_json === nextSave.snapshot_json,
+        );
+        if (duplicateIndex === 0) {
+          return current;
+        }
+        if (duplicateIndex > 0) {
+          const existing = current[duplicateIndex];
+          return [
+            {
+              ...existing,
+              name: nextSave.name,
+              created_at: nextSave.created_at,
+            },
+            ...current.filter((_, index) => index !== duplicateIndex),
+          ];
+        }
+        return [nextSave, ...current];
+      });
+    });
+  }
 
   async function bootMode(options: {
     mode: GameMode;
@@ -424,23 +532,41 @@ export default function App() {
     }
   }
 
+  function downloadSimulationJson(saveState: SimulationSaveState) {
+    const json = serializeSimulationFile(saveState);
+    const fileName = `${sanitizeSimulationFileName(saveState.name)}.json`;
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+    setNotice(settings.showNotifications ? `Exported ${saveState.name}.` : null);
+  }
+
+  async function importSimulationFile(file: File) {
+    setError(null);
+    const imported = parseSimulationFileText(await file.text());
+    const saveState = toImportedSimulationSaveState(imported, createSaveId);
+    rememberSimulationSaveState(saveState);
+    await bootMode({
+      mode: "simulation",
+      seed: parseSeedOrDefault(imported.seed, defaultSeed),
+      snapshotJson: imported.snapshot_json,
+      successNotice: `Loaded ${imported.name}.`,
+    });
+  }
+
   function saveCurrentState() {
-    if (!client || !view) {
+    const name = saveName.trim() || `Snapshot ${saveStates.length + 1}`;
+    const nextSave = buildSimulationSaveState(name);
+    if (!nextSave) {
       return;
     }
 
-    const name = saveName.trim() || `Snapshot ${saveStates.length + 1}`;
-    const nextSave: SimulationSaveState = {
-      id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}`,
-      name,
-      seed: client.seed.toString(),
-      created_at: new Date().toISOString(),
-      now_seconds: view.now_seconds,
-      snapshot_json: client.saveSnapshot(),
-    };
-
+    rememberSimulationSaveState(nextSave);
     startTransition(() => {
-      setSaveStates((current) => [nextSave, ...current]);
       setSaveName("");
     });
     setNotice(settings.showNotifications ? `Saved ${name}.` : null);
@@ -662,8 +788,11 @@ export default function App() {
   }
 
   if (screen === "wiki") {
+    const encounteredUnits = view?.encountered_units ?? [];
+    const encounteredAttackWaves = view?.encountered_attack_waves ?? [];
+
     return (
-      <ShellFrame subtitle="A quick reference for the campaign loop, simulation tools, and frontier pieces.">
+      <ShellFrame subtitle="The field manual only records units and raid patterns the current frontier has already encountered.">
         <section className="rounded-[2rem] border border-white/10 bg-black/30 p-6 backdrop-blur-xl">
           <p className="text-[0.72rem] tracking-[0.3em] text-orange-200/75 uppercase">Wiki</p>
           <h1
@@ -673,63 +802,85 @@ export default function App() {
             Field Manual
           </h1>
           <p className="mt-4 max-w-3xl text-sm leading-6 text-stone-300">
-            The main game is the persistent campaign. It autosaves after accepted orders, so the
-            home screen can switch between starting fresh and continuing the frontier. Simulations
-            use the same engine, but expose reset controls, debug grants, and branching snapshots.
+            Entries unlock from live campaign state. Recruiting a unit logs it here, and every
+            raider incursion adds a wave record with its entry point and composition.
           </p>
         </section>
 
-        <section className="mt-4 grid gap-4 lg:grid-cols-2">
-          <WikiPanel
-            description="Use the campaign when you want one persistent frontier that survives between visits."
-            title="Main Game"
-          >
-            <div className="grid gap-3">
-              <WikiBullet text="Autosaves after each accepted action." />
-              <WikiBullet text="Continue directly from the home screen if an autosave exists." />
-              <WikiBullet text="Advance time, place buildings, recruit units, and work through objectives." />
-            </div>
-          </WikiPanel>
+        {!view ? (
+          <section className="mt-4">
+            <WikiPanel
+              description="The wiki is driven by the active frontier state, not by the shell alone."
+              title="No Active Frontier"
+            >
+              <p className="text-sm leading-6 text-stone-300">
+                Open a campaign or simulation first. Once a run is active, the manual will show
+                only the units and attack waves already seen in that frontier.
+              </p>
+            </WikiPanel>
+          </section>
+        ) : (
+          <section className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+            <WikiPanel description="Only units already fielded or encountered are recorded here." title="Units">
+              {encounteredUnits.length === 0 ? (
+                <WikiEmptyState text="No units have been logged yet." />
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {encounteredUnits.map((unit) => (
+                    <article className="rounded-[1.4rem] border border-white/10 bg-white/5 p-4" key={unit.kind}>
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-semibold tracking-[0.14em] text-stone-50 uppercase">
+                          {unit.label}
+                        </p>
+                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.68rem] tracking-[0.18em] text-orange-100/75 uppercase">
+                          {unit.current_count > 0 ? `${formatValue(unit.current_count)} active` : "seen"}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-[0.72rem] tracking-[0.18em] text-orange-100/70 uppercase">
+                        First encountered at {formatTick(unit.encountered_at_seconds)}
+                      </p>
+                      <p className="mt-3 text-sm leading-6 text-stone-300">
+                        {unitIntel[unit.kind] ??
+                          `${unit.label} is now part of the current frontier record.`}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </WikiPanel>
 
-          <WikiPanel
-            description="Use simulations for experiments, alternate timelines, and stress-testing layouts."
-            title="Simulations"
-          >
-            <div className="grid gap-3">
-              <WikiBullet text="Reset to any seed without touching the campaign autosave." />
-              <WikiBullet text="Grant resources instantly and branch the run into named snapshots." />
-              <WikiBullet text="Load earlier breakpoints to compare different frontier plans." />
-            </div>
-          </WikiPanel>
-        </section>
-
-        <section className="mt-4 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-          <WikiPanel description="These are the main construction pieces currently exposed in the UI." title="Buildings">
-            <div className="grid gap-3 sm:grid-cols-2">
-              {buildPalette.map((building) => (
-                <article className="rounded-[1.4rem] border border-white/10 bg-white/5 p-4" key={building.kind}>
-                  <p className="text-sm font-semibold tracking-[0.14em] text-stone-50 uppercase">
-                    {building.label}
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-stone-300">{building.note}</p>
-                </article>
-              ))}
-            </div>
-          </WikiPanel>
-
-          <WikiPanel description="These resources shape whether the frontier grows or stalls." title="Resources">
-            <div className="grid gap-3">
-              {wikiResources.map((resource) => (
-                <article className="rounded-[1.4rem] border border-white/10 bg-white/5 p-4" key={resource.label}>
-                  <p className="text-sm font-semibold tracking-[0.14em] text-stone-50 uppercase">
-                    {resource.label}
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-stone-300">{resource.note}</p>
-                </article>
-              ))}
-            </div>
-          </WikiPanel>
-        </section>
+            <WikiPanel
+              description="Raider incursions are written down when they first breach the frontier."
+              title="Attack Waves"
+            >
+              {encounteredAttackWaves.length === 0 ? (
+                <WikiEmptyState text="No attack waves have been recorded yet." />
+              ) : (
+                <div className="grid gap-3">
+                  {encounteredAttackWaves.map((wave) => (
+                    <article className="rounded-[1.4rem] border border-white/10 bg-white/5 p-4" key={wave.id}>
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-semibold tracking-[0.14em] text-stone-50 uppercase">
+                          {wave.label}
+                        </p>
+                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.68rem] tracking-[0.18em] text-orange-100/75 uppercase">
+                          {formatWaveComposition(wave.units)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-[0.72rem] tracking-[0.18em] text-orange-100/70 uppercase">
+                        First seen at {formatTick(wave.encountered_at_seconds)} from {wave.entry.x},{" "}
+                        {wave.entry.y}
+                      </p>
+                      <p className="mt-3 text-sm leading-6 text-stone-300">
+                        {describeAttackWave(wave.units)}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </WikiPanel>
+          </section>
+        )}
       </ShellFrame>
     );
   }
@@ -877,18 +1028,64 @@ export default function App() {
                   <div className="mt-5 flex gap-2">
                     <input
                       className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-orange-200/40"
+                      data-testid="simulation-save-name"
                       onChange={(event) => setSaveName(event.target.value)}
                       placeholder="Snapshot name"
                       value={saveName}
                     />
                     <button
                       className="rounded-2xl border border-orange-200/20 bg-orange-300/12 px-4 py-3 text-xs font-semibold tracking-[0.18em] text-orange-50 uppercase transition hover:bg-orange-300/18 disabled:cursor-not-allowed disabled:opacity-60"
+                      data-testid="simulation-save-current"
                       disabled={busy}
                       onClick={saveCurrentState}
                       type="button"
                     >
                       Save
                     </button>
+                  </div>
+
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <button
+                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs font-semibold tracking-[0.18em] text-stone-100 uppercase transition hover:border-white/20 hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-60"
+                      data-testid="simulation-export-current"
+                      disabled={busy || !client || !view}
+                      onClick={() => {
+                        const nextSave = buildSimulationSaveState(saveName.trim() || "Simulation Snapshot");
+                        if (!nextSave) {
+                          return;
+                        }
+                        downloadSimulationJson(nextSave);
+                      }}
+                      type="button"
+                    >
+                      Export JSON
+                    </button>
+                    <button
+                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs font-semibold tracking-[0.18em] text-stone-100 uppercase transition hover:border-white/20 hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-60"
+                      data-testid="simulation-import-button"
+                      disabled={busy}
+                      onClick={() => simulationImportInputRef.current?.click()}
+                      type="button"
+                    >
+                      Import JSON
+                    </button>
+                    <input
+                      accept="application/json,.json"
+                      className="hidden"
+                      data-testid="simulation-import-input"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        if (!file) {
+                          return;
+                        }
+                        void importSimulationFile(file).catch((nextError) => {
+                          setError(getErrorMessage(nextError));
+                        });
+                      }}
+                      ref={simulationImportInputRef}
+                      type="file"
+                    />
                   </div>
 
                   <div className="mt-4 grid max-h-60 gap-3 overflow-y-auto pr-1">
@@ -910,17 +1107,27 @@ export default function App() {
                               Seed {saveState.seed} at {formatTick(saveState.now_seconds)}
                             </p>
                           </div>
-                          <button
-                            className="text-xs tracking-[0.18em] text-stone-400 uppercase transition hover:text-red-200"
-                            onClick={() => deleteSaveState(saveState.id)}
-                            type="button"
-                          >
-                            Delete
-                          </button>
+                          <div className="flex items-center gap-3">
+                            <button
+                              className="text-xs tracking-[0.18em] text-stone-400 uppercase transition hover:text-stone-200"
+                              onClick={() => downloadSimulationJson(saveState)}
+                              type="button"
+                            >
+                              Export
+                            </button>
+                            <button
+                              className="text-xs tracking-[0.18em] text-stone-400 uppercase transition hover:text-red-200"
+                              onClick={() => deleteSaveState(saveState.id)}
+                              type="button"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </div>
 
                         <button
                           className="mt-3 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs font-semibold tracking-[0.18em] text-stone-100 uppercase transition hover:border-white/20 hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-60"
+                          data-testid={`simulation-load-save-${saveState.id}`}
                           disabled={busy}
                           onClick={() => {
                             void loadSaveState(saveState);
@@ -1050,6 +1257,7 @@ export default function App() {
                       ? "border-red-400/40 bg-red-500/10 text-red-100"
                       : "border-emerald-300/25 bg-emerald-400/10 text-emerald-50"
                   }`}
+                  data-testid="status-banner"
                 >
                   {error ?? notice}
                 </div>
@@ -1072,7 +1280,7 @@ export default function App() {
                       Clock
                     </p>
                     <p className="mt-2 text-2xl font-bold text-orange-100">
-                      {formatTick(view.now_seconds)}
+                      <span data-testid="simulation-clock">{formatTick(view.now_seconds)}</span>
                     </p>
                     <p className="mt-2 text-xs text-stone-400">
                       Rank {view.summary.influence_rank} frontier mandate
@@ -1708,9 +1916,9 @@ function WikiPanel({
   );
 }
 
-function WikiBullet({ text }: { text: string }) {
+function WikiEmptyState({ text }: { text: string }) {
   return (
-    <div className="rounded-[1.3rem] border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-stone-200">
+    <div className="rounded-[1.4rem] border border-dashed border-white/12 bg-white/[0.03] px-4 py-5 text-sm leading-6 text-stone-400">
       {text}
     </div>
   );
@@ -1849,6 +2057,23 @@ function formatTick(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds % 60;
   return `${minutes}:${remainder.toString().padStart(2, "0")}`;
+}
+
+function formatWaveComposition(units: { label: string; count: number }[]) {
+  return units
+    .map((unit) => `${formatValue(unit.count)} ${unit.label}${unit.count === 1 ? "" : "s"}`)
+    .join(" • ");
+}
+
+function describeAttackWave(units: { label: string; count: number }[]) {
+  const totalUnits = units.reduce((sum, unit) => sum + unit.count, 0);
+  if (totalUnits <= 1) {
+    return "A light scouting incursion testing the nearest storage and weak points in the line.";
+  }
+  if (totalUnits <= 3) {
+    return "A coordinated raid party with enough bodies to pressure one flank before withdrawing.";
+  }
+  return "A heavy assault wave large enough to punish exposed stores and overstretched defenses.";
 }
 
 function formatKind(kind: string) {

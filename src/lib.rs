@@ -24,6 +24,7 @@ mod raiders;
 mod seed;
 mod terrain;
 mod view;
+mod wiki;
 #[cfg(feature = "wasm")]
 mod wasm;
 
@@ -55,6 +56,9 @@ pub(crate) use self::logic::empire_tax_rate;
 pub(crate) use self::raiders::{advance_raiders, spawn_raider};
 pub(crate) use self::seed::imperial_road;
 pub(crate) use self::terrain::generate_seeded_terrain;
+pub(crate) use self::wiki::{
+    encountered_attack_waves, encountered_units, record_attack_wave, record_unit_encounter,
+};
 #[cfg(test)]
 pub(crate) use self::terrain::terrain_kind_count;
 
@@ -155,6 +159,58 @@ mod tests {
         assert!(view.resources.iter().any(|resource| resource.id == TIMBER));
         assert!(view.resources.iter().any(|resource| resource.id == STONE));
         assert!(view.resources.iter().any(|resource| resource.id == GRAIN));
+        assert_eq!(
+            view.encountered_units
+                .iter()
+                .map(|unit| unit.kind.as_str())
+                .collect::<Vec<_>>(),
+            vec![ENGINEER]
+        );
+        assert!(view.encountered_attack_waves.is_empty());
+    }
+
+    #[test]
+    fn wiki_unlocks_recruited_units_and_logged_attack_waves() {
+        let mut state = new_raid_defense_state().unwrap();
+        let castle = castle_location(&state);
+        state.inventory_mut().set_capacity(CROWNS, 50);
+        state.inventory_mut().add(CROWNS, 50).unwrap();
+
+        apply_raid_defense_command(
+            &mut state,
+            GameCommand::SpawnEntity {
+                blueprint: EntityBlueprintRef::Unit(PREFECT.into()),
+                name: None,
+                location: castle,
+            },
+        )
+        .unwrap();
+        apply_raid_defense_command(
+            &mut state,
+            GameCommand::SpawnEntity {
+                blueprint: EntityBlueprintRef::Unit(BASIC_RAIDER.into()),
+                name: None,
+                location: MapLocation::new(10, 12),
+            },
+        )
+        .unwrap();
+
+        let view = raid_defense_view(&state);
+        assert!(
+            view.encountered_units
+                .iter()
+                .any(|unit| unit.kind == PREFECT && unit.current_count == 1)
+        );
+        assert!(
+            view.encountered_units
+                .iter()
+                .any(|unit| unit.kind == BASIC_RAIDER)
+        );
+        assert_eq!(view.encountered_attack_waves.len(), 1);
+        assert_eq!(view.encountered_attack_waves[0].entry, MapLocation::new(10, 12));
+        assert_eq!(view.encountered_attack_waves[0].units.len(), 1);
+        assert_eq!(view.encountered_attack_waves[0].units[0].kind, BASIC_RAIDER);
+        assert_eq!(view.encountered_attack_waves[0].units[0].count, 1);
     }
 
     #[test]

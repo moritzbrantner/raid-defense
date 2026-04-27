@@ -8,7 +8,8 @@
     "dev": "vite --host 127.0.0.1 --port 5173",
     "prebuild": "wasm-pack build .. --release --target web --out-dir visualization/src/generated/raid-defense-wasm --out-name raid_defense_wasm -- --features wasm",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4173"
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.13",
+    "@playwright/test": "^1.55.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@types/three": "^0.180.0",

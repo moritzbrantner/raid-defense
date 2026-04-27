@@ -26,6 +26,7 @@ pub(crate) fn recruit_worker_at_castle(
         castle_location,
     )?;
     initialize_worker_hunger(state, unit)?;
+    record_unit_encounter(state, ENGINEER);
     Ok(CommandOutcome {
         events: vec![GameEvent::EntityCreated(unit)],
     })

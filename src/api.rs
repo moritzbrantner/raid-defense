@@ -59,6 +59,8 @@ pub struct RaidDefenseView {
     pub tech_nodes: Vec<String>,
     pub available_tech_nodes: Vec<String>,
     pub upgrades: Vec<String>,
+    pub encountered_units: Vec<EncounteredUnitView>,
+    pub encountered_attack_waves: Vec<AttackWaveView>,
     pub alerts: Vec<AlertView>,
     pub objectives: Vec<ObjectiveView>,
     pub summary: RaidDefenseSummary,
@@ -141,6 +143,33 @@ pub struct EntityView {
     pub assigned_building: Option<u64>,
     pub assigned_job: Option<u64>,
     pub stats: BTreeMap<String, i64>,
+}
+
+#[cfg_attr(feature = "contracts", derive(schemars::JsonSchema, ts_rs::TS))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct EncounteredUnitView {
+    pub kind: String,
+    pub label: String,
+    pub encountered_at_seconds: u64,
+    pub current_count: u32,
+}
+
+#[cfg_attr(feature = "contracts", derive(schemars::JsonSchema, ts_rs::TS))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AttackWaveUnitView {
+    pub kind: String,
+    pub label: String,
+    pub count: u32,
+}
+
+#[cfg_attr(feature = "contracts", derive(schemars::JsonSchema, ts_rs::TS))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AttackWaveView {
+    pub id: u32,
+    pub label: String,
+    pub encountered_at_seconds: u64,
+    pub entry: MapLocation,
+    pub units: Vec<AttackWaveUnitView>,
 }
 
 #[cfg_attr(feature = "contracts", derive(schemars::JsonSchema, ts_rs::TS))]
