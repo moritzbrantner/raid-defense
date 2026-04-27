@@ -53,6 +53,7 @@ pub const TAX_RATE: &str = "tax_rate";
 pub const SECURITY: &str = "security";
 pub const SUPPLY: &str = "supply";
 pub const OUTPOST_ID: &str = "outpost_id";
+pub const WORKER_STOMACH: &str = "worker_stomach";
 pub const HIT_POINTS: &str = "hit_points";
 pub const MAX_HIT_POINTS: &str = "max_hit_points";
 pub const RAIDER_STATE: &str = "raider_state";

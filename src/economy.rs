@@ -1,5 +1,10 @@
 use super::*;
 
+const WORKER_STOMACH_CAPACITY: u64 = 500;
+const WORKER_STOMACH_PER_FOOD: u64 = 100;
+const WORKER_HUNGER_THRESHOLD: u64 = WORKER_STOMACH_CAPACITY * 30 / 100;
+const WORKER_HUNGER_DRAIN_PER_SECOND: u64 = 1;
+
 pub(crate) fn recruit_worker_at_castle(
     state: &mut GameState,
     location: MapLocation,
@@ -20,9 +25,51 @@ pub(crate) fn recruit_worker_at_castle(
         None,
         castle_location,
     )?;
+    initialize_worker_hunger(state, unit)?;
     Ok(CommandOutcome {
         events: vec![GameEvent::EntityCreated(unit)],
     })
+}
+
+pub(crate) fn initialize_worker_hunger(
+    state: &mut GameState,
+    worker: EntityId,
+) -> Result<(), EngineError> {
+    state.set_entity_stat(
+        worker,
+        WORKER_STOMACH,
+        i64::try_from(WORKER_STOMACH_CAPACITY).unwrap_or(i64::MAX),
+    )
+}
+
+pub(crate) fn advance_worker_hunger(
+    state: &mut GameState,
+    delta_seconds: u64,
+) -> Result<(), EngineError> {
+    if delta_seconds == 0 {
+        return Ok(());
+    }
+
+    let workers = state.entity_ids_of_blueprint(EntityBlueprintRef::Unit(ENGINEER.into()));
+    for worker in workers {
+        ensure_worker_hunger_initialized(state, worker)?;
+        let current = worker_stomach(state, worker);
+        let drained = delta_seconds.saturating_mul(WORKER_HUNGER_DRAIN_PER_SECOND);
+        let mut next = current.saturating_sub(drained);
+
+        while next < WORKER_HUNGER_THRESHOLD && state.inventory().amount(GRAIN) > 0 {
+            state.inventory_mut().remove(GRAIN, 1)?;
+            next = (next + WORKER_STOMACH_PER_FOOD).min(WORKER_STOMACH_CAPACITY);
+        }
+
+        state.set_entity_stat(
+            worker,
+            WORKER_STOMACH,
+            i64::try_from(next).unwrap_or(i64::MAX),
+        )?;
+    }
+
+    Ok(())
 }
 
 pub(crate) fn advance_resource_economy(
@@ -55,8 +102,31 @@ fn active_castle_location(state: &GameState) -> Option<MapLocation> {
         .map(|building| building.location)
 }
 
+fn ensure_worker_hunger_initialized(
+    state: &mut GameState,
+    worker: EntityId,
+) -> Result<(), EngineError> {
+    let initialized = state
+        .entity(worker)
+        .is_some_and(|entity| entity.stats.contains_key(&StatId::from(WORKER_STOMACH)));
+    if initialized {
+        return Ok(());
+    }
+    initialize_worker_hunger(state, worker)
+}
+
 fn is_automated_resource_building(kind: &str) -> bool {
     matches!(kind, FARMSTEAD | LUMBER_CAMP | QUARRY)
+}
+
+fn worker_stomach(state: &GameState, worker: EntityId) -> u64 {
+    u64::try_from(
+        state
+            .entity_stat(worker, WORKER_STOMACH)
+            .unwrap_or(0)
+            .max(0),
+    )
+    .unwrap_or(0)
 }
 
 fn collect_finished_resource_output(

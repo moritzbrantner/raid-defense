@@ -50,7 +50,7 @@ pub fn raid_defense_catalog() -> Catalog {
 
     for (kind, name, cost) in [
         (PREFECT, "Prefect", vec![ResourceAmount::new(CROWNS, 28)]),
-        (ENGINEER, "Worker", vec![ResourceAmount::new(GRAIN, 50)]),
+        (ENGINEER, "Worker", vec![ResourceAmount::new(GRAIN, 5)]),
         (
             LEGATE,
             "Legate",

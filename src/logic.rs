@@ -10,9 +10,11 @@ impl GameLogic for RaidDefenseLogic {
         delta_seconds: u64,
         _completions: &[JobCompletion],
     ) -> Result<Vec<GameEvent>, EngineError> {
+        advance_construction_logistics(state, delta_seconds)?;
         let mut events = advance_raiders(state, delta_seconds)?;
         events.extend(advance_resource_economy(state)?);
         advance_food_logistics(state, delta_seconds)?;
+        advance_worker_hunger(state, delta_seconds)?;
         update_building_stats(state)?;
         update_provinces_and_revenue(state, delta_seconds)?;
         update_progression(state)?;
@@ -94,6 +96,21 @@ fn apply_raid_defense_engine_command(
         } if kind.as_str() == ENGINEER => {
             apply_raid_defense_command(state, RaidDefenseCommand::RecruitEngineer { location })
         }
+        GameCommand::ConstructBuilding { kind, location } => state.transact(|state| {
+            let building = state.start_construction_at(kind, location)?;
+            initialize_construction_logistics_for_building(state, building)?;
+            let job = match state
+                .building(building)
+                .ok_or(EngineError::UnknownBuilding(building))?
+                .status
+            {
+                BuildingStatus::Constructing { job_id, .. } => job_id,
+                _ => unreachable!("newly started construction must still be under construction"),
+            };
+            Ok(CommandOutcome {
+                events: vec![GameEvent::BuildingConstructionStarted { building, job }],
+            })
+        }),
         command => state.apply(command).map_err(RaidDefenseError::from),
     }
 }

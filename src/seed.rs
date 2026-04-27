@@ -60,12 +60,13 @@ fn seed_raid_defense_state(state: &mut GameState, seed: u64) -> Result<(), Engin
     state.set_building_stat(capital, SECURITY, 60)?;
 
     for _ in 0..5 {
-        state.spawn_entity(
+        let worker = state.spawn_entity(
             EntityBlueprintRef::Unit(ENGINEER.into()),
             None,
             castle_location,
         )?;
-        state.inventory_mut().add(GRAIN, 50)?;
+        initialize_worker_hunger(state, worker)?;
+        state.inventory_mut().add(GRAIN, 5)?;
     }
 
     Ok(())

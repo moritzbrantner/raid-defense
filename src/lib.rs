@@ -16,6 +16,7 @@ use std::fmt;
 mod api;
 mod catalog;
 mod constants;
+mod construction_logistics;
 mod economy;
 mod food_logistics;
 mod logic;
@@ -39,7 +40,13 @@ pub use self::seed::{
 };
 pub use self::view::raid_defense_view;
 
-pub(crate) use self::economy::{advance_resource_economy, recruit_worker_at_castle};
+pub(crate) use self::construction_logistics::{
+    advance_construction_logistics, initialize_construction_logistics_for_building,
+};
+pub(crate) use self::economy::{
+    advance_resource_economy, advance_worker_hunger, initialize_worker_hunger,
+    recruit_worker_at_castle,
+};
 pub(crate) use self::food_logistics::{
     FRONTIER_FORT_LOW_SUPPLY_THRESHOLD, advance_food_logistics, building_logistics_view,
     food_logistics_view, stability_gain_divisor,
@@ -80,6 +87,35 @@ mod tests {
             [GameEvent::EntityCreated(unit)] => *unit,
             events => panic!("unexpected recruit events: {events:?}"),
         }
+    }
+
+    fn workers_for_construction(state: &GameState, building: BuildingId) -> Vec<EntityId> {
+        state
+            .entity_ids_of_blueprint(EntityBlueprintRef::Unit(ENGINEER.into()))
+            .into_iter()
+            .filter(|worker| {
+                state
+                    .entity_stat(*worker, "construction_target_building_id")
+                    .ok()
+                    .is_some_and(|target| target == building.get() as i64)
+            })
+            .collect()
+    }
+
+    fn worker_carried_total(state: &GameState, worker: EntityId) -> u64 {
+        [TIMBER, STONE, IRON, GRAIN]
+            .into_iter()
+            .map(|resource| {
+                state
+                    .entity_stat(worker, format!("construction_carried:{resource}"))
+                    .unwrap_or(0)
+                    .max(0) as u64
+            })
+            .sum()
+    }
+
+    fn worker_stomach(state: &GameState, worker: EntityId) -> i64 {
+        state.entity_stat(worker, WORKER_STOMACH).unwrap()
     }
 
     #[test]
@@ -340,13 +376,128 @@ mod tests {
             outcome.events.as_slice(),
             [GameEvent::EntityCreated(_)]
         ));
-        assert_eq!(state.inventory().amount(GRAIN), 50);
+        assert_eq!(state.inventory().amount(GRAIN), 95);
         assert_eq!(
             state
                 .entity_ids_of_blueprint(EntityBlueprintRef::Unit(ENGINEER.into()))
                 .len(),
             6
         );
+    }
+
+    #[test]
+    fn workers_start_full_and_eat_when_hunger_drops_below_thirty_percent() {
+        let mut state = new_raid_defense_state().unwrap();
+        let mut logic = RaidDefenseLogic;
+        let workers = state.entity_ids_of_blueprint(EntityBlueprintRef::Unit(ENGINEER.into()));
+        let worker = workers[0];
+
+        assert_eq!(worker_stomach(&state, worker), 500);
+
+        state.advance_time_with_logic(351, &mut logic).unwrap();
+
+        assert_eq!(state.inventory().amount(GRAIN), 95);
+        for worker in workers {
+            assert_eq!(worker_stomach(&state, worker), 249);
+        }
+    }
+
+    #[test]
+    fn hungry_workers_do_not_eat_without_food_in_storage() {
+        let mut state = new_raid_defense_state().unwrap();
+        let mut logic = RaidDefenseLogic;
+        let worker = state.entity_ids_of_blueprint(EntityBlueprintRef::Unit(ENGINEER.into()))[0];
+        let food = state.inventory().amount(GRAIN);
+        state.inventory_mut().remove(GRAIN, food).unwrap();
+
+        state.advance_time_with_logic(351, &mut logic).unwrap();
+
+        assert_eq!(state.inventory().amount(GRAIN), 0);
+        assert_eq!(worker_stomach(&state, worker), 149);
+    }
+
+    #[test]
+    fn construction_hauling_uses_the_nearest_storage_house_with_up_to_three_workers() {
+        let mut state = new_raid_defense_state().unwrap();
+        let mut logic = RaidDefenseLogic;
+
+        let nearest_storage = state
+            .start_construction_at(MARKET, MapLocation::new(10, 10))
+            .unwrap();
+        state
+            .start_construction_at(MARKET, MapLocation::new(18, 10))
+            .unwrap();
+        state.advance_time_with_logic(8, &mut logic).unwrap();
+
+        let farm = match apply_raid_defense_command(
+            &mut state,
+            GameCommand::ConstructBuilding {
+                kind: FARMSTEAD.into(),
+                location: MapLocation::new(12, 10),
+            },
+        )
+        .unwrap()
+        .events
+        .as_slice()
+        {
+            [GameEvent::BuildingConstructionStarted { building, .. }] => *building,
+            events => panic!("unexpected construction events: {events:?}"),
+        };
+
+        state.advance_time_with_logic(1, &mut logic).unwrap();
+
+        let workers = workers_for_construction(&state, farm);
+        assert_eq!(workers.len(), 3);
+        for worker in workers {
+            assert_eq!(
+                state
+                    .entity_stat(worker, "construction_source_building_id")
+                    .unwrap(),
+                nearest_storage.get() as i64
+            );
+        }
+    }
+
+    #[test]
+    fn construction_workers_return_for_more_material_after_using_their_load() {
+        let mut state = new_raid_defense_state().unwrap();
+        let mut logic = RaidDefenseLogic;
+
+        state
+            .start_construction_at(MARKET, MapLocation::new(15, 10))
+            .unwrap();
+        state.advance_time_with_logic(8, &mut logic).unwrap();
+
+        let workers = state.entity_ids_of_blueprint(EntityBlueprintRef::Unit(ENGINEER.into()));
+        for worker in workers.into_iter().take(3) {
+            state.move_entity(worker, MapLocation::new(15, 10)).unwrap();
+        }
+
+        let tower = match apply_raid_defense_command(
+            &mut state,
+            GameCommand::ConstructBuilding {
+                kind: WATCHTOWER.into(),
+                location: MapLocation::new(16, 10),
+            },
+        )
+        .unwrap()
+        .events
+        .as_slice()
+        {
+            [GameEvent::BuildingConstructionStarted { building, .. }] => *building,
+            events => panic!("unexpected construction events: {events:?}"),
+        };
+
+        for _ in 0..9 {
+            state.advance_time_with_logic(1, &mut logic).unwrap();
+        }
+
+        let hauling_workers = workers_for_construction(&state, tower);
+        assert_eq!(hauling_workers.len(), 3);
+        for worker in hauling_workers {
+            assert_eq!(state.entity_stat(worker, "construction_phase").unwrap(), 1);
+            assert_eq!(worker_carried_total(&state, worker), 0);
+        }
     }
 
     #[test]
@@ -374,7 +525,7 @@ mod tests {
 
         state.advance_time_with_logic(300, &mut logic).unwrap();
 
-        assert_eq!(state.inventory().amount(GRAIN), 50);
+        assert_eq!(state.inventory().amount(GRAIN), 95);
         assert_eq!(state.building(farm).unwrap().inventory.amount(GRAIN), 8);
         assert_eq!(
             state
@@ -417,7 +568,7 @@ mod tests {
         state.advance_time_with_logic(1, &mut logic).unwrap();
         state.advance_time_with_logic(60, &mut logic).unwrap();
 
-        assert_eq!(state.inventory().amount(GRAIN), 50);
+        assert_eq!(state.inventory().amount(GRAIN), 95);
         assert_eq!(state.building(farm).unwrap().inventory.amount(GRAIN), 8);
         let view = raid_defense_view(&state);
         assert_eq!(view.food_logistics.delivered_last_minute, 0);
@@ -432,7 +583,7 @@ mod tests {
 
         state.advance_time_with_logic(36, &mut logic).unwrap();
 
-        assert_eq!(state.inventory().amount(GRAIN), 56);
+        assert_eq!(state.inventory().amount(GRAIN), 101);
         assert_eq!(state.building(farm).unwrap().inventory.amount(GRAIN), 2);
         let view = raid_defense_view(&state);
         assert_eq!(view.food_logistics.delivered_last_minute, 6);
@@ -533,8 +684,8 @@ mod tests {
             state.advance_time_with_logic(24, &mut logic).unwrap();
         }
 
-        assert_eq!(road_backed.inventory().amount(GRAIN), 56);
-        assert_eq!(offroad.inventory().amount(GRAIN), 50);
+        assert_eq!(road_backed.inventory().amount(GRAIN), 101);
+        assert_eq!(offroad.inventory().amount(GRAIN), 95);
         assert_eq!(
             offroad
                 .building(offroad_farm)
