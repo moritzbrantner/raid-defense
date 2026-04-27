@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { CatmullRomCurve3, Color, MathUtils, Vector3, type Mesh } from "three";
 import type {
   RuntimeBuildingView,
+  RuntimeEntityView,
   RuntimeMapLocation,
   RuntimeProvinceView,
   RuntimeRaidDefenseView,
@@ -90,6 +91,12 @@ export function BattlefieldScene({
           onSelectBuilding={onSelectBuilding}
         />
       ))}
+
+      {view.entities
+        .filter((entity) => entity.kind === "basic_raider")
+        .map((entity) => (
+          <RaiderMarker entity={entity} key={entity.id} />
+        ))}
 
       {provinces.map((province) => (
         <ProvinceMarker
@@ -244,6 +251,32 @@ function ProvinceMarker({
       <mesh position={[0, 0.55, 0]}>
         <sphereGeometry args={[0.14 + province.threat / 420, 24, 24]} />
         <meshStandardMaterial color="#ff8f5b" emissive="#8d2c1d" emissiveIntensity={1.2} />
+      </mesh>
+    </group>
+  );
+}
+
+function RaiderMarker({ entity }: { entity: RuntimeEntityView }) {
+  const markerRef = useRef<Mesh>(null);
+  const position = toScenePoint(entity.location);
+
+  useFrame(({ clock }) => {
+    if (!markerRef.current) {
+      return;
+    }
+
+    markerRef.current.position.y = 0.42 + Math.sin(clock.elapsedTime * 5 + entity.id) * 0.06;
+  });
+
+  return (
+    <group position={[position.x, 0, position.z]}>
+      <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.2, 0.34, 5]} />
+        <meshBasicMaterial color="#ff9d6b" opacity={0.85} transparent />
+      </mesh>
+      <mesh ref={markerRef}>
+        <coneGeometry args={[0.18, 0.48, 5]} />
+        <meshStandardMaterial color="#ffb27f" emissive="#a9341d" emissiveIntensity={1.2} />
       </mesh>
     </group>
   );
