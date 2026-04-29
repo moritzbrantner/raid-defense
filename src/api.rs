@@ -233,6 +233,7 @@ pub struct RaidDefenseSummary {
     pub active_legions: u64,
     pub influence_rank: u32,
     pub won: bool,
+    pub lost: bool,
     pub critical: bool,
 }
 

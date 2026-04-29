@@ -12,8 +12,8 @@ import { RaidDefenseSimulationClient } from "./simulationClient";
 import {
   provincesFromView,
   rivalsFromView,
-  type RuntimeMapLocation,
   type RuntimeRaidDefenseCommandResponse,
+  type RuntimeMapLocation,
   type RuntimeRaidDefenseView,
   type SimulationSaveState,
 } from "./simulationTypes";
@@ -22,6 +22,9 @@ declare global {
   interface Window {
     __RAID_DEFENSE_E2E__?: {
       exportCurrentSimulation: () => SimulationJsonFile | null;
+      currentView: () => RuntimeRaidDefenseView | null;
+      applyCommand: (command: unknown) => RuntimeRaidDefenseCommandResponse | null;
+      advanceSimulation: (deltaSeconds: number) => RuntimeRaidDefenseCommandResponse | null;
       loadSimulationFile: (input: SimulationJsonFile | string) => Promise<{
         name: string;
         now_seconds: number;
@@ -232,6 +235,9 @@ export default function App() {
   const [selectedTile, setSelectedTile] = useState<RuntimeMapLocation | null>(null);
   const [placementKind, setPlacementKind] = useState<string | null>(null);
   const simulationImportInputRef = useRef<HTMLInputElement | null>(null);
+  const clientRef = useRef<RaidDefenseSimulationClient | null>(null);
+  const viewRef = useRef<RuntimeRaidDefenseView | null>(null);
+  const activeModeRef = useRef<GameMode | null>(null);
 
   const provinces = view ? provincesFromView(view) : [];
   const rivals = view ? rivalsFromView(view) : [];
@@ -275,18 +281,71 @@ export default function App() {
   }, [provinces, view]);
 
   useEffect(() => {
+    clientRef.current = client;
+    viewRef.current = view;
+    activeModeRef.current = activeMode;
+  }, [activeMode, client, view]);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
 
     window.__RAID_DEFENSE_E2E__ = {
       exportCurrentSimulation: () => {
-        if (activeMode !== "simulation") {
+        if (activeModeRef.current !== "simulation") {
           return null;
         }
 
-        const saveState = buildSimulationSaveState("E2E Snapshot");
-        return saveState ? simulationFileFromSaveState(saveState) : null;
+        const bridgeClient = clientRef.current;
+        const bridgeView = viewRef.current;
+        if (!bridgeClient || !bridgeView) {
+          return null;
+        }
+
+        return simulationFileFromSaveState({
+          name: "E2E Snapshot",
+          seed: bridgeClient.seed.toString(),
+          now_seconds: bridgeView.now_seconds,
+          snapshot_json: bridgeClient.saveSnapshot(),
+        });
+      },
+      currentView: () => {
+        if (activeModeRef.current !== "simulation") {
+          return null;
+        }
+
+        return viewRef.current;
+      },
+      applyCommand: (command) => {
+        const bridgeClient = clientRef.current;
+        if (activeModeRef.current !== "simulation" || !bridgeClient) {
+          return null;
+        }
+
+        const response = bridgeClient.apply(command);
+        if (response.accepted) {
+          viewRef.current = response.view;
+          startTransition(() => {
+            setView(response.view);
+          });
+        }
+        return response;
+      },
+      advanceSimulation: (deltaSeconds) => {
+        const bridgeClient = clientRef.current;
+        if (activeModeRef.current !== "simulation" || !bridgeClient) {
+          return null;
+        }
+
+        const response = bridgeClient.advance(deltaSeconds);
+        if (response.accepted) {
+          viewRef.current = response.view;
+          startTransition(() => {
+            setView(response.view);
+          });
+        }
+        return response;
       },
       loadSimulationFile: async (input) => {
         const imported =
@@ -312,7 +371,7 @@ export default function App() {
     return () => {
       delete window.__RAID_DEFENSE_E2E__;
     };
-  }, [activeMode, client, settings.showNotifications, view]);
+  }, [settings.showNotifications]);
 
   useEffect(() => {
     if (activeMode !== "main" || !client || !view) {
@@ -420,6 +479,9 @@ export default function App() {
         nextView = response.view;
       }
 
+      clientRef.current = nextClient;
+      viewRef.current = nextView;
+      activeModeRef.current = options.mode;
       startTransition(() => {
         setClient(nextClient);
         setView(nextView);
@@ -498,6 +560,7 @@ export default function App() {
       if (!response.accepted) {
         throw new Error(response.error ?? "Command rejected.");
       }
+      viewRef.current = response.view;
       startTransition(() => {
         setView(response.view);
       });
@@ -595,6 +658,9 @@ export default function App() {
   function clearMainCampaign() {
     setMainCampaignSave(null);
     if (activeMode === "main") {
+      activeModeRef.current = null;
+      clientRef.current = null;
+      viewRef.current = null;
       setActiveMode(null);
       setClient(null);
       setView(null);

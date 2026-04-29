@@ -47,3 +47,36 @@ test("loads fixture states directly through the e2e bridge and can export them a
   expect(typeof exported?.snapshot_json).toBe("string");
   expect(exported?.snapshot_json.length).toBeGreaterThan(0);
 });
+
+test("first raider wave can destroy the starting castle and end the run in defeat", async ({
+  page,
+}) => {
+  const { fixtureJson } = await readFixture("fresh-frontier");
+
+  await page.goto("/");
+
+  await page.evaluate(async (fixture) => {
+    await window.__RAID_DEFENSE_E2E__?.loadSimulationFile(fixture);
+  }, fixtureJson);
+
+  const spawnResponse = await page.evaluate(() =>
+    window.__RAID_DEFENSE_E2E__?.applyCommand({
+      SpawnEntity: {
+        blueprint: { Unit: "basic_raider" },
+        name: null,
+        location: { x: 0, y: 15, elevation: 0 },
+      },
+    }),
+  );
+
+  expect(spawnResponse?.accepted).toBe(true);
+  expect(spawnResponse?.view.encountered_attack_waves).toHaveLength(1);
+
+  const advanceResponse = await page.evaluate(() => window.__RAID_DEFENSE_E2E__?.advanceSimulation(20));
+
+  expect(advanceResponse?.accepted).toBe(true);
+  expect(advanceResponse?.view.summary.lost).toBe(true);
+  expect(advanceResponse?.view.buildings.some((building) => building.kind === "castle")).toBe(false);
+
+  await expect(page.getByText("The castle has fallen. The frontier is lost.")).toBeVisible();
+});

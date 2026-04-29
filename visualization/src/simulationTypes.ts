@@ -131,6 +131,7 @@ export type RuntimeRaidDefenseSummary = {
   active_legions: number;
   influence_rank: number;
   won: boolean;
+  lost: boolean;
   critical: boolean;
 };
 

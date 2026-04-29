@@ -249,12 +249,15 @@ fn raid_defense_summary(state: &GameState, provinces: &[ProvinceView]) -> RaidDe
         .sum::<i64>();
     let active_legions = state.inventory().amount(LEGION_STRENGTH);
     let influence_rank = state.player_level();
+    let lost = !state.buildings().any(|building| building.kind.as_str() == CAPITAL);
     let won = province_count >= 4
         && average_control >= 70
         && average_loyalty >= 60
         && state.inventory().amount(INFLUENCE) >= 100
-        && influence_rank >= 3;
-    let critical = state.inventory().amount(CROWNS) < 25
+        && influence_rank >= 3
+        && !lost;
+    let critical = lost
+        || state.inventory().amount(CROWNS) < 25
         || state.inventory().amount(STABILITY) < 20
         || provinces.iter().any(|province| province.control < 25);
 
@@ -267,6 +270,7 @@ fn raid_defense_summary(state: &GameState, provinces: &[ProvinceView]) -> RaidDe
         active_legions,
         influence_rank,
         won,
+        lost,
         critical,
     }
 }
@@ -277,6 +281,12 @@ fn raid_defense_alerts(
     food_logistics: &FoodLogisticsView,
 ) -> Vec<AlertView> {
     let mut alerts = Vec::new();
+    if summary.lost {
+        alerts.push(AlertView {
+            severity: "critical".to_owned(),
+            message: "The castle has fallen. The frontier is lost.".to_owned(),
+        });
+    }
     if state.inventory().amount(CROWNS) < 40 {
         alerts.push(AlertView {
             severity: "warning".to_owned(),

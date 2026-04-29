@@ -259,10 +259,7 @@ fn find_nearest_storage_target(state: &GameState, raider: EntityId) -> Option<St
     let mut reachable = Vec::new();
     let mut blocked = Vec::new();
 
-    for building in state
-        .buildings()
-        .filter(|building| building.kind.as_str() == MARKET && building.level > 0)
-    {
+    for building in raider_target_buildings(state) {
         let approach = approach_tiles(state, building, false);
         if let Some(path) = shortest_path(state, start, &approach, false) {
             reachable.push((path.len(), building.id, path));
@@ -306,6 +303,21 @@ fn find_nearest_storage_target(state: &GameState, raider: EntityId) -> Option<St
             blocker_path,
         },
     )
+}
+
+fn raider_target_buildings(state: &GameState) -> Vec<&Building> {
+    let storages = state
+        .buildings()
+        .filter(|building| building.kind.as_str() == MARKET && building.level > 0)
+        .collect::<Vec<_>>();
+    if !storages.is_empty() {
+        return storages;
+    }
+
+    state
+        .buildings()
+        .filter(|building| building.kind.as_str() == CAPITAL && building.level > 0)
+        .collect()
 }
 
 fn shortest_path(
@@ -626,6 +638,39 @@ mod tests {
         assert!(state.building(storage).is_none());
         assert!(state.entity_stat(raider, RAIDER_CARRIED_TOTAL).unwrap() > 0);
         assert!(state.inventory().amount(GRAIN) < before);
+    }
+
+    #[test]
+    fn raider_targets_the_castle_when_no_storage_house_exists() {
+        let mut state = new_raid_defense_state_with_seed(1).unwrap();
+        let castle = state
+            .buildings()
+            .find(|building| building.kind.as_str() == CAPITAL)
+            .map(|building| building.id)
+            .expect("castle exists");
+
+        let raider = spawn_raider_at(&mut state, MapLocation::new(10, 15));
+        let target = find_nearest_storage_target(&state, raider).expect("target building");
+
+        assert_eq!(target.storage_id, castle);
+        assert!(target.blocker_id.is_none());
+    }
+
+    #[test]
+    fn raider_can_destroy_the_castle_and_trigger_loss() {
+        let mut state = new_raid_defense_state_with_seed(1).unwrap();
+        let mut logic = RaidDefenseLogic;
+
+        spawn_raider_at(&mut state, MapLocation::new(0, 15));
+        state.advance_time_with_logic(20, &mut logic).unwrap();
+
+        let view = raid_defense_view(&state);
+        assert!(!view.buildings.iter().any(|building| building.kind == CAPITAL));
+        assert!(view.summary.lost);
+        assert!(view
+            .alerts
+            .iter()
+            .any(|alert| alert.message == "The castle has fallen. The frontier is lost."));
     }
 
     fn spawn_raider_at(state: &mut GameState, location: MapLocation) -> EntityId {
