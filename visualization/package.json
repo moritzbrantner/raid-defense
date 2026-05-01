@@ -19,8 +19,9 @@
     "three": "^0.180.0"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.1.13",
     "@playwright/test": "^1.55.0",
+    "@tailwindcss/vite": "^4.1.13",
+    "@types/node": "^25.6.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@types/three": "^0.180.0",

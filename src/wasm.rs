@@ -30,8 +30,7 @@ impl WasmRaidDefense {
     }
 
     pub fn apply_json(&mut self, command_json: &str) -> Result<String, JsValue> {
-        let command: GameCommand = serde_json::from_str(command_json)
-            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let command = parse_raid_defense_command(command_json)?;
         let outcome = apply_raid_defense_command(&mut self.state, command)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         self.version += 1;
@@ -76,6 +75,15 @@ impl WasmRaidDefense {
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         self.version += 1;
         response_json(self.version, Vec::new(), &self.state)
+    }
+}
+
+fn parse_raid_defense_command(command_json: &str) -> Result<RaidDefenseCommand, JsValue> {
+    match serde_json::from_str::<RaidDefenseCommand>(command_json) {
+        Ok(command) => Ok(command),
+        Err(domain_error) => serde_json::from_str::<GameCommand>(command_json)
+            .map(RaidDefenseCommand::Engine)
+            .map_err(|_| JsValue::from_str(&domain_error.to_string())),
     }
 }
 

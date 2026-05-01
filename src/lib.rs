@@ -356,6 +356,31 @@ mod tests {
     }
 
     #[test]
+    fn domain_command_clamps_tax_rate() {
+        let mut state = new_raid_defense_state().unwrap();
+        let capital = state
+            .buildings()
+            .find(|building| building.kind.as_str() == CAPITAL)
+            .unwrap()
+            .id;
+
+        let outcome = apply_raid_defense_command(
+            &mut state,
+            RaidDefenseCommand::SetTaxRate {
+                building: capital,
+                value: MAX_TAX_RATE + 10,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            state.building_stat(capital, TAX_RATE).unwrap(),
+            MAX_TAX_RATE
+        );
+        assert_eq!(outcome.events.len(), 1);
+    }
+
+    #[test]
     fn storage_house_upgrade_doubles_its_storage_bonus() {
         let mut state = new_raid_defense_state().unwrap();
         let storage_house = state

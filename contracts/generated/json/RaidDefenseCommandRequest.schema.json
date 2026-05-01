@@ -11,7 +11,7 @@
   ],
   "properties": {
     "command": {
-      "$ref": "#/definitions/GameCommand"
+      "$ref": "#/definitions/RaidDefenseCommand"
     },
     "command_id": {
       "type": "string"
@@ -849,6 +849,97 @@
           "$ref": "#/definitions/InventoryScope"
         }
       }
+    },
+    "RaidDefenseCommand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "Engine"
+          ],
+          "properties": {
+            "Engine": {
+              "$ref": "#/definitions/GameCommand"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "SetTaxRate"
+          ],
+          "properties": {
+            "SetTaxRate": {
+              "type": "object",
+              "required": [
+                "building",
+                "value"
+              ],
+              "properties": {
+                "building": {
+                  "$ref": "#/definitions/BuildingId"
+                },
+                "value": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "ClaimProvince"
+          ],
+          "properties": {
+            "ClaimProvince": {
+              "type": "object",
+              "required": [
+                "kind",
+                "location"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "location": {
+                  "$ref": "#/definitions/MapLocation"
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "RecruitEngineer"
+          ],
+          "properties": {
+            "RecruitEngineer": {
+              "type": "object",
+              "required": [
+                "location"
+              ],
+              "properties": {
+                "location": {
+                  "$ref": "#/definitions/MapLocation"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     }
   }
 }

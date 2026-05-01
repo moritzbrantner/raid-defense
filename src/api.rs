@@ -7,7 +7,7 @@ pub struct RaidDefenseCommandRequest {
     pub world_id: WorldId,
     pub player_id: PlayerId,
     pub expected_version: u64,
-    pub command: GameCommand,
+    pub command: RaidDefenseCommand,
 }
 
 #[cfg_attr(feature = "contracts", derive(schemars::JsonSchema, ts_rs::TS))]

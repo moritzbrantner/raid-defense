@@ -2,7 +2,7 @@
 
 export type RaidDefenseCommand = { "Engine": GameCommand } | { "SetTaxRate": { building: BuildingId, value: bigint, } } | { "ClaimProvince": { kind: NpcKind, name: string | null, location: MapLocation, } } | { "RecruitEngineer": { location: MapLocation, } };
 
-export type RaidDefenseCommandRequest = { command_id: CommandId, world_id: WorldId, player_id: PlayerId, expected_version: bigint, command: GameCommand, };
+export type RaidDefenseCommandRequest = { command_id: CommandId, world_id: WorldId, player_id: PlayerId, expected_version: bigint, command: RaidDefenseCommand, };
 
 export type RaidDefenseCommandResponse = { accepted: boolean, version: bigint, checksum: string, events: Array<GameEvent>, view: RaidDefenseView, error: string | null, };
 
@@ -32,5 +32,5 @@ export type AlertView = { severity: string, message: string, };
 
 export type ObjectiveView = { id: string, label: string, current: bigint, target: bigint, complete: boolean, };
 
-export type RaidDefenseSummary = { province_count: number, average_control: bigint, average_loyalty: bigint, total_threat: bigint, tax_rate: bigint, active_legions: bigint, influence_rank: number, won: boolean, critical: boolean, };
+export type RaidDefenseSummary = { province_count: number, average_control: bigint, average_loyalty: bigint, total_threat: bigint, tax_rate: bigint, active_legions: bigint, influence_rank: number, won: boolean, lost: boolean, critical: boolean, };
 

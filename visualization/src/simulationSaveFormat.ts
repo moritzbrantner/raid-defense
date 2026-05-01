@@ -38,7 +38,7 @@ function isSaveStateLike(value: unknown): value is LegacySaveStateLike {
 
 export function simulationFileFromSaveState(
   saveState: Pick<SimulationSaveState, "name" | "seed" | "now_seconds" | "snapshot_json">,
-) {
+): SimulationJsonFile {
   return {
     format: simulationFileFormat,
     version: simulationFileVersion,

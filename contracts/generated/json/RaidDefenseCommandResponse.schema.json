@@ -1184,6 +1184,7 @@
         "average_loyalty",
         "critical",
         "influence_rank",
+        "lost",
         "province_count",
         "tax_rate",
         "total_threat",
@@ -1210,6 +1211,9 @@
           "type": "integer",
           "format": "uint32",
           "minimum": 0.0
+        },
+        "lost": {
+          "type": "boolean"
         },
         "province_count": {
           "type": "integer",
