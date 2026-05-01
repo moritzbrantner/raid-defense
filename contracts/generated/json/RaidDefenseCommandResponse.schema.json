@@ -168,6 +168,7 @@
         "blocked",
         "role",
         "route_slots",
+        "routes",
         "spoiling"
       ],
       "properties": {
@@ -194,6 +195,12 @@
           "type": "integer",
           "format": "uint32",
           "minimum": 0.0
+        },
+        "routes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LogisticsRouteView"
+          }
         },
         "service_radius": {
           "type": [
@@ -1093,6 +1100,50 @@
         },
         "kind": {
           "type": "string"
+        }
+      }
+    },
+    "LogisticsRouteView": {
+      "type": "object",
+      "required": [
+        "amount",
+        "completes_at_seconds",
+        "source_building_id",
+        "started_at_seconds",
+        "target_building_id",
+        "waypoints"
+      ],
+      "properties": {
+        "amount": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "completes_at_seconds": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "source_building_id": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "started_at_seconds": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "target_building_id": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "waypoints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MapLocation"
+          }
         }
       }
     },

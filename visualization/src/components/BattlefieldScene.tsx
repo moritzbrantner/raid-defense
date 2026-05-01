@@ -5,6 +5,7 @@ import { CatmullRomCurve3, Color, MathUtils, Vector3, type Mesh } from "three";
 import type {
   RuntimeBuildingView,
   RuntimeEntityView,
+  RuntimeLogisticsRouteView,
   RuntimeMapLocation,
   RuntimeProvinceView,
   RuntimeRaidDefenseView,
@@ -47,6 +48,9 @@ export function BattlefieldScene({
   onSelectProvince,
   onSelectTile,
 }: BattlefieldSceneProps) {
+  const selectedBuildingRoutes =
+    view.buildings.find((building) => building.id === selectedBuildingId)?.logistics?.routes ?? [];
+
   return (
     <Canvas
       camera={{ position: [5.5, 9.5, 12.5], fov: 42 }}
@@ -67,6 +71,14 @@ export function BattlefieldScene({
           opacity={0.8}
           points={path.waypoints.map((waypoint) => toScenePoint(waypoint).setY(0.08))}
           transparent
+        />
+      ))}
+
+      {selectedBuildingRoutes.map((route, index) => (
+        <LogisticsRoute
+          key={`${route.source_building_id}-${route.target_building_id}-${route.started_at_seconds}-${index}`}
+          nowSeconds={view.now_seconds}
+          route={route}
         />
       ))}
 
@@ -163,6 +175,64 @@ function Ground({ onSelectTile }: { onSelectTile: (location: RuntimeMapLocation)
         <ringGeometry args={[9.5, 14.5, 48]} />
         <meshBasicMaterial color="#3c2319" opacity={0.55} transparent />
       </mesh>
+    </group>
+  );
+}
+
+function LogisticsRoute({
+  nowSeconds,
+  route,
+}: {
+  nowSeconds: number;
+  route: RuntimeLogisticsRouteView;
+}) {
+  const runnerRef = useRef<Mesh>(null);
+  const waypoints = route.waypoints.map((waypoint) => toScenePoint(waypoint).setY(0.16));
+  const drawable = waypoints.length >= 2;
+  const routePoints = drawable ? waypoints : [new Vector3(), new Vector3()];
+  const curve =
+    routePoints.length >= 3
+      ? new CatmullRomCurve3(routePoints)
+      : new CatmullRomCurve3([
+          routePoints[0],
+          routePoints[0].clone().lerp(routePoints[1], 0.5).setY(0.34),
+          routePoints[1],
+        ]);
+  const points = curve.getPoints(24);
+  const durationSeconds = Math.max(1, route.completes_at_seconds - route.started_at_seconds);
+  const initialProgress = MathUtils.clamp(
+    (nowSeconds - route.started_at_seconds) / durationSeconds,
+    0,
+    1,
+  );
+
+  useFrame(({ clock }) => {
+    if (!runnerRef.current) {
+      return;
+    }
+
+    const progress = (initialProgress + clock.elapsedTime * 0.08) % 1;
+    runnerRef.current.position.copy(curve.getPointAt(progress));
+  });
+
+  if (!drawable) {
+    return null;
+  }
+
+  return (
+    <group>
+      <Line color="#1b6f61" lineWidth={7} opacity={0.22} points={points} transparent />
+      <Line color="#9ff5d0" lineWidth={3} opacity={0.92} points={points} transparent />
+      <mesh ref={runnerRef}>
+        <sphereGeometry args={[0.12, 18, 18]} />
+        <meshStandardMaterial color="#d6ffe9" emissive="#59d6b2" emissiveIntensity={1.6} />
+      </mesh>
+      {waypoints.map((point, index) => (
+        <mesh key={index} position={point}>
+          <sphereGeometry args={[0.08, 14, 14]} />
+          <meshStandardMaterial color="#bdfce2" emissive="#2fbf9a" emissiveIntensity={0.9} />
+        </mesh>
+      ))}
     </group>
   );
 }

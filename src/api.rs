@@ -103,8 +103,20 @@ pub struct BuildingLogisticsView {
     pub active_routes: u32,
     pub route_slots: u32,
     pub service_radius: Option<u32>,
+    pub routes: Vec<LogisticsRouteView>,
     pub blocked: bool,
     pub spoiling: bool,
+}
+
+#[cfg_attr(feature = "contracts", derive(schemars::JsonSchema, ts_rs::TS))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct LogisticsRouteView {
+    pub source_building_id: u64,
+    pub target_building_id: u64,
+    pub amount: u64,
+    pub started_at_seconds: u64,
+    pub completes_at_seconds: u64,
+    pub waypoints: Vec<MapLocation>,
 }
 
 #[cfg_attr(feature = "contracts", derive(schemars::JsonSchema, ts_rs::TS))]

@@ -22,9 +22,9 @@ use farm_scenario::{
 };
 use raid_defense_game::{
     AlertView, AreaView, BuildingLogisticsView, BuildingView, EntityView, FoodLogisticsView,
-    JobView, NpcView, ObjectiveView, PathView, ProvinceView, RaidDefenseCommand,
-    RaidDefenseCommandRequest, RaidDefenseCommandResponse, RaidDefenseSummary, RaidDefenseView,
-    ResourceView,
+    JobView, LogisticsRouteView, NpcView, ObjectiveView, PathView, ProvinceView,
+    RaidDefenseCommand, RaidDefenseCommandRequest, RaidDefenseCommandResponse, RaidDefenseSummary,
+    RaidDefenseView, ResourceView,
 };
 use schemars::schema_for;
 use serde_json::Value;
@@ -207,6 +207,7 @@ fn render_raid_defense_ts() -> String {
         ResourceView::decl(),
         BuildingView::decl(),
         BuildingLogisticsView::decl(),
+        LogisticsRouteView::decl(),
         JobView::decl(),
         PathView::decl(),
         AreaView::decl(),

@@ -153,6 +153,7 @@ pub(crate) fn building_logistics_view(
             active_routes: active_outbound_route_count(state, building.id),
             route_slots: 0,
             service_radius: None,
+            routes: route_views_for_building(state, building.id),
             blocked: farm_is_blocked(building),
             spoiling: farm_recently_spoiled(state, building.id),
         }),
@@ -162,6 +163,7 @@ pub(crate) fn building_logistics_view(
             active_routes: routes_for_storage(state, building.id).len() as u32,
             route_slots: storage_route_slots(state, building),
             service_radius: Some(storage_service_radius(state, building) as u32),
+            routes: route_views_for_building(state, building.id),
             blocked: false,
             spoiling: false,
         }),
@@ -493,6 +495,29 @@ fn active_food_routes(state: &GameState) -> Vec<FoodRoute> {
         .into_iter()
         .flat_map(|building_id| routes_for_storage(state, building_id))
         .collect()
+}
+
+fn route_views_for_building(state: &GameState, building_id: BuildingId) -> Vec<LogisticsRouteView> {
+    active_food_routes(state)
+        .into_iter()
+        .filter(|route| {
+            route.source_building == building_id || route.target_building == building_id
+        })
+        .filter_map(|route| route_view(state, route))
+        .collect()
+}
+
+fn route_view(state: &GameState, route: FoodRoute) -> Option<LogisticsRouteView> {
+    let source = state.building(route.source_building)?;
+    let target = state.building(route.target_building)?;
+    Some(LogisticsRouteView {
+        source_building_id: route.source_building.get(),
+        target_building_id: route.target_building.get(),
+        amount: route.amount,
+        started_at_seconds: route.started_at_seconds,
+        completes_at_seconds: route.completes_at_seconds,
+        waypoints: vec![source.location, target.location],
+    })
 }
 
 fn total_active_route_amount(state: &GameState) -> u64 {

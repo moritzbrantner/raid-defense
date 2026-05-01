@@ -28,8 +28,18 @@ export type RuntimeBuildingLogisticsView = {
   active_routes: number;
   route_slots: number;
   service_radius: number | null;
+  routes: RuntimeLogisticsRouteView[];
   blocked: boolean;
   spoiling: boolean;
+};
+
+export type RuntimeLogisticsRouteView = {
+  source_building_id: number;
+  target_building_id: number;
+  amount: number;
+  started_at_seconds: number;
+  completes_at_seconds: number;
+  waypoints: RuntimeMapLocation[];
 };
 
 export type RuntimeResourceView = {

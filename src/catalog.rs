@@ -155,11 +155,7 @@ fn add_civic_and_military_buildings(catalog: &mut Catalog) {
                     ],
                 )
                 .with_height(2)
-                .with_storage_bonus(vec![
-                    ResourceAmount::new(TIMBER, 150),
-                    ResourceAmount::new(STONE, 150),
-                    ResourceAmount::new(GRAIN, 150),
-                ]),
+                .with_storage_bonus(storage_house_capacity_bonus()),
             )
             .with_level(
                 BuildingLevelDefinition::new(
@@ -171,11 +167,7 @@ fn add_civic_and_military_buildings(catalog: &mut Catalog) {
                     ],
                 )
                 .with_height(3)
-                .with_storage_bonus(vec![
-                    ResourceAmount::new(TIMBER, 150),
-                    ResourceAmount::new(STONE, 150),
-                    ResourceAmount::new(GRAIN, 150),
-                ]),
+                .with_storage_bonus(storage_house_capacity_bonus()),
             ),
     );
     catalog.add_building(economic_building(
@@ -297,6 +289,28 @@ fn add_civic_and_military_buildings(catalog: &mut Catalog) {
         .with_requirements(vec![Requirement::PlayerLevelAtLeast(3)]),
     );
 }
+
+fn storage_house_capacity_bonus() -> Vec<ResourceAmount> {
+    debug_assert!(STORAGE_HOUSE_MATERIALS.len() <= STORAGE_HOUSE_MATERIAL_SLOTS);
+    STORAGE_HOUSE_MATERIALS
+        .iter()
+        .take(STORAGE_HOUSE_MATERIAL_SLOTS)
+        .map(|resource| ResourceAmount::new(*resource, STORAGE_HOUSE_CAPACITY))
+        .collect()
+}
+
+const STORAGE_HOUSE_MATERIALS: [&str; 10] = [
+    CROWNS,
+    GRAIN,
+    TIMBER,
+    STONE,
+    IRON,
+    INFLUENCE,
+    LEGION_STRENGTH,
+    STABILITY,
+    INTELLIGENCE,
+    TRADE_GOODS,
+];
 
 fn add_tech_and_upgrades(catalog: &mut Catalog) {
     catalog.add_tech_node(

@@ -88,3 +88,5 @@ pub const CODEX_ADMINISTRATION: &str = "codex_administration";
 
 pub const DEFAULT_TAX_RATE: i64 = 12;
 pub const MAX_TAX_RATE: i64 = 40;
+pub const STORAGE_HOUSE_CAPACITY: u64 = 10_000;
+pub const STORAGE_HOUSE_MATERIAL_SLOTS: usize = 32;

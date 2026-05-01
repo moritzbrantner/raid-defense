@@ -287,6 +287,11 @@ mod tests {
 
         let market = catalog.building(MARKET).unwrap();
         assert_eq!(market.max_level(), Some(2));
+        let level_one_storage = &market.level(1).unwrap().storage_bonus;
+        assert!(level_one_storage.len() <= STORAGE_HOUSE_MATERIAL_SLOTS);
+        assert!(level_one_storage
+            .iter()
+            .all(|bonus| bonus.amount == STORAGE_HOUSE_CAPACITY));
         let total_storage_bonus = market
             .levels()
             .flat_map(|level| level.storage_bonus.iter())
@@ -294,9 +299,18 @@ mod tests {
                 *totals.entry(bonus.resource.clone()).or_insert(0) += bonus.amount;
                 totals
             });
-        assert_eq!(total_storage_bonus.get(&TIMBER.into()), Some(&300));
-        assert_eq!(total_storage_bonus.get(&STONE.into()), Some(&300));
-        assert_eq!(total_storage_bonus.get(&GRAIN.into()), Some(&300));
+        assert_eq!(
+            total_storage_bonus.get(&TIMBER.into()),
+            Some(&(STORAGE_HOUSE_CAPACITY * 2))
+        );
+        assert_eq!(
+            total_storage_bonus.get(&STONE.into()),
+            Some(&(STORAGE_HOUSE_CAPACITY * 2))
+        );
+        assert_eq!(
+            total_storage_bonus.get(&GRAIN.into()),
+            Some(&(STORAGE_HOUSE_CAPACITY * 2))
+        );
 
         let senate_hall = catalog.building(SENATE_HALL).unwrap();
         assert_eq!(
@@ -389,9 +403,13 @@ mod tests {
 
         state.advance_time(8).unwrap();
 
-        assert_eq!(state.inventory().capacity(TIMBER), Some(250));
-        assert_eq!(state.inventory().capacity(STONE), Some(250));
-        assert_eq!(state.inventory().capacity(GRAIN), Some(250));
+        assert_eq!(state.inventory().capacity(TIMBER), Some(10_100));
+        assert_eq!(state.inventory().capacity(STONE), Some(10_100));
+        assert_eq!(state.inventory().capacity(GRAIN), Some(10_100));
+        assert_eq!(
+            state.inventory().capacity(IRON),
+            Some(STORAGE_HOUSE_CAPACITY)
+        );
 
         let outcome = apply_raid_defense_command(
             &mut state,
@@ -412,9 +430,13 @@ mod tests {
         state.advance_time(8).unwrap();
 
         assert_eq!(state.building(storage_house).unwrap().level, 2);
-        assert_eq!(state.inventory().capacity(TIMBER), Some(400));
-        assert_eq!(state.inventory().capacity(STONE), Some(400));
-        assert_eq!(state.inventory().capacity(GRAIN), Some(400));
+        assert_eq!(state.inventory().capacity(TIMBER), Some(20_100));
+        assert_eq!(state.inventory().capacity(STONE), Some(20_100));
+        assert_eq!(state.inventory().capacity(GRAIN), Some(20_100));
+        assert_eq!(
+            state.inventory().capacity(IRON),
+            Some(STORAGE_HOUSE_CAPACITY * 2)
+        );
     }
 
     #[test]
@@ -653,13 +675,23 @@ mod tests {
         assert_eq!(state.building(farm).unwrap().inventory.amount(GRAIN), 8);
         let view = raid_defense_view(&state);
         assert_eq!(view.food_logistics.delivered_last_minute, 0);
+        let storage_logistics = view
+            .buildings
+            .iter()
+            .find(|building| building.id == storage.get())
+            .and_then(|building| building.logistics.as_ref())
+            .unwrap();
+        assert_eq!(storage_logistics.active_routes, 1);
+        assert_eq!(storage_logistics.routes.len(), 1);
+        assert_eq!(storage_logistics.routes[0].source_building_id, farm.get());
         assert_eq!(
-            view.buildings
-                .iter()
-                .find(|building| building.id == storage.get())
-                .and_then(|building| building.logistics.as_ref())
-                .map(|logistics| logistics.active_routes),
-            Some(1)
+            storage_logistics.routes[0].target_building_id,
+            storage.get()
+        );
+        assert_eq!(storage_logistics.routes[0].amount, 6);
+        assert_eq!(
+            storage_logistics.routes[0].waypoints,
+            vec![MapLocation::new(10, 10), MapLocation::new(15, 10)]
         );
 
         state.advance_time_with_logic(36, &mut logic).unwrap();

@@ -14,7 +14,9 @@ export type ResourceView = { id: string, label: string, amount: bigint, capacity
 
 export type BuildingView = { id: bigint, kind: string, label: string, location: MapLocation, height: number, footprint: BuildingFootprint, level: number, required_workers: number, assigned_workers: number, manned: boolean, status: string, production: string, inventory: Array<ResourceView>, logistics: BuildingLogisticsView | null, stats: { [key in string]?: bigint }, };
 
-export type BuildingLogisticsView = { role: string, connected_storage_id: bigint | null, active_routes: number, route_slots: number, service_radius: number | null, blocked: boolean, spoiling: boolean, };
+export type BuildingLogisticsView = { role: string, connected_storage_id: bigint | null, active_routes: number, route_slots: number, service_radius: number | null, routes: Array<LogisticsRouteView>, blocked: boolean, spoiling: boolean, };
+
+export type LogisticsRouteView = { source_building_id: bigint, target_building_id: bigint, amount: bigint, started_at_seconds: bigint, completes_at_seconds: bigint, waypoints: Array<MapLocation>, };
 
 export type JobView = { id: bigint, kind: string, completes_at_seconds: bigint, assigned_entities: Array<bigint>, };
 
