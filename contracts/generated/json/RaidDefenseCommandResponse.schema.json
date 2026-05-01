@@ -1300,6 +1300,7 @@
         "objectives",
         "paths",
         "resources",
+        "scenario_config",
         "summary",
         "tech_nodes",
         "upgrades"
@@ -1379,6 +1380,9 @@
             "$ref": "#/definitions/ResourceView"
           }
         },
+        "scenario_config": {
+          "$ref": "#/definitions/ScenarioConfig"
+        },
         "summary": {
           "$ref": "#/definitions/RaidDefenseSummary"
         },
@@ -1439,6 +1443,35 @@
         },
         "label": {
           "type": "string"
+        }
+      }
+    },
+    "ScenarioConfig": {
+      "type": "object",
+      "required": [
+        "buildings",
+        "units"
+      ],
+      "properties": {
+        "buildings": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        },
+        "units": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
         }
       }
     }

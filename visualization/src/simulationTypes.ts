@@ -145,8 +145,14 @@ export type RuntimeRaidDefenseSummary = {
   critical: boolean;
 };
 
+export type RuntimeScenarioConfig = {
+  buildings: Record<string, Record<string, number>>;
+  units: Record<string, Record<string, number>>;
+};
+
 export type RuntimeRaidDefenseView = {
   now_seconds: number;
+  scenario_config: RuntimeScenarioConfig;
   resources: RuntimeResourceView[];
   food_logistics: {
     delivered_last_minute: number;
@@ -185,6 +191,7 @@ export type SimulationSaveState = {
   seed: string;
   created_at: string;
   now_seconds: number;
+  scenario_config?: RuntimeScenarioConfig;
   snapshot_json: string;
 };
 

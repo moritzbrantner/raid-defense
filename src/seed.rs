@@ -35,7 +35,7 @@ pub fn new_raid_defense_world_with_seed(
 }
 
 fn seed_raid_defense_state(state: &mut GameState, seed: u64) -> Result<(), EngineError> {
-    state.set_map_topology(MapTopology::Hexagonal);
+    state.set_map_topology(MapTopology::Square);
     state.set_map_bounds(0, 0, RAID_DEFENSE_SIZE - 1, RAID_DEFENSE_SIZE - 1);
     for (resource, capacity) in [(GRAIN, 100), (TIMBER, 100), (STONE, 100)] {
         state.inventory_mut().set_capacity(resource, capacity);

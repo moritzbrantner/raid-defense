@@ -24,7 +24,7 @@ pub(crate) fn generate_seeded_terrain(state: &mut GameState, seed: u64) -> Resul
         !protected.contains(&(x, y))
             && water_centers
                 .iter()
-                .all(|water| hex_distance((x, y), *water) >= 3)
+                .all(|water| grid_distance((x, y), *water) >= 3)
     });
     for center in forest_centers {
         let radius = 2 + rng.next_bounded_i32(4);
@@ -79,7 +79,7 @@ fn protected_terrain_tiles() -> BTreeSet<(i32, i32)> {
     let mut protected = BTreeSet::new();
 
     for waypoint in imperial_road() {
-        mark_hex_radius(&mut protected, waypoint, 1);
+        mark_grid_radius(&mut protected, waypoint, 1);
     }
 
     for location in [
@@ -91,16 +91,16 @@ fn protected_terrain_tiles() -> BTreeSet<(i32, i32)> {
         MapLocation::new(21, 7),
         MapLocation::new(10, 10),
     ] {
-        mark_hex_radius(&mut protected, location, 2);
+        mark_grid_radius(&mut protected, location, 2);
     }
 
     protected
 }
 
-fn mark_hex_radius(set: &mut BTreeSet<(i32, i32)>, center: MapLocation, radius: i32) {
+fn mark_grid_radius(set: &mut BTreeSet<(i32, i32)>, center: MapLocation, radius: i32) {
     for y in 0..RAID_DEFENSE_SIZE {
         for x in 0..RAID_DEFENSE_SIZE {
-            if hex_distance((x, y), (center.x, center.y)) <= radius {
+            if grid_distance((x, y), (center.x, center.y)) <= radius {
                 set.insert((x, y));
             }
         }
@@ -126,7 +126,7 @@ fn poisson_disk_points(
         }
         if points
             .iter()
-            .all(|existing| hex_distance((x, y), *existing) >= min_distance)
+            .all(|existing| grid_distance((x, y), *existing) >= min_distance)
         {
             points.push((x, y));
         }
@@ -148,7 +148,7 @@ fn paint_terrain_blob(
             if !in_map_bounds(x, y) || protected.contains(&(x, y)) {
                 continue;
             }
-            let distance = hex_distance((x, y), center);
+            let distance = grid_distance((x, y), center);
             if distance > radius {
                 continue;
             }
@@ -178,11 +178,8 @@ pub(crate) fn terrain_kind_count(state: &GameState, kind: &str) -> usize {
         .count()
 }
 
-fn hex_distance(left: (i32, i32), right: (i32, i32)) -> i32 {
-    let q = (left.0 - right.0).abs();
-    let r = (left.1 - right.1).abs();
-    let s = (left.0 + left.1 - right.0 - right.1).abs();
-    (q + r + s) / 2
+fn grid_distance(left: (i32, i32), right: (i32, i32)) -> i32 {
+    (left.0 - right.0).abs() + (left.1 - right.1).abs()
 }
 
 fn in_map_bounds(x: i32, y: i32) -> bool {

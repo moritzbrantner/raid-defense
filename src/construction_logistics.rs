@@ -189,8 +189,8 @@ fn assign_free_workers_to_site(
             .entity(*entity_id)
             .map(|entity| {
                 (
-                    hex_distance(entity.location, site_location),
-                    hex_distance(
+                    grid_distance(entity.location, site_location),
+                    grid_distance(
                         entity.location,
                         source_location(state, source_id).unwrap_or(site_location),
                     ),
@@ -528,7 +528,7 @@ fn nearest_storage_source_for_site(
     }
     candidates.into_iter().min_by_key(|candidate| {
         let location = source_location(state, *candidate).unwrap_or(site_location);
-        (hex_distance(site_location, location), candidate.get())
+        (grid_distance(site_location, location), candidate.get())
     })
 }
 
@@ -622,7 +622,7 @@ fn building_u64_stat(state: &GameState, building_id: BuildingId, stat: &str) -> 
 }
 
 fn route_duration_seconds(state: &GameState, source: MapLocation, target: MapLocation) -> u64 {
-    let distance = hex_distance(source, target);
+    let distance = grid_distance(source, target);
     if distance <= 0 {
         return 0;
     }
@@ -665,7 +665,7 @@ fn road_paths_connected(left: &[MapLocation], right: &[MapLocation]) -> bool {
     left.iter().any(|source| {
         right
             .iter()
-            .any(|target| hex_distance(*source, *target) <= 1)
+            .any(|target| grid_distance(*source, *target) <= 1)
     })
 }
 
@@ -704,7 +704,7 @@ fn nearest_road_component(
     road_components.iter().position(|component| {
         component
             .iter()
-            .any(|waypoint| hex_distance(location, *waypoint) <= 1)
+            .any(|waypoint| grid_distance(location, *waypoint) <= 1)
     })
 }
 
@@ -723,9 +723,6 @@ fn effective_route_distance(distance: i32, road_backed: bool, improved_roads: bo
     ((distance.max(0) * percent) + 99) / 100
 }
 
-fn hex_distance(left: MapLocation, right: MapLocation) -> i32 {
-    let dx = left.x - right.x;
-    let dy = left.y - right.y;
-    let dz = -dx - dy;
-    dx.abs().max(dy.abs()).max(dz.abs())
+fn grid_distance(left: MapLocation, right: MapLocation) -> i32 {
+    (left.x - right.x).abs() + (left.y - right.y).abs()
 }

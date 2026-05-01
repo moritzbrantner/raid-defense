@@ -5,7 +5,7 @@ async function resetApp(page: Page) {
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Raid Defense" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Fresh Frontier" })).toBeVisible();
 }
 
 async function openSimulationLab(page: Page) {
@@ -36,14 +36,34 @@ test("home screen exposes every top-level destination", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Start Campaign" })).toBeVisible();
 
   await openMainCampaign(page);
+  await page.getByRole("button", { name: "Menu" }).click();
+  await expect(page.locator('[data-testid="pause-menu"]')).toBeVisible();
   await page.getByRole("button", { name: "Home", exact: true }).click();
   await expect(page.getByRole("button", { name: "Continue Campaign" })).toBeVisible();
 
   await page.getByRole("button", { name: "Open Lab" }).click();
   await expect(page.getByText("Simulation Lab").first()).toBeVisible();
 
+  await page.getByRole("button", { name: "Menu" }).click();
   await page.getByRole("button", { name: "Wiki" }).click();
   await expect(page.getByRole("heading", { name: "Field Manual" })).toBeVisible();
+});
+
+test("running game keeps the main menu compact and pauses from menu or escape", async ({ page }) => {
+  await openMainCampaign(page);
+
+  await expect(page.getByRole("button", { name: "Menu" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Home", exact: true })).toBeHidden();
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator('[data-testid="pause-menu"]')).toBeVisible();
+  await expect(page.getByText("Paused")).toBeVisible();
+
+  await page.getByRole("button", { name: "Resume Game" }).click();
+  await expect(page.locator('[data-testid="pause-menu"]')).toBeHidden();
+
+  await page.getByRole("button", { name: "Menu" }).click();
+  await expect(page.locator('[data-testid="pause-menu"]')).toBeVisible();
 });
 
 test("settings screen persists interface choices and seeds", async ({ page }) => {
@@ -93,6 +113,7 @@ test("wiki screen shows an empty manual before a run and logs encountered units 
     "Recruit Worker queued.",
   );
 
+  await page.getByRole("button", { name: "Menu" }).click();
   await page.getByRole("button", { name: "Wiki" }).click();
   await expect(page.getByRole("heading", { name: "Field Manual" })).toBeVisible();
   await expect(page.getByText("Worker").first()).toBeVisible();
@@ -111,6 +132,7 @@ test("main campaign screen advances time and resumes the autosaved run", async (
     "Campaign advanced by +30s.",
   );
 
+  await page.getByRole("button", { name: "Menu" }).click();
   await page.getByRole("button", { name: "Home", exact: true }).click();
   await expect(page.getByRole("button", { name: "Continue Campaign" })).toBeVisible();
 

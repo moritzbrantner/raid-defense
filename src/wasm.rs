@@ -60,6 +60,16 @@ impl WasmRaidDefense {
         response_json(self.version, Vec::new(), &self.state)
     }
 
+    #[wasm_bindgen(js_name = applyScenarioConfig)]
+    pub fn apply_scenario_config_json(&mut self, config_json: &str) -> Result<String, JsValue> {
+        let config: ScenarioConfig = serde_json::from_str(config_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        apply_scenario_config(&mut self.state, &config)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        self.version += 1;
+        response_json(self.version, Vec::new(), &self.state)
+    }
+
     #[wasm_bindgen(js_name = grantResource)]
     pub fn grant_resource(&mut self, resource: &str, amount: u64) -> Result<String, JsValue> {
         if let Some(capacity) = self.state.inventory().capacity(resource) {

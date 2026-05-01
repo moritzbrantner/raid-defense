@@ -21,6 +21,7 @@ mod economy;
 mod food_logistics;
 mod logic;
 mod raiders;
+mod scenario_config;
 mod seed;
 mod terrain;
 mod view;
@@ -34,6 +35,9 @@ pub use self::constants::*;
 pub use self::logic::{
     RaidDefenseLogic, apply_raid_defense_command, claim_named_province, claim_province,
     province_claim_requirements, set_tax_rate,
+};
+pub use self::scenario_config::{
+    ScenarioConfig, apply_scenario_config, default_scenario_config, scenario_config,
 };
 pub use self::seed::{
     new_raid_defense_state, new_raid_defense_state_with_seed, new_raid_defense_world,
@@ -54,6 +58,9 @@ pub(crate) use self::food_logistics::{
 };
 pub(crate) use self::logic::empire_tax_rate;
 pub(crate) use self::raiders::{advance_raiders, spawn_raider};
+pub(crate) use self::scenario_config::{
+    building_config_stat, configured_building_max_hit_points, unit_config_stat,
+};
 pub(crate) use self::seed::imperial_road;
 pub(crate) use self::terrain::generate_seeded_terrain;
 pub(crate) use self::wiki::{
@@ -152,7 +159,7 @@ mod tests {
                 .count(),
             5
         );
-        assert_eq!(state.map_topology(), MapTopology::Hexagonal);
+        assert_eq!(state.map_topology(), MapTopology::Square);
         assert_eq!(state.inventory().amount(TIMBER), 100);
         assert_eq!(state.inventory().amount(STONE), 100);
         assert_eq!(state.inventory().amount(GRAIN), 100);
@@ -392,6 +399,67 @@ mod tests {
             MAX_TAX_RATE
         );
         assert_eq!(outcome.events.len(), 1);
+    }
+
+    #[test]
+    fn scenario_config_changes_derived_building_security() {
+        let mut state = new_raid_defense_state().unwrap();
+        let castle = state
+            .buildings()
+            .find(|building| building.kind.as_str() == CAPITAL)
+            .unwrap()
+            .id;
+        let mut config = default_scenario_config();
+        config
+            .buildings
+            .get_mut(CAPITAL)
+            .unwrap()
+            .insert("security_base".to_owned(), 21);
+        config
+            .buildings
+            .get_mut(CAPITAL)
+            .unwrap()
+            .insert("global_prefect_security".to_owned(), 0);
+
+        apply_scenario_config(&mut state, &config).unwrap();
+        state
+            .advance_time_with_logic(1, &mut RaidDefenseLogic)
+            .unwrap();
+
+        assert_eq!(state.building_stat(castle, SECURITY).unwrap(), 21);
+        assert_eq!(
+            scenario_config(&state).buildings[CAPITAL]["security_base"],
+            21
+        );
+    }
+
+    #[test]
+    fn scenario_config_changes_new_raider_stats() {
+        let mut state = new_raid_defense_state().unwrap();
+        let mut config = default_scenario_config();
+        config
+            .units
+            .get_mut(BASIC_RAIDER)
+            .unwrap()
+            .insert("attack_damage".to_owned(), 7);
+
+        apply_scenario_config(&mut state, &config).unwrap();
+        apply_raid_defense_command(
+            &mut state,
+            GameCommand::SpawnEntity {
+                blueprint: EntityBlueprintRef::Unit(BASIC_RAIDER.into()),
+                name: None,
+                location: MapLocation::new(0, 15),
+            },
+        )
+        .unwrap();
+        let raider = state
+            .entity_ids_of_blueprint(EntityBlueprintRef::Unit(BASIC_RAIDER.into()))
+            .into_iter()
+            .next()
+            .unwrap();
+
+        assert_eq!(state.entity_stat(raider, RAIDER_ATTACK_DAMAGE).unwrap(), 7);
     }
 
     #[test]

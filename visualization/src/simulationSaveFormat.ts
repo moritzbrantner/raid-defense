@@ -1,4 +1,4 @@
-import type { SimulationSaveState } from "./simulationTypes";
+import type { RuntimeScenarioConfig, SimulationSaveState } from "./simulationTypes";
 
 export const simulationFileFormat = "raid-defense-simulation";
 export const simulationFileVersion = 1;
@@ -11,6 +11,7 @@ export type SimulationJsonFile = {
   seed: string;
   exported_at: string;
   now_seconds: number;
+  scenario_config?: RuntimeScenarioConfig;
   snapshot_json: string;
 };
 
@@ -19,6 +20,7 @@ type LegacySaveStateLike = {
   seed: string;
   now_seconds: number;
   snapshot_json: string;
+  scenario_config?: RuntimeScenarioConfig;
   created_at?: string;
   updated_at?: string;
 };
@@ -47,6 +49,7 @@ export function simulationFileFromSaveState(
     seed: saveState.seed,
     exported_at: new Date().toISOString(),
     now_seconds: saveState.now_seconds,
+    scenario_config: saveState.scenario_config,
     snapshot_json: saveState.snapshot_json,
   };
 }
@@ -90,6 +93,7 @@ export function parseSimulationFileText(text: string): SimulationJsonFile {
       seed: parsed.seed,
       exported_at: parsed.created_at ?? parsed.updated_at ?? new Date().toISOString(),
       now_seconds: parsed.now_seconds,
+      scenario_config: parsed.scenario_config,
       snapshot_json: parsed.snapshot_json,
     };
   }
@@ -107,6 +111,7 @@ export function toImportedSimulationSaveState(
     seed: file.seed,
     created_at: file.exported_at,
     now_seconds: file.now_seconds,
+    scenario_config: file.scenario_config,
     snapshot_json: file.snapshot_json,
   };
 }

@@ -252,7 +252,7 @@ fn assign_food_routes(state: &mut GameState) -> Result<(), EngineError> {
                 continue;
             }
 
-            let distance = hex_distance(
+            let distance = grid_distance(
                 storage.location,
                 state.building(source_building).unwrap().location,
             );
@@ -586,7 +586,7 @@ fn best_farm_for_storage(
     active_farms(state)
         .into_iter()
         .filter_map(|farm| {
-            let distance = hex_distance(storage.location, farm.location);
+            let distance = grid_distance(storage.location, farm.location);
             if distance > service_radius {
                 return None;
             }
@@ -820,7 +820,7 @@ fn road_paths_connected(left: &[MapLocation], right: &[MapLocation]) -> bool {
     left.iter().any(|source| {
         right
             .iter()
-            .any(|target| hex_distance(*source, *target) <= 1)
+            .any(|target| grid_distance(*source, *target) <= 1)
     })
 }
 
@@ -860,7 +860,7 @@ fn nearest_road_component(
     road_components.iter().position(|component| {
         component
             .iter()
-            .any(|waypoint| hex_distance(location, *waypoint) <= 1)
+            .any(|waypoint| grid_distance(location, *waypoint) <= 1)
     })
 }
 
@@ -876,11 +876,8 @@ fn effective_route_distance(distance: i32, road_backed: bool, improved_roads: bo
     ((distance.max(0) * percent) + 99) / 100
 }
 
-fn hex_distance(left: MapLocation, right: MapLocation) -> i32 {
-    let dx = left.x - right.x;
-    let dy = left.y - right.y;
-    let dz = -dx - dy;
-    dx.abs().max(dy.abs()).max(dz.abs())
+fn grid_distance(left: MapLocation, right: MapLocation) -> i32 {
+    (left.x - right.x).abs() + (left.y - right.y).abs()
 }
 
 #[derive(Clone, Copy)]

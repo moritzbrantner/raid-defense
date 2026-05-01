@@ -15,6 +15,7 @@ import {
   type RuntimeRaidDefenseCommandResponse,
   type RuntimeMapLocation,
   type RuntimeRaidDefenseView,
+  type RuntimeScenarioConfig,
   type SimulationSaveState,
 } from "./simulationTypes";
 
@@ -45,12 +46,6 @@ const mainCampaignStorageKey = "raid-defense.main-campaign.v1";
 const appSettingsStorageKey = "raid-defense.settings.v1";
 const defaultSeed = 2106659303718057601n;
 
-const severityStyles: Record<string, string> = {
-  critical: "border-red-400/50 bg-red-500/12 text-red-100",
-  warning: "border-amber-300/50 bg-amber-400/12 text-amber-50",
-  info: "border-sky-300/40 bg-sky-400/10 text-sky-50",
-};
-
 const resourceAccent: Record<string, string> = {
   crowns: "from-amber-200/35 to-amber-600/20",
   food: "from-lime-200/30 to-lime-500/18",
@@ -60,6 +55,20 @@ const resourceAccent: Record<string, string> = {
   wood: "from-orange-200/25 to-yellow-700/18",
   stone: "from-slate-200/20 to-slate-500/16",
   iron: "from-zinc-100/18 to-zinc-500/18",
+};
+
+const resourceIcons: Record<string, string> = {
+  crowns: "👑",
+  food: "🍞",
+  wood: "🪵",
+  stone: "🪨",
+  iron: "⚒️",
+  influence: "⚖️",
+  legion_strength: "🛡️",
+  stability: "🏛️",
+  intelligence: "🕯️",
+  trade_goods: "🧺",
+  citizens: "●",
 };
 
 type CostPart = {
@@ -189,7 +198,74 @@ const unitIntel: Record<string, string> = {
   basic_raider: "Raiders probe for weak storage, break blockers, loot what they can carry, and then retreat.",
 };
 
-type Screen = "home" | "main" | "simulations" | "settings" | "wiki";
+const defaultScenarioConfig: RuntimeScenarioConfig = {
+  buildings: {
+    castle: defaultBuildingScenarioStats({ security_base: 55, global_prefect_security: 8 }),
+    farm: defaultBuildingScenarioStats({ security_base: 25, hit_points_per_tile: 10 }),
+    lumber_camp: defaultBuildingScenarioStats({ security_base: 25 }),
+    quarry: defaultBuildingScenarioStats({ security_base: 25 }),
+    iron_mine: defaultBuildingScenarioStats({ security_base: 25 }),
+    storage_house: defaultBuildingScenarioStats({ security_base: 25, hit_points_bonus: 20 }),
+    senate_hall: defaultBuildingScenarioStats({ security_base: 25 }),
+    barracks: defaultBuildingScenarioStats({ security_base: 58, assigned_legate_security: 10 }),
+    tower: defaultBuildingScenarioStats({
+      security_base: 45,
+      security_per_level: 10,
+      global_legate_security: 3,
+    }),
+    frontier_fort: defaultBuildingScenarioStats({
+      security_base: 48,
+      security_per_level: 12,
+      assigned_legate_security: 12,
+      low_supply_security_penalty: 10,
+    }),
+    embassy: defaultBuildingScenarioStats({ security_base: 35, assigned_prefect_security: 8 }),
+  },
+  units: {
+    worker: defaultUnitScenarioStats({
+      stomach_capacity: 500,
+      stomach_per_food: 100,
+      hunger_threshold_percent: 30,
+      hunger_drain_per_second: 1,
+    }),
+    prefect: defaultUnitScenarioStats({}),
+    legate: defaultUnitScenarioStats({}),
+    envoy: defaultUnitScenarioStats({}),
+    basic_raider: defaultUnitScenarioStats({
+      speed: 1,
+      attack_damage: 30,
+      carry_capacity: 36,
+      looting_speed: 12,
+    }),
+  },
+};
+
+const buildingScenarioStatFields = [
+  { key: "security_base", label: "Base Security" },
+  { key: "security_per_level", label: "Security / Level" },
+  { key: "assigned_prefect_security", label: "Assigned Prefect" },
+  { key: "assigned_legate_security", label: "Assigned Legate" },
+  { key: "global_prefect_security", label: "Empire Prefect" },
+  { key: "global_legate_security", label: "Empire Legate" },
+  { key: "low_supply_security_penalty", label: "Low Supply Penalty" },
+  { key: "hit_points_base", label: "HP Base" },
+  { key: "hit_points_per_level", label: "HP / Level" },
+  { key: "hit_points_per_tile", label: "HP / Tile" },
+  { key: "hit_points_bonus", label: "HP Bonus" },
+] as const;
+
+const unitScenarioStatFields = [
+  { key: "speed", label: "Speed" },
+  { key: "attack_damage", label: "Attack Damage" },
+  { key: "carry_capacity", label: "Carry Capacity" },
+  { key: "looting_speed", label: "Looting Speed" },
+  { key: "stomach_capacity", label: "Stomach Capacity" },
+  { key: "stomach_per_food", label: "Stomach / Food" },
+  { key: "hunger_threshold_percent", label: "Hunger Threshold %" },
+  { key: "hunger_drain_per_second", label: "Hunger Drain / Sec" },
+] as const;
+
+type Screen = "home" | "main" | "simulations" | "scenario-editor" | "settings" | "wiki";
 type GameMode = "main" | "simulation";
 
 type CampaignSaveState = {
@@ -230,6 +306,10 @@ export default function App() {
     loadMainCampaignSave(),
   );
   const [settings, setSettings] = useState<AppSettings>(() => loadAppSettings());
+  const [gamePaused, setGamePaused] = useState(false);
+  const [scenarioDraft, setScenarioDraft] = useState<RuntimeScenarioConfig>(() =>
+    cloneScenarioConfig(defaultScenarioConfig),
+  );
   const [selectedProvinceId, setSelectedProvinceId] = useState<number | null>(null);
   const [selectedBuildingId, setSelectedBuildingId] = useState<number | null>(null);
   const [selectedTile, setSelectedTile] = useState<RuntimeMapLocation | null>(null);
@@ -245,6 +325,8 @@ export default function App() {
   const currentBuildCost = sumCosts(
     trackedBuildings.map((building) => constructionCostThroughLevel(building.kind, building.level)),
   );
+  const isGameplayScreen = Boolean(view) && (screen === "main" || screen === "simulations");
+  const isGameMenuOpen = isGameplayScreen && gamePaused;
 
   useEffect(() => {
     window.localStorage.setItem(simulationSaveStorageKey, JSON.stringify(saveStates));
@@ -273,12 +355,20 @@ export default function App() {
         provinces.some((province) => province.id === current) ? current : (provinces[0]?.id ?? null),
       );
       setSelectedBuildingId((current) =>
-        view.buildings.some((building) => building.id === current)
+        current !== null && view.buildings.some((building) => building.id === current)
           ? current
-          : (view.buildings[0]?.id ?? null),
+          : null,
       );
     });
   }, [provinces, view]);
+
+  useEffect(() => {
+    if (!view) {
+      return;
+    }
+
+    setScenarioDraft(cloneScenarioConfig(view.scenario_config));
+  }, [view]);
 
   useEffect(() => {
     clientRef.current = client;
@@ -307,6 +397,7 @@ export default function App() {
           name: "E2E Snapshot",
           seed: bridgeClient.seed.toString(),
           now_seconds: bridgeView.now_seconds,
+          scenario_config: bridgeView.scenario_config,
           snapshot_json: bridgeClient.saveSnapshot(),
         });
       },
@@ -357,6 +448,7 @@ export default function App() {
         await bootMode({
           mode: "simulation",
           seed: parseSeedOrDefault(imported.seed, defaultSeed),
+          scenarioConfig: imported.scenario_config,
           snapshotJson: imported.snapshot_json,
           successNotice: `Loaded ${imported.name}.`,
         });
@@ -397,8 +489,24 @@ export default function App() {
     });
   }, [activeMode, client, view]);
 
-  const selectedProvince =
-    provinces.find((province) => province.id === selectedProvinceId) ?? provinces[0] ?? null;
+  useEffect(() => {
+    if (!isGameplayScreen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      event.preventDefault();
+      setGamePaused(true);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isGameplayScreen]);
+
   const selectedBuilding =
     view?.buildings.find((building) => building.id === selectedBuildingId) ?? null;
   const claimableProvince =
@@ -424,6 +532,7 @@ export default function App() {
       seed: client.seed.toString(),
       created_at: new Date().toISOString(),
       now_seconds: view.now_seconds,
+      scenario_config: view.scenario_config,
       snapshot_json: client.saveSnapshot(),
     };
   }
@@ -459,6 +568,7 @@ export default function App() {
   async function bootMode(options: {
     mode: GameMode;
     seed: bigint;
+    scenarioConfig?: RuntimeScenarioConfig;
     snapshotJson?: string;
     successNotice: string;
   }) {
@@ -479,6 +589,14 @@ export default function App() {
         nextView = response.view;
       }
 
+      if (options.scenarioConfig) {
+        const response = nextClient.applyScenarioConfig(options.scenarioConfig);
+        if (!response.accepted) {
+          throw new Error(response.error ?? "Could not apply the scenario config.");
+        }
+        nextView = response.view;
+      }
+
       clientRef.current = nextClient;
       viewRef.current = nextView;
       activeModeRef.current = options.mode;
@@ -487,6 +605,7 @@ export default function App() {
         setView(nextView);
         setActiveMode(options.mode);
         setScreen(options.mode === "main" ? "main" : "simulations");
+        setGamePaused(false);
         setSeedInput(options.seed.toString());
         setSelectedTile(null);
         setPlacementKind(null);
@@ -504,6 +623,7 @@ export default function App() {
 
   async function openMainGame() {
     if (activeMode === "main" && client && view) {
+      setGamePaused(false);
       setScreen("main");
       return;
     }
@@ -537,6 +657,7 @@ export default function App() {
 
   async function openSimulations() {
     if (activeMode === "simulation" && client && view) {
+      setGamePaused(false);
       setScreen("simulations");
       return;
     }
@@ -546,6 +667,20 @@ export default function App() {
       seed: parseSeedOrDefault(settings.defaultSimulationSeed, defaultSeed),
       successNotice: "Simulation lab opened.",
     });
+  }
+
+  async function openScenarioEditor() {
+    if (activeMode === "simulation" && client && view) {
+      setScreen("scenario-editor");
+      return;
+    }
+
+    await bootMode({
+      mode: "simulation",
+      seed: parseSeedOrDefault(settings.defaultSimulationSeed, defaultSeed),
+      successNotice: "Scenario editor opened.",
+    });
+    setScreen("scenario-editor");
   }
 
   async function applyResponse(
@@ -585,11 +720,12 @@ export default function App() {
         throw new Error("negative");
       }
 
-      await bootMode({
-        mode: "simulation",
-        seed,
-        successNotice: `Simulation ready on seed ${seed.toString()}.`,
-      });
+    await bootMode({
+      mode: "simulation",
+      seed,
+      scenarioConfig: scenarioDraft,
+      successNotice: `Simulation ready on seed ${seed.toString()}.`,
+    });
     } catch {
       setError("Enter a valid non-negative seed.");
     }
@@ -616,6 +752,7 @@ export default function App() {
     await bootMode({
       mode: "simulation",
       seed: parseSeedOrDefault(imported.seed, defaultSeed),
+      scenarioConfig: imported.scenario_config,
       snapshotJson: imported.snapshot_json,
       successNotice: `Loaded ${imported.name}.`,
     });
@@ -678,12 +815,14 @@ export default function App() {
   function selectBuilding(buildingId: number) {
     startTransition(() => {
       setSelectedBuildingId(buildingId);
+      setPlacementKind(null);
     });
   }
 
   function selectTile(location: RuntimeMapLocation) {
     startTransition(() => {
       setSelectedTile(location);
+      setSelectedBuildingId(null);
     });
 
     if (!placementKind || !client) {
@@ -729,6 +868,55 @@ export default function App() {
     }));
   }
 
+  function updateScenarioStat(
+    scope: keyof RuntimeScenarioConfig,
+    kind: string,
+    stat: string,
+    value: number,
+  ) {
+    setScenarioDraft((current) => ({
+      ...current,
+      [scope]: {
+        ...current[scope],
+        [kind]: {
+          ...current[scope][kind],
+          [stat]: value,
+        },
+      },
+    }));
+  }
+
+  function resetScenarioDraft() {
+    setScenarioDraft(cloneScenarioConfig(defaultScenarioConfig));
+  }
+
+  function restoreLiveScenarioDraft() {
+    setScenarioDraft(cloneScenarioConfig(view?.scenario_config ?? defaultScenarioConfig));
+  }
+
+  function applyScenarioDraft() {
+    if (!client) {
+      return;
+    }
+
+    void applyResponse(
+      () => client.applyScenarioConfig(normalizeScenarioConfig(scenarioDraft)),
+      "Scenario config applied.",
+    );
+  }
+
+  function openGameMenu() {
+    if (!isGameplayScreen) {
+      return;
+    }
+
+    setGamePaused(true);
+  }
+
+  function resumeGame() {
+    setGamePaused(false);
+  }
+
   if (loading) {
     return <LoadingScreen error={error} label={pendingMode === "main" ? "Campaign" : "Simulation"} />;
   }
@@ -741,6 +929,9 @@ export default function App() {
         mainCampaignSave={mainCampaignSave}
         notice={notice}
         onOpenSettings={() => setScreen("settings")}
+        onOpenScenarioEditor={() => {
+          void openScenarioEditor();
+        }}
         onOpenSimulations={() => {
           void openSimulations();
         }}
@@ -758,7 +949,7 @@ export default function App() {
 
   if (screen === "settings") {
     return (
-      <ShellFrame subtitle="Adjust campaign defaults, interface polish, and stored progress.">
+      <ShellFrame>
         <section className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
           <div className="rounded-[2rem] border border-white/10 bg-black/30 p-6 backdrop-blur-xl">
             <p className="text-[0.72rem] tracking-[0.3em] text-orange-200/75 uppercase">Settings</p>
@@ -858,7 +1049,7 @@ export default function App() {
     const encounteredAttackWaves = view?.encountered_attack_waves ?? [];
 
     return (
-      <ShellFrame subtitle="The field manual only records units and raid patterns the current frontier has already encountered.">
+      <ShellFrame>
         <section className="rounded-[2rem] border border-white/10 bg-black/30 p-6 backdrop-blur-xl">
           <p className="text-[0.72rem] tracking-[0.3em] text-orange-200/75 uppercase">Wiki</p>
           <h1
@@ -951,9 +1142,94 @@ export default function App() {
     );
   }
 
+  if (screen === "scenario-editor" && view) {
+    return (
+      <ShellFrame>
+        <section className="rounded-[2rem] border border-white/10 bg-black/30 p-6 backdrop-blur-xl">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-[0.72rem] tracking-[0.3em] text-orange-200/75 uppercase">
+                Scenario Editor
+              </p>
+              <h1
+                className="mt-3 text-4xl font-black tracking-[0.06em] text-stone-50 uppercase"
+                style={{ fontFamily: '"Syne", sans-serif' }}
+              >
+                Stats Profile
+              </h1>
+              <p className="mt-4 max-w-3xl text-sm leading-6 text-stone-300">
+                Applied values affect security ticks, building hit points, worker hunger, and raider
+                behavior in the active simulation. Snapshots and exports keep the config.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="rounded-2xl border border-orange-200/20 bg-orange-300/12 px-4 py-3 text-xs font-semibold tracking-[0.18em] text-orange-50 uppercase transition hover:bg-orange-300/18 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={busy || !client}
+                onClick={applyScenarioDraft}
+                type="button"
+              >
+                Apply Config
+              </button>
+              <button
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs font-semibold tracking-[0.18em] text-stone-100 uppercase transition hover:border-white/20 hover:bg-white/8"
+                onClick={restoreLiveScenarioDraft}
+                type="button"
+              >
+                Revert Draft
+              </button>
+              <button
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs font-semibold tracking-[0.18em] text-stone-100 uppercase transition hover:border-white/20 hover:bg-white/8"
+                onClick={resetScenarioDraft}
+                type="button"
+              >
+                Defaults
+              </button>
+              <button
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs font-semibold tracking-[0.18em] text-stone-100 uppercase transition hover:border-white/20 hover:bg-white/8"
+                onClick={() => setScreen("simulations")}
+                type="button"
+              >
+                Back To Lab
+              </button>
+            </div>
+          </div>
+
+          {(notice || error) && (
+            <div
+              className={`mt-5 rounded-[1.4rem] border px-4 py-3 text-sm ${
+                error
+                  ? "border-red-400/40 bg-red-500/10 text-red-100"
+                  : "border-emerald-300/25 bg-emerald-400/10 text-emerald-50"
+              }`}
+              data-testid="status-banner"
+            >
+              {error ?? notice}
+            </div>
+          )}
+        </section>
+
+        <section className="mt-4 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+          <ScenarioConfigSection
+            config={scenarioDraft.buildings}
+            fields={buildingScenarioStatFields}
+            onChange={(kind, stat, value) => updateScenarioStat("buildings", kind, stat, value)}
+            title="Buildings"
+          />
+          <ScenarioConfigSection
+            config={scenarioDraft.units}
+            fields={unitScenarioStatFields}
+            onChange={(kind, stat, value) => updateScenarioStat("units", kind, stat, value)}
+            title="Units"
+          />
+        </section>
+      </ShellFrame>
+    );
+  }
+
   if (!view) {
     return (
-      <ShellFrame subtitle="No active engine session is loaded right now.">
+      <ShellFrame>
         <section className="rounded-[2rem] border border-white/10 bg-black/30 p-6 text-center backdrop-blur-xl">
           <p className="text-sm text-stone-300">{error ?? "Open a game mode from the home screen."}</p>
           <button
@@ -976,6 +1252,7 @@ export default function App() {
         onSelectBuilding={selectBuilding}
         onSelectProvince={selectProvince}
         onSelectTile={selectTile}
+        paused={gamePaused}
         placementKind={placementKind}
         provinces={provinces}
         rivals={rivals}
@@ -991,65 +1268,136 @@ export default function App() {
 
       <div className="relative z-10 flex min-h-screen flex-col">
         <header className="px-4 pt-4 pb-3 sm:px-6 lg:px-8">
-          <div className="grid gap-4 lg:grid-cols-[1.25fr_1fr]">
-            <div className="rounded-[2rem] border border-white/10 bg-black/30 px-5 py-5 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <p className="text-[0.72rem] font-semibold tracking-[0.38em] text-orange-200/80 uppercase">
-                    Mode
-                  </p>
-                  <div className="mt-3 inline-flex items-center gap-3 rounded-full border border-orange-200/20 bg-orange-300/10 px-4 py-2">
-                    <span className="h-2.5 w-2.5 rounded-full bg-orange-200" />
-                    <span className="text-sm font-semibold tracking-[0.22em] text-orange-50 uppercase">
-                      {isSimulationMode ? "Simulation Lab" : "Main Campaign"}
-                    </span>
-                  </div>
-                  <h1
-                    className="mt-4 text-4xl font-black tracking-[0.06em] text-stone-50 uppercase sm:text-5xl"
-                    style={{ fontFamily: '"Syne", sans-serif' }}
-                  >
-                    Raid Defense
-                  </h1>
-                  <p className="mt-3 max-w-2xl text-sm text-stone-300 sm:text-base">
-                    {isSimulationMode
-                      ? "Experiment with layouts, advance time, and branch the run into reusable snapshots."
-                      : "Hold the frontier together, grow provinces, and push the main campaign forward one autosaved decision at a time."}
-                  </p>
+          <div className="rounded-[1.4rem] border border-white/10 bg-black/32 px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.3)] backdrop-blur-xl">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <h1
+                  className="text-xl font-black tracking-[0.06em] text-stone-50 uppercase"
+                  style={{ fontFamily: '"Syne", sans-serif' }}
+                >
+                  Raid Defense
+                </h1>
+                <div className="inline-flex items-center gap-2 rounded-full border border-orange-200/20 bg-orange-300/10 px-3 py-1.5">
+                  <span className="h-2 w-2 rounded-full bg-orange-200" />
+                  <span className="text-xs font-semibold tracking-[0.18em] text-orange-50 uppercase">
+                    {isSimulationMode ? "Simulation Lab" : "Main Campaign"}
+                  </span>
                 </div>
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs tracking-[0.16em] text-stone-300 uppercase">
+                  <span data-testid="simulation-clock">{formatTick(view.now_seconds)}</span>
+                </div>
+              </div>
 
-                <div className="flex flex-wrap justify-end gap-2">
-                  <NavButton label="Home" onClick={() => setScreen("home")} />
-                  <NavButton label="Settings" onClick={() => setScreen("settings")} />
-                  <NavButton label="Wiki" onClick={() => setScreen("wiki")} />
-                </div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1.5 text-xs tracking-[0.16em] text-emerald-50 uppercase">
+                  Running
+                </span>
+                <button
+                  className="rounded-full border border-orange-200/20 bg-orange-300/12 px-4 py-2 text-xs font-semibold tracking-[0.18em] text-orange-50 uppercase transition hover:bg-orange-300/18"
+                  data-testid="game-menu-button"
+                  onClick={openGameMenu}
+                  type="button"
+                >
+                  Menu
+                </button>
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {view.resources.map((resource) => (
-                <div
-                  className={`rounded-[1.6rem] border border-white/10 bg-gradient-to-br ${resourceAccent[resource.id] ?? "from-white/10 to-white/0"} px-4 py-4 shadow-[0_16px_40px_rgba(0,0,0,0.24)] backdrop-blur-xl`}
-                  key={resource.id}
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/10 pt-3">
+              {timeSteps.map((step) => (
+                <button
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-stone-100 transition hover:border-white/20 hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={busy}
+                  key={step.label}
+                  onClick={() => {
+                    if (!client) {
+                      return;
+                    }
+                    void applyResponse(
+                      () => client.advance(step.seconds),
+                      `${isSimulationMode ? "Simulation" : "Campaign"} advanced by ${step.label}.`,
+                    );
+                  }}
+                  type="button"
                 >
-                  <p className="text-[0.68rem] tracking-[0.28em] text-stone-300 uppercase">
-                    {resource.label}
-                  </p>
-                  <p className="mt-3 text-2xl font-semibold text-stone-50">
-                    {formatValue(resource.amount)}
-                  </p>
-                  <p className="mt-2 text-xs text-stone-300/80">
-                    {resource.capacity ? `Cap ${formatValue(resource.capacity)}` : "Uncapped"}
-                  </p>
-                </div>
+                  {step.label}
+                </button>
               ))}
+
+              {recruitableUnits.map((unit) => (
+                <button
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-stone-100 transition hover:border-white/20 hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={busy || !castle}
+                  key={unit.kind}
+                  onClick={() => {
+                    if (!client || !castle) {
+                      return;
+                    }
+                    void applyResponse(
+                      () =>
+                        client.apply({
+                          SpawnEntity: {
+                            blueprint: { Unit: unit.kind },
+                            name: null,
+                            location: castle.location,
+                          },
+                        }),
+                      `${unit.label} queued.`,
+                    );
+                  }}
+                  type="button"
+                >
+                  {unit.label}
+                </button>
+              ))}
+
+              {isSimulationMode && (
+                <button
+                  className="rounded-full border border-red-300/20 bg-red-400/10 px-3 py-1.5 text-xs font-semibold text-red-50 transition hover:bg-red-400/16 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={busy || !client || !selectedTile}
+                  onClick={() => {
+                    if (!selectedTile) {
+                      return;
+                    }
+                    sendRaider(selectedTile);
+                  }}
+                  type="button"
+                >
+                  Send Raider
+                </button>
+              )}
             </div>
+
+            <ul className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-stone-200">
+              {view.resources.map((resource) => (
+                <li
+                  className="inline-flex items-center gap-1.5"
+                  key={resource.id}
+                  title={`${resource.label}${resource.capacity ? `, cap ${formatValue(resource.capacity)}` : ""}`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`inline-flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br text-sm ${resourceAccent[resource.id] ?? "from-white/10 to-white/0"}`}
+                  >
+                    {resourceIcons[resource.id] ?? "•"}
+                  </span>
+                  <span className="sr-only">{resource.label}</span>
+                  <span className="font-semibold text-stone-50">{formatValue(resource.amount)}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </header>
 
-        <main className="grid flex-1 gap-4 px-4 pb-4 sm:px-6 lg:grid-cols-[340px_minmax(0,1fr)_360px] lg:px-8">
-          <aside className="flex flex-col gap-4">
-            {isSimulationMode ? (
-              <>
+        <main
+          className={`grid flex-1 gap-4 px-4 pb-4 sm:px-6 lg:px-8 ${
+            isSimulationMode
+              ? "lg:grid-cols-[320px_minmax(0,1fr)_320px]"
+              : "lg:grid-cols-[minmax(0,1fr)_320px]"
+          }`}
+        >
+          {isSimulationMode && (
+            <aside className="flex flex-col gap-4">
                 <section className="rounded-[1.8rem] border border-white/10 bg-black/30 p-5 backdrop-blur-xl">
                   <div className="flex items-center justify-between gap-4">
                     <div>
@@ -1111,6 +1459,14 @@ export default function App() {
                   </div>
 
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <button
+                      className="rounded-2xl border border-orange-200/20 bg-orange-300/12 px-4 py-3 text-xs font-semibold tracking-[0.18em] text-orange-50 uppercase transition hover:bg-orange-300/18 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={busy}
+                      onClick={() => setScreen("scenario-editor")}
+                      type="button"
+                    >
+                      Scenario Editor
+                    </button>
                     <button
                       className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs font-semibold tracking-[0.18em] text-stone-100 uppercase transition hover:border-white/20 hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-60"
                       data-testid="simulation-export-current"
@@ -1234,91 +1590,14 @@ export default function App() {
                     ))}
                   </div>
                 </section>
-              </>
-            ) : (
-              <section className="rounded-[1.8rem] border border-white/10 bg-black/30 p-5 backdrop-blur-xl">
-                <p className="text-[0.72rem] tracking-[0.28em] text-orange-200/80 uppercase">
-                  Campaign State
-                </p>
-                <h2
-                  className="mt-3 text-3xl font-black tracking-[0.05em] text-stone-50 uppercase"
-                  style={{ fontFamily: '"Syne", sans-serif' }}
-                >
-                  Frontier Autosave
-                </h2>
-                <div className="mt-5 grid gap-3">
-                  <InfoRow label="Campaign Seed" value={client.seed.toString()} />
-                  <InfoRow
-                    label="Latest Autosave"
-                    value={
-                      mainCampaignSave
-                        ? `${formatDateTime(mainCampaignSave.updated_at)} at ${formatTick(mainCampaignSave.now_seconds)}`
-                        : "Autosave pending"
-                    }
-                  />
-                  <InfoRow
-                    label="Province Count"
-                    value={formatValue(view.summary.province_count)}
-                  />
-                </div>
-                <p className="mt-5 text-sm leading-6 text-stone-300">
-                  The campaign is persistent. Return to the home screen at any time and continue from
-                  the latest autosave later.
-                </p>
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  <button
-                    className="rounded-2xl border border-orange-200/20 bg-orange-300/12 px-4 py-3 text-sm font-semibold tracking-[0.14em] text-orange-50 uppercase transition hover:bg-orange-300/18"
-                    onClick={() => {
-                      void startFreshMainGame();
-                    }}
-                    type="button"
-                  >
-                    Restart Campaign
-                  </button>
-                  <button
-                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-stone-100 transition hover:border-white/20 hover:bg-white/8"
-                    onClick={() => setScreen("home")}
-                    type="button"
-                  >
-                    Back Home
-                  </button>
-                </div>
-              </section>
-            )}
-          </aside>
+            </aside>
+          )}
 
           <section className="flex items-end">
-            <div className="w-full rounded-[2rem] border border-white/10 bg-black/18 p-5 backdrop-blur-sm sm:p-6">
-              <div className="max-w-xl rounded-[1.7rem] border border-orange-100/12 bg-black/40 px-5 py-4 shadow-[0_18px_48px_rgba(0,0,0,0.26)]">
-                <p className="text-[0.7rem] tracking-[0.28em] text-stone-400 uppercase">
-                  Live Situation
-                </p>
-                <p
-                  className="mt-2 text-2xl font-black tracking-[0.06em] text-stone-50 uppercase"
-                  style={{ fontFamily: '"Syne", sans-serif' }}
-                >
-                  {placementKind
-                    ? `Placing ${buildPalette.find((building) => building.kind === placementKind)?.label ?? placementKind}`
-                    : selectedProvince
-                      ? `${selectedProvince.name} holds the frontier line`
-                      : "Shape the frontier from the heartland outward"}
-                </p>
-                <p className="mt-3 text-sm leading-6 text-stone-300">
-                  {placementKind
-                    ? "Click the terrain to queue construction on that tile. Keep the placement mode armed to sketch alternate layouts quickly."
-                    : selectedTile
-                      ? isSimulationMode
-                        ? `Selected tile ${selectedTile.x}, ${selectedTile.y}. Arm a building to place it here, or dispatch a raider from the command table.`
-                        : `Selected tile ${selectedTile.x}, ${selectedTile.y}. Arm a building from the palette and click the map to place it here.`
-                      : isSimulationMode
-                        ? "Build on the map, advance time, and branch snapshots whenever the run reaches an interesting breakpoint."
-                        : "Expand carefully, keep the line supplied, and let the objectives pull the campaign toward the next secure province."}
-                </p>
-              </div>
-
+            <div className="w-full">
               {(notice || error) && (
                 <div
-                  className={`mt-4 rounded-[1.4rem] border px-4 py-3 text-sm ${
+                  className={`rounded-[1.4rem] border px-4 py-3 text-sm backdrop-blur-xl ${
                     error
                       ? "border-red-400/40 bg-red-500/10 text-red-100"
                       : "border-emerald-300/25 bg-emerald-400/10 text-emerald-50"
@@ -1328,178 +1607,6 @@ export default function App() {
                   {error ?? notice}
                 </div>
               )}
-
-              <section className="mt-4 rounded-[1.8rem] border border-white/10 bg-black/28 p-5 backdrop-blur-xl">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-[0.72rem] tracking-[0.28em] text-orange-200/80 uppercase">
-                      Command Table
-                    </p>
-                    <p className="mt-2 text-sm text-stone-300">
-                      {isSimulationMode
-                        ? "Advance the frontier clock, recruit from the capital, and probe the map with raiders."
-                        : "Advance the frontier clock and recruit from the capital."}
-                    </p>
-                  </div>
-                  <div className="rounded-3xl border border-orange-200/15 bg-white/5 px-4 py-3">
-                    <p className="text-[0.7rem] tracking-[0.28em] text-stone-400 uppercase">
-                      Clock
-                    </p>
-                    <p className="mt-2 text-2xl font-bold text-orange-100">
-                      <span data-testid="simulation-clock">{formatTick(view.now_seconds)}</span>
-                    </p>
-                    <p className="mt-2 text-xs text-stone-400">
-                      Rank {view.summary.influence_rank} frontier mandate
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                  {timeSteps.map((step) => (
-                    <button
-                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-stone-100 transition hover:border-white/20 hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={busy}
-                      key={step.label}
-                      onClick={() => {
-                        if (!client) {
-                          return;
-                        }
-                        void applyResponse(
-                          () => client.advance(step.seconds),
-                          `${isSimulationMode ? "Simulation" : "Campaign"} advanced by ${step.label}.`,
-                        );
-                      }}
-                      type="button"
-                    >
-                      {step.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mt-5 grid gap-2 sm:grid-cols-3">
-                  {recruitableUnits.map((unit) => (
-                    <button
-                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm text-stone-100 transition hover:border-white/20 hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={busy || !castle}
-                      key={unit.kind}
-                      onClick={() => {
-                        if (!client || !castle) {
-                          return;
-                        }
-                        void applyResponse(
-                          () =>
-                            client.apply({
-                              SpawnEntity: {
-                                blueprint: { Unit: unit.kind },
-                                name: null,
-                                location: castle.location,
-                              },
-                            }),
-                          `${unit.label} queued.`,
-                        );
-                      }}
-                      type="button"
-                    >
-                      {unit.label}
-                    </button>
-                  ))}
-                </div>
-
-                {isSimulationMode && (
-                  <div className="mt-5 rounded-[1.5rem] border border-red-300/15 bg-red-500/8 p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-[0.68rem] tracking-[0.26em] text-red-100/75 uppercase">
-                          Raider Probe
-                        </p>
-                        <p className="mt-2 text-sm text-stone-300">
-                          Select any tile on the battlefield, then send a raider into the layout from that point.
-                        </p>
-                      </div>
-                      <button
-                        className="rounded-2xl border border-red-300/20 bg-red-400/10 px-4 py-3 text-sm font-semibold tracking-[0.14em] text-red-50 uppercase transition hover:bg-red-400/16 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={busy || !client || !selectedTile}
-                        onClick={() => {
-                          if (!selectedTile) {
-                            return;
-                          }
-                          sendRaider(selectedTile);
-                        }}
-                        type="button"
-                      >
-                        Send Raider
-                      </button>
-                    </div>
-                    <p className="mt-3 text-xs text-stone-400">
-                      {selectedTile
-                        ? `Entry point armed at ${selectedTile.x}, ${selectedTile.y}.`
-                        : "Select a tile on the battlefield to choose the raider entry point."}
-                    </p>
-                  </div>
-                )}
-              </section>
-
-              <section className="mt-4 rounded-[1.8rem] border border-white/10 bg-black/28 p-5 backdrop-blur-xl">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-[0.72rem] tracking-[0.28em] text-orange-200/80 uppercase">
-                      Build Palette
-                    </p>
-                    <p className="mt-2 text-sm text-stone-300">
-                      Arm a building, then click the map to place it.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {isSimulationMode && (
-                      <div className="max-w-xs rounded-[1.2rem] border border-orange-200/12 bg-white/5 px-4 py-3 text-right">
-                        <p className="text-[0.66rem] tracking-[0.24em] text-stone-400 uppercase">
-                          Current Build Cost
-                        </p>
-                        <p className="mt-2 text-sm leading-6 text-stone-100">
-                          {currentBuildCost.length ? formatCostList(currentBuildCost) : "No tracked buildings yet."}
-                        </p>
-                        <p className="mt-1 text-xs text-stone-400">
-                          {trackedBuildings.length} placed structure{trackedBuildings.length === 1 ? "" : "s"}
-                        </p>
-                      </div>
-                    )}
-                    <button
-                      className="rounded-full border border-white/10 bg-white/6 px-4 py-2 text-xs tracking-[0.2em] text-stone-200 uppercase transition hover:border-white/20 hover:bg-white/10"
-                      onClick={() => setPlacementKind(null)}
-                      type="button"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {buildPalette.map((building) => {
-                    const active = placementKind === building.kind;
-                    const placementCost = constructionCostAtLevel(building.kind, 1);
-                    return (
-                      <button
-                        className={`rounded-[1.4rem] border px-4 py-4 text-left transition ${
-                          active
-                            ? "border-orange-200/45 bg-orange-300/12 text-stone-50"
-                            : "border-white/10 bg-white/5 text-stone-200 hover:border-white/20 hover:bg-white/8"
-                        }`}
-                        key={building.kind}
-                        onClick={() => setPlacementKind(building.kind)}
-                        type="button"
-                      >
-                        <p className="text-sm font-semibold tracking-[0.16em] uppercase">
-                          {building.label}
-                        </p>
-                        <p className="mt-2 text-xs text-stone-400">{building.note}</p>
-                        <p className="mt-3 text-xs leading-5 text-orange-100/85">
-                          Build Cost: {formatCostList(placementCost)}
-                        </p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
             </div>
           </section>
 
@@ -1508,22 +1615,90 @@ export default function App() {
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-[0.72rem] tracking-[0.28em] text-orange-200/80 uppercase">
+                    Build Palette
+                  </p>
+                  <p className="mt-2 text-sm text-stone-300">
+                    Arm a building, then click the map to place it.
+                  </p>
+                </div>
+                <button
+                  className="rounded-full border border-white/10 bg-white/6 px-4 py-2 text-xs tracking-[0.2em] text-stone-200 uppercase transition hover:border-white/20 hover:bg-white/10"
+                  onClick={() => setPlacementKind(null)}
+                  type="button"
+                >
+                  Clear
+                </button>
+              </div>
+
+              {isSimulationMode && (
+                <div className="mt-4 rounded-[1.2rem] border border-orange-200/12 bg-white/5 px-4 py-3">
+                  <p className="text-[0.66rem] tracking-[0.24em] text-stone-400 uppercase">
+                    Current Build Cost
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-stone-100">
+                    {currentBuildCost.length ? formatCostList(currentBuildCost) : "No tracked buildings yet."}
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-4 grid gap-3">
+                {buildPalette.map((building) => {
+                  const active = placementKind === building.kind;
+                  const placementCost = constructionCostAtLevel(building.kind, 1);
+                  return (
+                    <button
+                      className={`rounded-[1.4rem] border px-4 py-4 text-left transition ${
+                        active
+                          ? "border-orange-200/45 bg-orange-300/12 text-stone-50"
+                          : "border-white/10 bg-white/5 text-stone-200 hover:border-white/20 hover:bg-white/8"
+                      }`}
+                      key={building.kind}
+                      onClick={() => setPlacementKind(building.kind)}
+                      type="button"
+                    >
+                      <p className="text-sm font-semibold tracking-[0.16em] uppercase">
+                        {building.label}
+                      </p>
+                      <p className="mt-2 text-xs text-stone-400">{building.note}</p>
+                      <p className="mt-3 text-xs leading-5 text-orange-100/85">
+                        Build Cost: {formatCostList(placementCost)}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            {selectedBuilding && (
+              <section className="rounded-[1.8rem] border border-white/10 bg-black/30 p-5 backdrop-blur-xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[0.72rem] tracking-[0.28em] text-orange-200/80 uppercase">
                     Selected Building
                   </p>
                   <h2
                     className="mt-2 text-3xl font-black tracking-[0.05em] text-stone-50 uppercase"
                     style={{ fontFamily: '"Syne", sans-serif' }}
                   >
-                    {selectedBuilding?.label ?? "No building"}
+                    {selectedBuilding.label}
                   </h2>
                 </div>
-                <div className="rounded-full border border-orange-300/20 bg-orange-400/10 px-3 py-2 text-center">
-                  <p className="text-[0.65rem] tracking-[0.25em] text-orange-100/80 uppercase">
-                    Level
-                  </p>
-                  <p className="mt-1 text-xl font-semibold text-orange-100">
-                    {selectedBuilding?.level ?? 0}
-                  </p>
+                <div className="grid gap-2">
+                  <div className="rounded-full border border-orange-300/20 bg-orange-400/10 px-3 py-2 text-center">
+                    <p className="text-[0.65rem] tracking-[0.25em] text-orange-100/80 uppercase">
+                      Level
+                    </p>
+                    <p className="mt-1 text-xl font-semibold text-orange-100">
+                      {selectedBuilding.level}
+                    </p>
+                  </div>
+                  <button
+                    className="rounded-full border border-white/10 bg-white/6 px-3 py-2 text-xs tracking-[0.18em] text-stone-200 uppercase transition hover:border-white/20 hover:bg-white/10"
+                    onClick={() => setSelectedBuildingId(null)}
+                    type="button"
+                  >
+                    Build
+                  </button>
                 </div>
               </div>
 
@@ -1531,35 +1706,31 @@ export default function App() {
                 <MetricCard
                   label="Workers"
                   tone="text-orange-100"
-                  value={
-                    selectedBuilding
-                      ? `${selectedBuilding.assigned_workers}/${selectedBuilding.required_workers}`
-                      : "0/0"
-                  }
+                  value={`${selectedBuilding.assigned_workers}/${selectedBuilding.required_workers}`}
                 />
                 <MetricCard
                   label="Status"
                   tone="text-stone-100"
-                  value={selectedBuilding?.status ?? "Idle"}
+                  value={selectedBuilding.status}
                 />
                 <MetricCard
                   label="Security"
                   tone="text-lime-100"
-                  value={formatValue(selectedBuilding?.stats.security ?? 0)}
+                  value={formatValue(selectedBuilding.stats.security ?? 0)}
                 />
                 <MetricCard
                   label="Supply"
                   tone="text-sky-100"
-                  value={formatValue(selectedBuilding?.stats.supply ?? 0)}
+                  value={formatValue(selectedBuilding.stats.supply ?? 0)}
                 />
               </div>
 
               <div className="mt-5 grid gap-2">
                 <button
                   className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm text-stone-100 transition hover:border-white/20 hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={busy || !client || !selectedBuilding}
+                  disabled={busy || !client}
                   onClick={() => {
-                    if (!client || !selectedBuilding) {
+                    if (!client) {
                       return;
                     }
                     void applyResponse(
@@ -1580,9 +1751,9 @@ export default function App() {
                 {claimableProvince && (
                   <button
                     className="rounded-2xl border border-orange-200/25 bg-orange-300/12 px-4 py-3 text-left text-sm text-orange-50 transition hover:bg-orange-300/18 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={busy || !client || !selectedBuilding}
+                    disabled={busy || !client}
                     onClick={() => {
-                      if (!client || !selectedBuilding) {
+                      if (!client) {
                         return;
                       }
                       void applyResponse(
@@ -1604,7 +1775,7 @@ export default function App() {
                 )}
               </div>
 
-              {selectedBuilding?.inventory.length ? (
+              {selectedBuilding.inventory.length ? (
                 <div className="mt-5 rounded-[1.4rem] border border-white/10 bg-white/5 p-4">
                   <p className="text-[0.68rem] tracking-[0.26em] text-stone-400 uppercase">
                     Stored Resources
@@ -1619,155 +1790,105 @@ export default function App() {
                   </div>
                 </div>
               ) : null}
-            </section>
-
-            <section className="rounded-[1.8rem] border border-white/10 bg-black/30 p-5 backdrop-blur-xl">
-              <p className="text-[0.72rem] tracking-[0.28em] text-orange-200/80 uppercase">
-                Objectives
-              </p>
-              <div className="mt-4 grid gap-3">
-                {view.objectives.length === 0 && (
-                  <div className="rounded-[1.4rem] border border-dashed border-white/10 bg-white/4 px-4 py-4 text-sm text-stone-400">
-                    No active objectives are exposed right now.
-                  </div>
-                )}
-
-                {view.objectives.map((objective) => (
-                  <article
-                    className={`rounded-[1.4rem] border px-4 py-4 ${
-                      objective.complete
-                        ? "border-emerald-300/25 bg-emerald-400/10"
-                        : "border-white/10 bg-white/5"
-                    }`}
-                    key={objective.id}
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <p className="text-sm font-semibold tracking-[0.14em] text-stone-50 uppercase">
-                        {objective.label}
-                      </p>
-                      <p className="text-xs text-stone-400">
-                        {formatValue(objective.current)} / {formatValue(objective.target)}
-                      </p>
-                    </div>
-                    <p className="mt-2 text-xs text-stone-400">
-                      {objective.complete ? "Objective complete." : "Still in progress."}
-                    </p>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="rounded-[1.8rem] border border-white/10 bg-black/30 p-5 backdrop-blur-xl">
-              <p className="text-[0.72rem] tracking-[0.28em] text-orange-200/80 uppercase">
-                Tech Queue
-              </p>
-              <div className="mt-4 grid gap-3">
-                {view.available_tech_nodes.length === 0 && (
-                  <div className="rounded-[1.4rem] border border-dashed border-white/10 bg-white/4 px-4 py-4 text-sm text-stone-400">
-                    No tech nodes are currently available.
-                  </div>
-                )}
-
-                {view.available_tech_nodes.map((techNode) => (
-                  <button
-                    className="rounded-[1.4rem] border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:border-white/20 hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={busy || !client}
-                    key={techNode}
-                    onClick={() => {
-                      if (!client) {
-                        return;
-                      }
-                      void applyResponse(
-                        () =>
-                          client.apply({
-                            UnlockTechNode: {
-                              kind: techNode,
-                            },
-                          }),
-                        `${formatKind(techNode)} unlocked.`,
-                      );
-                    }}
-                    type="button"
-                  >
-                    <p className="text-sm font-semibold tracking-[0.14em] text-stone-50 uppercase">
-                      {formatKind(techNode)}
-                    </p>
-                    <p className="mt-2 text-xs text-stone-400">
-                      {isSimulationMode
-                        ? "Unlock it, then branch the result into a new snapshot if it opens a useful build path."
-                        : "Unlock it to strengthen the campaign and widen the next set of frontier options."}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section className="rounded-[1.8rem] border border-white/10 bg-black/30 p-5 backdrop-blur-xl">
-              <p className="text-[0.72rem] tracking-[0.28em] text-orange-200/80 uppercase">
-                Province Board
-              </p>
-              <div className="mt-4 grid gap-3">
-                {provinces.length === 0 && (
-                  <div className="rounded-[1.4rem] border border-dashed border-white/10 bg-white/4 px-4 py-4 text-sm text-stone-400">
-                    No provinces claimed yet. Build a `Frontier Fort`, secure it, then claim it into
-                    a province.
-                  </div>
-                )}
-
-                {provinces.map((province) => {
-                  const active = province.id === selectedProvince?.id;
-                  return (
-                    <button
-                      className={`rounded-[1.4rem] border px-4 py-3 text-left transition ${
-                        active
-                          ? "border-orange-200/45 bg-orange-300/10 text-stone-50"
-                          : "border-white/10 bg-white/4 text-stone-300 hover:border-white/20 hover:bg-white/7"
-                      }`}
-                      key={province.id}
-                      onClick={() => selectProvince(province.id)}
-                      type="button"
-                    >
-                      <div className="flex items-center justify-between gap-4">
-                        <p className="text-sm font-semibold tracking-[0.14em] uppercase">
-                          {province.name}
-                        </p>
-                        <p className="text-xs text-stone-400">
-                          Threat {formatValue(province.threat)}
-                        </p>
-                      </div>
-                      <p className="mt-2 text-xs text-stone-400">
-                        Control {formatValue(province.control)} / Loyalty{" "}
-                        {formatValue(province.loyalty)}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-
-            <section className="rounded-[1.8rem] border border-white/10 bg-black/30 p-5 backdrop-blur-xl">
-              <p className="text-[0.72rem] tracking-[0.28em] text-orange-200/80 uppercase">Alerts</p>
-              <div className="mt-4 grid gap-3">
-                {view.alerts.length === 0 && (
-                  <div className="rounded-[1.4rem] border border-dashed border-white/10 bg-white/4 px-4 py-4 text-sm text-stone-400">
-                    No active alerts at the moment.
-                  </div>
-                )}
-
-                {view.alerts.map((alert) => (
-                  <article
-                    className={`rounded-3xl border px-4 py-3 ${severityStyles[alert.severity] ?? severityStyles.info}`}
-                    key={alert.message}
-                  >
-                    <p className="text-[0.68rem] tracking-[0.26em] uppercase">{alert.severity}</p>
-                    <p className="mt-2 text-sm leading-6">{alert.message}</p>
-                  </article>
-                ))}
-              </div>
-            </section>
+              </section>
+            )}
           </aside>
         </main>
       </div>
+
+      {isGameMenuOpen && (
+        <PauseMenu
+          modeLabel={isSimulationMode ? "Simulation Lab" : "Main Campaign"}
+          onOpenHome={() => setScreen("home")}
+          onOpenScenarioEditor={() => {
+            void openScenarioEditor();
+          }}
+          onOpenSettings={() => setScreen("settings")}
+          onOpenWiki={() => setScreen("wiki")}
+          onResume={resumeGame}
+        />
+      )}
+    </div>
+  );
+}
+
+function PauseMenu({
+  modeLabel,
+  onOpenHome,
+  onOpenScenarioEditor,
+  onOpenSettings,
+  onOpenWiki,
+  onResume,
+}: {
+  modeLabel: string;
+  onOpenHome: () => void;
+  onOpenScenarioEditor: () => void;
+  onOpenSettings: () => void;
+  onOpenWiki: () => void;
+  onResume: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-30 flex items-center justify-center bg-black/62 px-4 py-6 backdrop-blur-md"
+      data-testid="pause-menu"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pause-menu-title"
+    >
+      <section className="w-full max-w-xl rounded-[1.6rem] border border-white/10 bg-[#17100f]/95 p-5 shadow-[0_28px_100px_rgba(0,0,0,0.48)]">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-[0.72rem] tracking-[0.28em] text-orange-200/80 uppercase">
+              Paused
+            </p>
+            <h2
+              className="mt-2 text-3xl font-black tracking-[0.06em] text-stone-50 uppercase"
+              id="pause-menu-title"
+              style={{ fontFamily: '"Syne", sans-serif' }}
+            >
+              {modeLabel}
+            </h2>
+          </div>
+          <button
+            className="rounded-full border border-orange-200/20 bg-orange-300/12 px-4 py-2 text-xs font-semibold tracking-[0.18em] text-orange-50 uppercase transition hover:bg-orange-300/18"
+            onClick={onResume}
+            type="button"
+          >
+            Resume Game
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <button
+            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm font-semibold tracking-[0.14em] text-stone-100 uppercase transition hover:border-white/20 hover:bg-white/8"
+            onClick={onOpenHome}
+            type="button"
+          >
+            Home
+          </button>
+          <button
+            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm font-semibold tracking-[0.14em] text-stone-100 uppercase transition hover:border-white/20 hover:bg-white/8"
+            onClick={onOpenScenarioEditor}
+            type="button"
+          >
+            Scenario Editor
+          </button>
+          <button
+            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm font-semibold tracking-[0.14em] text-stone-100 uppercase transition hover:border-white/20 hover:bg-white/8"
+            onClick={onOpenSettings}
+            type="button"
+          >
+            Settings
+          </button>
+          <button
+            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm font-semibold tracking-[0.14em] text-stone-100 uppercase transition hover:border-white/20 hover:bg-white/8"
+            onClick={onOpenWiki}
+            type="button"
+          >
+            Wiki
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -1778,6 +1899,7 @@ function HomeScreen({
   mainCampaignSave,
   notice,
   onOpenSettings,
+  onOpenScenarioEditor,
   onOpenSimulations,
   onOpenWiki,
   onStartFreshMainGame,
@@ -1789,6 +1911,7 @@ function HomeScreen({
   mainCampaignSave: CampaignSaveState | null;
   notice: string | null;
   onOpenSettings: () => void;
+  onOpenScenarioEditor: () => void;
   onOpenSimulations: () => void;
   onOpenWiki: () => void;
   onStartFreshMainGame: () => void;
@@ -1798,35 +1921,20 @@ function HomeScreen({
   const hasMainCampaign = Boolean(mainCampaignSave);
 
   return (
-    <ShellFrame subtitle="Choose where to pick up the frontier: the persistent campaign, the simulation lab, the control room, or the field manual.">
-      <section className="rounded-[2rem] border border-white/10 bg-black/30 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.32)] backdrop-blur-xl">
-        <p className="text-[0.72rem] tracking-[0.3em] text-orange-200/75 uppercase">Home Screen</p>
-        <h1
-          className="mt-3 text-5xl font-black tracking-[0.06em] text-stone-50 uppercase sm:text-6xl"
-          style={{ fontFamily: '"Syne", sans-serif' }}
+    <ShellFrame>
+      {(notice || error) && (
+        <div
+          className={`mb-4 rounded-[1.4rem] border px-4 py-3 text-sm ${
+            error
+              ? "border-red-400/40 bg-red-500/10 text-red-100"
+              : "border-emerald-300/25 bg-emerald-400/10 text-emerald-50"
+          }`}
         >
-          Raid Defense
-        </h1>
-        <p className="mt-4 max-w-3xl text-sm leading-7 text-stone-300 sm:text-base">
-          The frontier now opens on a proper home screen. Continue the main campaign from its last
-          autosave, dive into simulations for experimentation, or step into settings and the wiki
-          before you commit to the next move.
-        </p>
+          {error ?? notice}
+        </div>
+      )}
 
-        {(notice || error) && (
-          <div
-            className={`mt-5 rounded-[1.4rem] border px-4 py-3 text-sm ${
-              error
-                ? "border-red-400/40 bg-red-500/10 text-red-100"
-                : "border-emerald-300/25 bg-emerald-400/10 text-emerald-50"
-            }`}
-          >
-            {error ?? notice}
-          </div>
-        )}
-      </section>
-
-      <section className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-5">
         <HomeActionCard
           description={
             hasMainCampaign
@@ -1851,6 +1959,14 @@ function HomeScreen({
           primaryActionLabel={activeMode === "simulation" ? "Resume Lab" : "Open Lab"}
           onPrimaryAction={onOpenSimulations}
           title="Simulation Lab"
+        />
+
+        <HomeActionCard
+          description="Adjust building security, hit points, raider behavior, and worker hunger for the active simulation scenario."
+          eyebrow="Editor"
+          primaryActionLabel="Open Editor"
+          onPrimaryAction={onOpenScenarioEditor}
+          title="Scenario Editor"
         />
 
         <HomeActionCard
@@ -1895,21 +2011,11 @@ function LoadingScreen({ error, label }: { error: string | null; label: string }
   );
 }
 
-function ShellFrame({
-  children,
-  subtitle,
-}: {
-  children: React.ReactNode;
-  subtitle: string;
-}) {
+function ShellFrame({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-[#120d0b] px-4 py-5 text-stone-100 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1400px]">
-        <div className="rounded-[2rem] border border-white/10 bg-black/20 px-5 py-4 backdrop-blur-xl">
-          <p className="text-[0.72rem] tracking-[0.3em] text-orange-200/75 uppercase">Raid Defense</p>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-300">{subtitle}</p>
-        </div>
-        <div className="mt-4">{children}</div>
+        {children}
       </div>
     </div>
   );
@@ -1987,6 +2093,55 @@ function WikiEmptyState({ text }: { text: string }) {
     <div className="rounded-[1.4rem] border border-dashed border-white/12 bg-white/[0.03] px-4 py-5 text-sm leading-6 text-stone-400">
       {text}
     </div>
+  );
+}
+
+function ScenarioConfigSection({
+  config,
+  fields,
+  onChange,
+  title,
+}: {
+  config: Record<string, Record<string, number>>;
+  fields: readonly { key: string; label: string }[];
+  onChange: (kind: string, stat: string, value: number) => void;
+  title: string;
+}) {
+  return (
+    <section className="rounded-[2rem] border border-white/10 bg-black/30 p-5 backdrop-blur-xl">
+      <p className="text-[0.72rem] tracking-[0.28em] text-orange-200/80 uppercase">{title}</p>
+      <div className="mt-5 grid gap-4">
+        {Object.entries(config).map(([kind, stats]) => (
+          <article className="rounded-[1.5rem] border border-white/10 bg-white/5 p-4" key={kind}>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold tracking-[0.16em] text-stone-50 uppercase">
+                {scenarioKindLabel(kind)}
+              </p>
+              <span className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[0.68rem] tracking-[0.18em] text-stone-300 uppercase">
+                {kind}
+              </span>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {fields.map((field) => (
+                <label className="block" key={field.key}>
+                  <span className="text-[0.66rem] tracking-[0.22em] text-stone-400 uppercase">
+                    {field.label}
+                  </span>
+                  <input
+                    className="mt-2 w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-stone-100 outline-none transition focus:border-orange-200/40"
+                    onChange={(event) =>
+                      onChange(kind, field.key, Number.parseInt(event.target.value || "0", 10))
+                    }
+                    type="number"
+                    value={stats[field.key] ?? 0}
+                  />
+                </label>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -2078,6 +2233,73 @@ function MetricCard({ label, value, tone }: { label: string; value: string; tone
   );
 }
 
+function defaultBuildingScenarioStats(overrides: Record<string, number>) {
+  return {
+    security_base: 25,
+    security_per_level: 0,
+    assigned_prefect_security: 0,
+    assigned_legate_security: 0,
+    global_prefect_security: 0,
+    global_legate_security: 0,
+    low_supply_security_penalty: 0,
+    hit_points_base: 30,
+    hit_points_per_level: 20,
+    hit_points_per_tile: 10,
+    hit_points_bonus: 0,
+    ...overrides,
+  };
+}
+
+function defaultUnitScenarioStats(overrides: Record<string, number>) {
+  return {
+    speed: 0,
+    attack_damage: 0,
+    carry_capacity: 0,
+    looting_speed: 0,
+    stomach_capacity: 0,
+    stomach_per_food: 0,
+    hunger_threshold_percent: 0,
+    hunger_drain_per_second: 0,
+    ...overrides,
+  };
+}
+
+function cloneScenarioConfig(config: RuntimeScenarioConfig): RuntimeScenarioConfig {
+  return {
+    buildings: cloneScenarioScope(config.buildings),
+    units: cloneScenarioScope(config.units),
+  };
+}
+
+function normalizeScenarioConfig(config: RuntimeScenarioConfig): RuntimeScenarioConfig {
+  const defaults = cloneScenarioConfig(defaultScenarioConfig);
+  return {
+    buildings: mergeScenarioScope(defaults.buildings, config.buildings),
+    units: mergeScenarioScope(defaults.units, config.units),
+  };
+}
+
+function cloneScenarioScope(scope: Record<string, Record<string, number>>) {
+  return Object.fromEntries(
+    Object.entries(scope).map(([kind, stats]) => [kind, { ...stats }]),
+  ) as Record<string, Record<string, number>>;
+}
+
+function mergeScenarioScope(
+  defaults: Record<string, Record<string, number>>,
+  values: Record<string, Record<string, number>>,
+) {
+  return Object.fromEntries(
+    Object.entries(defaults).map(([kind, stats]) => [
+      kind,
+      {
+        ...stats,
+        ...(values[kind] ?? {}),
+      },
+    ]),
+  ) as Record<string, Record<string, number>>;
+}
+
 function hasTrackedBuildCost(kind: string) {
   return kind in buildingCosts;
 }
@@ -2144,6 +2366,25 @@ function describeAttackWave(units: { label: string; count: number }[]) {
 
 function formatKind(kind: string) {
   return kind.replaceAll("_", " ");
+}
+
+function scenarioKindLabel(kind: string) {
+  return (
+    buildPalette.find((building) => building.kind === kind)?.label ??
+    {
+      castle: "Castle",
+      lumber_camp: "Lumber Camp",
+      quarry: "Quarry",
+      iron_mine: "Iron Mine",
+      embassy: "Embassy",
+      worker: "Worker",
+      prefect: "Prefect",
+      legate: "Legate",
+      envoy: "Envoy",
+      basic_raider: "Raider",
+    }[kind] ??
+    formatKind(kind)
+  );
 }
 
 function formatDateTime(value: string) {

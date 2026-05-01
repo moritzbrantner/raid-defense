@@ -47,6 +47,7 @@ pub fn raid_defense_view(state: &GameState) -> RaidDefenseView {
 
     RaidDefenseView {
         now_seconds: state.now_seconds(),
+        scenario_config: scenario_config(state),
         resources,
         food_logistics,
         buildings,

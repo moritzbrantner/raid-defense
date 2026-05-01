@@ -9,6 +9,7 @@ declare module "./generated/raid-defense-wasm/raid_defense_wasm.js" {
     advance(deltaSeconds: bigint): string;
     save_snapshot_json(): string;
     load_snapshot_json(snapshotJson: string): string;
+    applyScenarioConfig(configJson: string): string;
     grantResource(resource: string, amount: bigint): string;
   }
 }

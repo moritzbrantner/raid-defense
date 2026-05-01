@@ -1,6 +1,7 @@
 import type {
   RuntimeRaidDefenseCommandResponse,
   RuntimeRaidDefenseView,
+  RuntimeScenarioConfig,
 } from "./simulationTypes";
 
 type WasmModule = typeof import("./generated/raid-defense-wasm/raid_defense_wasm.js");
@@ -68,5 +69,9 @@ export class RaidDefenseSimulationClient {
 
   loadSnapshot(snapshotJson: string) {
     return parseResponse(this.engine.load_snapshot_json(snapshotJson));
+  }
+
+  applyScenarioConfig(config: RuntimeScenarioConfig) {
+    return parseResponse(this.engine.applyScenarioConfig(JSON.stringify(config)));
   }
 }

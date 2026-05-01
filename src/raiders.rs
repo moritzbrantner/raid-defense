@@ -8,14 +8,6 @@ const STATE_ATTACKING_STORAGE: i64 = 3;
 const STATE_LOOTING: i64 = 4;
 const STATE_RETREATING: i64 = 5;
 
-#[derive(Copy, Clone)]
-struct RaiderProfile {
-    speed: u64,
-    attack_damage: i64,
-    carry_capacity: u64,
-    looting_speed: u64,
-}
-
 #[derive(Clone)]
 struct StorageTarget {
     storage_id: BuildingId,
@@ -156,7 +148,7 @@ fn attack_building(
     storage_target: bool,
     events: &mut Vec<GameEvent>,
 ) -> Result<(), EngineError> {
-    let damage = state.entity_stat(raider, RAIDER_ATTACK_DAMAGE)?;
+    let damage = state.entity_stat(raider, RAIDER_ATTACK_DAMAGE)?.max(0);
     let current = building_hit_points(state, building)?;
     let next = (current - damage).max(0);
     state.set_building_stat(building, HIT_POINTS, next)?;
@@ -222,9 +214,9 @@ fn destroy_storage_and_prepare_loot(
 }
 
 fn loot_from_pending_drop(state: &mut GameState, raider: EntityId) -> Result<(), EngineError> {
-    let carry_capacity = state.entity_stat(raider, RAIDER_CARRY_CAPACITY)? as u64;
+    let carry_capacity = state.entity_stat(raider, RAIDER_CARRY_CAPACITY)?.max(0) as u64;
     let carried = state.entity_stat(raider, RAIDER_CARRIED_TOTAL)? as u64;
-    let looting_speed = state.entity_stat(raider, RAIDER_LOOTING_SPEED)? as u64;
+    let looting_speed = state.entity_stat(raider, RAIDER_LOOTING_SPEED)?.max(0) as u64;
     let mut budget = looting_speed.min(carry_capacity.saturating_sub(carried));
     for (pending_stat, carried_stat) in [
         (RAIDER_PENDING_GRAIN, RAIDER_CARRIED_GRAIN),
@@ -362,7 +354,7 @@ fn move_raider_along(
     if path.len() <= 1 {
         return Ok(());
     }
-    let speed = state.entity_stat(raider, RAIDER_SPEED)? as usize;
+    let speed = state.entity_stat(raider, RAIDER_SPEED)?.max(0) as usize;
     let destination = path[speed.min(path.len() - 1)];
     if state
         .entity(raider)
@@ -378,21 +370,29 @@ fn initialize_raider(state: &mut GameState, raider: EntityId) -> Result<(), Engi
     if state.entity_stat(raider, RAIDER_SPEED)? > 0 {
         return Ok(());
     }
-    let Some(profile) = raider_profile(
-        state
-            .entity(raider)
-            .map(|entity| entity.blueprint == EntityBlueprintRef::Unit(BASIC_RAIDER.into()))
-            .unwrap_or(false),
-    ) else {
+    let is_basic_raider = state
+        .entity(raider)
+        .map(|entity| entity.blueprint == EntityBlueprintRef::Unit(BASIC_RAIDER.into()))
+        .unwrap_or(false);
+    if !is_basic_raider {
         return Ok(());
     };
     let location = state.entity(raider).expect("raider exists").location;
     for (stat, value) in [
         (RAIDER_STATE, STATE_SPAWNED),
-        (RAIDER_SPEED, profile.speed as i64),
-        (RAIDER_ATTACK_DAMAGE, profile.attack_damage),
-        (RAIDER_CARRY_CAPACITY, profile.carry_capacity as i64),
-        (RAIDER_LOOTING_SPEED, profile.looting_speed as i64),
+        (RAIDER_SPEED, unit_config_stat(state, BASIC_RAIDER, "speed")),
+        (
+            RAIDER_ATTACK_DAMAGE,
+            unit_config_stat(state, BASIC_RAIDER, "attack_damage"),
+        ),
+        (
+            RAIDER_CARRY_CAPACITY,
+            unit_config_stat(state, BASIC_RAIDER, "carry_capacity"),
+        ),
+        (
+            RAIDER_LOOTING_SPEED,
+            unit_config_stat(state, BASIC_RAIDER, "looting_speed"),
+        ),
         (RAIDER_ENTRANCE_X, location.x as i64),
         (RAIDER_ENTRANCE_Y, location.y as i64),
     ] {
@@ -461,23 +461,12 @@ fn building_hit_points(state: &mut GameState, building: BuildingId) -> Result<i6
     if current > 0 {
         return Ok(current);
     }
-    let max = state.building(building).map_or(60, |entry| {
-        30 + i64::from(entry.level.max(1)) * 20
-            + i64::from(entry.footprint.width * entry.footprint.depth) * 10
-            + if entry.kind.as_str() == MARKET { 20 } else { 0 }
-    });
+    let max = state
+        .building(building)
+        .map_or(60, |entry| configured_building_max_hit_points(state, entry));
     state.set_building_stat(building, HIT_POINTS, max)?;
     state.set_building_stat(building, MAX_HIT_POINTS, max)?;
     Ok(max)
-}
-
-fn raider_profile(is_basic_raider: bool) -> Option<RaiderProfile> {
-    is_basic_raider.then_some(RaiderProfile {
-        speed: 1,
-        attack_damage: 30,
-        carry_capacity: 36,
-        looting_speed: 12,
-    })
 }
 
 fn approach_tiles(

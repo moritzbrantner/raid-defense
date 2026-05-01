@@ -16,6 +16,7 @@ type BattlefieldSceneProps = {
   view: RuntimeRaidDefenseView;
   provinces: RuntimeProvinceView[];
   rivals: RuntimeRivalView[];
+  paused: boolean;
   placementKind: string | null;
   selectedBuildingId: number | null;
   selectedProvinceId: number | null;
@@ -26,13 +27,16 @@ type BattlefieldSceneProps = {
 };
 
 const mapSize = 30;
+const tileSize = 0.78;
+const mapCenter = (mapSize - 1) / 2;
+const mapWorldSize = mapSize * tileSize;
 
 const toScenePoint = (location: RuntimeMapLocation) =>
-  new Vector3((location.x - 16) * 0.82, 0, (location.y - 15) * 0.76);
+  new Vector3((location.x - mapCenter) * tileSize, 0, (location.y - mapCenter) * tileSize);
 
 const toMapLocation = (point: Vector3): RuntimeMapLocation => ({
-  x: Math.max(0, Math.min(mapSize - 1, Math.round(point.x / 0.82 + 16))),
-  y: Math.max(0, Math.min(mapSize - 1, Math.round(point.z / 0.76 + 15))),
+  x: Math.max(0, Math.min(mapSize - 1, Math.round(point.x / tileSize + mapCenter))),
+  y: Math.max(0, Math.min(mapSize - 1, Math.round(point.z / tileSize + mapCenter))),
   elevation: 0,
 });
 
@@ -40,6 +44,7 @@ export function BattlefieldScene({
   view,
   provinces,
   rivals,
+  paused,
   placementKind,
   selectedBuildingId,
   selectedProvinceId,
@@ -78,6 +83,7 @@ export function BattlefieldScene({
         <LogisticsRoute
           key={`${route.source_building_id}-${route.target_building_id}-${route.started_at_seconds}-${index}`}
           nowSeconds={view.now_seconds}
+          paused={paused}
           route={route}
         />
       ))}
@@ -89,8 +95,12 @@ export function BattlefieldScene({
             position={toScenePoint(tile).setY(0.015)}
             rotation={[-Math.PI / 2, 0, 0]}
           >
-            <ringGeometry args={[0.18, 0.3, 6]} />
-            <meshBasicMaterial color={area.kind === "heartland" ? "#5c4d2a" : "#583420"} />
+            <planeGeometry args={[tileSize * 0.72, tileSize * 0.72]} />
+            <meshBasicMaterial
+              color={area.kind === "heartland" ? "#5c4d2a" : "#583420"}
+              opacity={0.48}
+              transparent
+            />
           </mesh>
         )),
       )}
@@ -107,13 +117,14 @@ export function BattlefieldScene({
       {view.entities
         .filter((entity) => entity.kind === "basic_raider")
         .map((entity) => (
-          <RaiderMarker entity={entity} key={entity.id} />
+          <RaiderMarker entity={entity} key={entity.id} paused={paused} />
         ))}
 
       {provinces.map((province) => (
         <ProvinceMarker
           key={province.id}
           onSelectProvince={onSelectProvince}
+          paused={paused}
           province={province}
           selected={province.id === selectedProvinceId}
         />
@@ -131,6 +142,7 @@ export function BattlefieldScene({
           <RaidLane
             key={rival.id}
             origin={rival.location}
+            paused={paused}
             target={target.location}
             intensity={rival.stats.aggression ?? 55}
           />
@@ -168,22 +180,21 @@ function Ground({ onSelectTile }: { onSelectTile: (location: RuntimeMapLocation)
         receiveShadow
         rotation={[-Math.PI / 2, 0, 0]}
       >
-        <circleGeometry args={[15, 48]} />
+        <planeGeometry args={[mapWorldSize, mapWorldSize]} />
         <meshStandardMaterial color="#251614" roughness={0.96} />
       </mesh>
-      <mesh position={[0, -0.13, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[9.5, 14.5, 48]} />
-        <meshBasicMaterial color="#3c2319" opacity={0.55} transparent />
-      </mesh>
+      <gridHelper args={[mapWorldSize, mapSize, "#8b6048", "#3c2720"]} position={[0, -0.12, 0]} />
     </group>
   );
 }
 
 function LogisticsRoute({
   nowSeconds,
+  paused,
   route,
 }: {
   nowSeconds: number;
+  paused: boolean;
   route: RuntimeLogisticsRouteView;
 }) {
   const runnerRef = useRef<Mesh>(null);
@@ -207,7 +218,7 @@ function LogisticsRoute({
   );
 
   useFrame(({ clock }) => {
-    if (!runnerRef.current) {
+    if (paused || !runnerRef.current) {
       return;
     }
 
@@ -261,8 +272,8 @@ function BuildingMarker({
     >
       {selected && (
         <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[Math.max(width, depth) * 0.9, Math.max(width, depth) * 1.2, 6]} />
-          <meshBasicMaterial color="#ffe1a6" opacity={0.92} transparent />
+          <planeGeometry args={[Math.max(width, depth) * 2.2, Math.max(width, depth) * 2.2]} />
+          <meshBasicMaterial color="#ffe1a6" opacity={0.32} transparent />
         </mesh>
       )}
       <mesh position={[0, 0.32 + building.height * 0.06, 0]}>
@@ -279,10 +290,12 @@ function BuildingMarker({
 
 function ProvinceMarker({
   province,
+  paused,
   selected,
   onSelectProvince,
 }: {
   province: RuntimeProvinceView;
+  paused: boolean;
   selected: boolean;
   onSelectProvince: (provinceId: number) => void;
 }) {
@@ -292,7 +305,7 @@ function ProvinceMarker({
   const baseColor = new Color().setRGB(0.42 + controlTint * 0.3, 0.18 + controlTint * 0.18, 0.1);
 
   useFrame(({ clock }) => {
-    if (!pulseRef.current) {
+    if (paused || !pulseRef.current) {
       return;
     }
 
@@ -311,11 +324,11 @@ function ProvinceMarker({
       position={[position.x, 0, position.z]}
     >
       <mesh position={[0, 0.15, 0]}>
-        <cylinderGeometry args={[0.8, 1.08, 0.3, 6]} />
+        <cylinderGeometry args={[0.8, 1.08, 0.3, 4]} />
         <meshStandardMaterial color={baseColor} roughness={0.78} />
       </mesh>
       <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} ref={pulseRef}>
-        <ringGeometry args={[0.95, 1.15, 6]} />
+        <ringGeometry args={[0.95, 1.15, 4]} />
         <meshBasicMaterial color={selected ? "#ffe1a6" : "#d37b53"} transparent />
       </mesh>
       <mesh position={[0, 0.55, 0]}>
@@ -326,12 +339,12 @@ function ProvinceMarker({
   );
 }
 
-function RaiderMarker({ entity }: { entity: RuntimeEntityView }) {
+function RaiderMarker({ entity, paused }: { entity: RuntimeEntityView; paused: boolean }) {
   const markerRef = useRef<Mesh>(null);
   const position = toScenePoint(entity.location);
 
   useFrame(({ clock }) => {
-    if (!markerRef.current) {
+    if (paused || !markerRef.current) {
       return;
     }
 
@@ -341,11 +354,11 @@ function RaiderMarker({ entity }: { entity: RuntimeEntityView }) {
   return (
     <group position={[position.x, 0, position.z]}>
       <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.2, 0.34, 5]} />
+        <ringGeometry args={[0.2, 0.34, 4]} />
         <meshBasicMaterial color="#ff9d6b" opacity={0.85} transparent />
       </mesh>
       <mesh ref={markerRef}>
-        <coneGeometry args={[0.18, 0.48, 5]} />
+        <coneGeometry args={[0.18, 0.48, 4]} />
         <meshStandardMaterial color="#ffb27f" emissive="#a9341d" emissiveIntensity={1.2} />
       </mesh>
     </group>
@@ -364,7 +377,7 @@ function TileMarker({
   return (
     <group position={[position.x, 0, position.z]}>
       <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.38, 0.54, 6]} />
+        <planeGeometry args={[tileSize * 0.88, tileSize * 0.88]} />
         <meshBasicMaterial color={armed ? "#ffb46e" : "#c0d4ff"} opacity={0.8} transparent />
       </mesh>
     </group>
@@ -373,10 +386,12 @@ function TileMarker({
 
 function RaidLane({
   origin,
+  paused,
   target,
   intensity,
 }: {
   origin: RuntimeMapLocation;
+  paused: boolean;
   target: RuntimeMapLocation;
   intensity: number;
 }) {
@@ -390,6 +405,10 @@ function RaidLane({
   const points = curve.getPoints(32);
 
   useFrame(({ clock }) => {
+    if (paused) {
+      return;
+    }
+
     runnerRefs.forEach((runnerRef, index) => {
       if (!runnerRef.current) {
         return;
@@ -404,7 +423,7 @@ function RaidLane({
   return (
     <group>
       <mesh position={toScenePoint(origin).setY(0.5)}>
-        <coneGeometry args={[0.18, 0.65, 5]} />
+        <coneGeometry args={[0.18, 0.65, 4]} />
         <meshStandardMaterial color="#d0583d" emissive="#7a2317" emissiveIntensity={0.95} />
       </mesh>
 

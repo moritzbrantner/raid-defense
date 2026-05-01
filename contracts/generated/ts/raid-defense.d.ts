@@ -6,7 +6,7 @@ export type RaidDefenseCommandRequest = { command_id: CommandId, world_id: World
 
 export type RaidDefenseCommandResponse = { accepted: boolean, version: bigint, checksum: string, events: Array<GameEvent>, view: RaidDefenseView, error: string | null, };
 
-export type RaidDefenseView = { now_seconds: bigint, resources: Array<ResourceView>, food_logistics: FoodLogisticsView, buildings: Array<BuildingView>, jobs: Array<JobView>, paths: Array<PathView>, areas: Array<AreaView>, entities: Array<EntityView>, tech_nodes: Array<string>, available_tech_nodes: Array<string>, upgrades: Array<string>, encountered_units: Array<EncounteredUnitView>, encountered_attack_waves: Array<AttackWaveView>, alerts: Array<AlertView>, objectives: Array<ObjectiveView>, summary: RaidDefenseSummary, };
+export type RaidDefenseView = { now_seconds: bigint, scenario_config: ScenarioConfig, resources: Array<ResourceView>, food_logistics: FoodLogisticsView, buildings: Array<BuildingView>, jobs: Array<JobView>, paths: Array<PathView>, areas: Array<AreaView>, entities: Array<EntityView>, tech_nodes: Array<string>, available_tech_nodes: Array<string>, upgrades: Array<string>, encountered_units: Array<EncounteredUnitView>, encountered_attack_waves: Array<AttackWaveView>, alerts: Array<AlertView>, objectives: Array<ObjectiveView>, summary: RaidDefenseSummary, };
 
 export type FoodLogisticsView = { delivered_last_minute: bigint, spoiled_last_minute: bigint, blocked_farms: number, strained_storage: number, reserve_state: string, };
 

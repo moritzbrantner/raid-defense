@@ -49,6 +49,7 @@ pub struct RaidDefenseCommandResponse {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RaidDefenseView {
     pub now_seconds: u64,
+    pub scenario_config: ScenarioConfig,
     pub resources: Vec<ResourceView>,
     pub food_logistics: FoodLogisticsView,
     pub buildings: Vec<BuildingView>,

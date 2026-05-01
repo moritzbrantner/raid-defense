@@ -219,23 +219,23 @@ fn update_building_stats(state: &mut GameState) -> Result<(), EngineError> {
         let assigned_legates = assigned_unit_count(state, LEGATE, Some(building));
         let assigned_prefects = assigned_unit_count(state, PREFECT, Some(building));
         let supply = state.building_stat(building, SUPPLY).unwrap_or(50);
-        let security = match kind.as_str() {
-            CAPITAL => 55 + i64::from(prefects.min(3)) * 8,
-            BARRACKS => 58 + i64::from(assigned_legates.min(2)) * 10,
-            WATCHTOWER => 45 + i64::from(level) * 10 + i64::from(legates.min(3)) * 3,
-            FRONTIER_FORT => {
-                let low_supply_penalty = if supply < FRONTIER_FORT_LOW_SUPPLY_THRESHOLD {
-                    10
-                } else {
-                    0
-                };
-                48 + i64::from(level) * 12 + i64::from(assigned_legates.min(2)) * 12
-                    - low_supply_penalty
-            }
-            EMBASSY => 35 + i64::from(assigned_prefects.min(1)) * 8,
-            _ => 25,
-        }
-        .clamp(0, 100);
+        let low_supply_penalty = if kind == FRONTIER_FORT && supply < FRONTIER_FORT_LOW_SUPPLY_THRESHOLD {
+            building_config_stat(state, kind.as_str(), "low_supply_security_penalty")
+        } else {
+            0
+        };
+        let security = (building_config_stat(state, kind.as_str(), "security_base")
+            + i64::from(level) * building_config_stat(state, kind.as_str(), "security_per_level")
+            + i64::from(assigned_prefects.min(1))
+                * building_config_stat(state, kind.as_str(), "assigned_prefect_security")
+            + i64::from(assigned_legates.min(2))
+                * building_config_stat(state, kind.as_str(), "assigned_legate_security")
+            + i64::from(prefects.min(3))
+                * building_config_stat(state, kind.as_str(), "global_prefect_security")
+            + i64::from(legates.min(3))
+                * building_config_stat(state, kind.as_str(), "global_legate_security")
+            - low_supply_penalty)
+            .clamp(0, 100);
         state.set_building_stat(building, SECURITY, security)?;
         if state
             .building(building)

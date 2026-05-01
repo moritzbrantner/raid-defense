@@ -1,10 +1,5 @@
 use super::*;
 
-const WORKER_STOMACH_CAPACITY: u64 = 500;
-const WORKER_STOMACH_PER_FOOD: u64 = 100;
-const WORKER_HUNGER_THRESHOLD: u64 = WORKER_STOMACH_CAPACITY * 30 / 100;
-const WORKER_HUNGER_DRAIN_PER_SECOND: u64 = 1;
-
 pub(crate) fn recruit_worker_at_castle(
     state: &mut GameState,
     location: MapLocation,
@@ -36,11 +31,7 @@ pub(crate) fn initialize_worker_hunger(
     state: &mut GameState,
     worker: EntityId,
 ) -> Result<(), EngineError> {
-    state.set_entity_stat(
-        worker,
-        WORKER_STOMACH,
-        i64::try_from(WORKER_STOMACH_CAPACITY).unwrap_or(i64::MAX),
-    )
+    state.set_entity_stat(worker, WORKER_STOMACH, worker_stomach_capacity(state))
 }
 
 pub(crate) fn advance_worker_hunger(
@@ -55,12 +46,16 @@ pub(crate) fn advance_worker_hunger(
     for worker in workers {
         ensure_worker_hunger_initialized(state, worker)?;
         let current = worker_stomach(state, worker);
-        let drained = delta_seconds.saturating_mul(WORKER_HUNGER_DRAIN_PER_SECOND);
+        let capacity = worker_stomach_capacity(state).max(1) as u64;
+        let stomach_per_food = worker_stomach_per_food(state).max(1) as u64;
+        let hunger_threshold =
+            capacity.saturating_mul(worker_hunger_threshold_percent(state).clamp(0, 100) as u64) / 100;
+        let drained = delta_seconds.saturating_mul(worker_hunger_drain_per_second(state).max(0) as u64);
         let mut next = current.saturating_sub(drained);
 
-        while next < WORKER_HUNGER_THRESHOLD && state.inventory().amount(GRAIN) > 0 {
+        while next < hunger_threshold && state.inventory().amount(GRAIN) > 0 {
             state.inventory_mut().remove(GRAIN, 1)?;
-            next = (next + WORKER_STOMACH_PER_FOOD).min(WORKER_STOMACH_CAPACITY);
+            next = (next + stomach_per_food).min(capacity);
         }
 
         state.set_entity_stat(
@@ -128,6 +123,22 @@ fn worker_stomach(state: &GameState, worker: EntityId) -> u64 {
             .max(0),
     )
     .unwrap_or(0)
+}
+
+fn worker_stomach_capacity(state: &GameState) -> i64 {
+    unit_config_stat(state, ENGINEER, "stomach_capacity").max(1)
+}
+
+fn worker_stomach_per_food(state: &GameState) -> i64 {
+    unit_config_stat(state, ENGINEER, "stomach_per_food").max(1)
+}
+
+fn worker_hunger_threshold_percent(state: &GameState) -> i64 {
+    unit_config_stat(state, ENGINEER, "hunger_threshold_percent")
+}
+
+fn worker_hunger_drain_per_second(state: &GameState) -> i64 {
+    unit_config_stat(state, ENGINEER, "hunger_drain_per_second")
 }
 
 fn collect_finished_resource_output(

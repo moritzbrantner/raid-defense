@@ -22,7 +22,13 @@ test("imports a saved simulation JSON through the UI", async ({ page }) => {
 
   await expect(page.locator('[data-testid="status-banner"]')).toContainText("Loaded Claimed Province.");
   await expect(page.locator('[data-testid="simulation-clock"]')).toHaveText("1:24");
-  await expect(page.getByRole("button", { name: /Vesper March/ })).toBeVisible();
+  const importedProvinceNames = await page.evaluate(
+    () =>
+      window.__RAID_DEFENSE_E2E__?.currentView()
+        ?.entities.filter((entity) => "Npc" in entity.blueprint && entity.blueprint.Npc === "province")
+        .map((entity) => entity.label) ?? [],
+  );
+  expect(importedProvinceNames).toContain("Vesper March");
 });
 
 test("loads fixture states directly through the e2e bridge and can export them again", async ({
