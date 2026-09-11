@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "profile": "repository-foundation-v1",
+  "tiers": {
+    "fast": ["format:check", "lint", "build", "test:unit"],
+    "integration": ["test:integration"],
+    "e2e": ["test:e2e"]
+  },
+  "requiredCapabilities": ["format:check", "lint", "build", "test:unit"],
+  "optionalCapabilities": ["test:integration", "test:e2e"],
+  "merge": {
+    "authority": "hosted",
+    "requiredChecks": ["fast", "integration", "workflow", "e2e"]
+  }
+}
