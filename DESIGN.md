@@ -1,46 +1,54 @@
 # Raid Defense design
 
-## Goal
+## Game direction
 
-Raid Defense is a deterministic strategy game about holding and extending a vulnerable frontier. The core loop is deliberately small: secure territory, build forts, recruit defenders, expand only from stable positions, and survive raids whose timing and strength are reproducible from the game seed and command history.
+Raid Defense is a deterministic grid-based tower-defense/maul game inspired by Warcraft III custom maps. The gameplay plane is a 2D integer grid, while the presentation is fully 3D. Players shape enemy routes by placing defensive buildings between multiple edge spawns and a central town.
+
+The key gameplay property is intentional path shaping: buildings block cells, raiders repath around them, and a placement is rejected if it would remove every valid route from any active spawn or currently moving raider to the town.
 
 ## Authority boundary
 
-`raid-defense-core` is the sole authority for Raid Defense-specific rules and outcomes. A command either validates completely and produces an event plus a new domain state, or it is rejected without changing that state. This transactional boundary is required for replay, testing, browser parity, and future persistence/networking.
+`raid-defense-core` is the sole authority for ECS state and game outcomes. It owns entity lifecycle, components, grid occupancy, pathfinding, wave spawning, movement, targeting, damage, health, rewards, command validation, replay, and checksums.
 
-`raid-defense-ecs` is the runtime composition layer. It pins the shared `ecs-lab` sparse-set/workload implementation, creates one ECS entity per province, owns deterministic layout/topology components, validates command addressing against the ECS entity set, and incorporates ECS state into the runtime checksum. It delegates fort, control, economy, claim, raid, and combat semantics to `raid-defense-core` rather than duplicating them.
+`raid-defense-wasm` is a versioned serialization adapter only. It maps JSON commands/events/snapshots without recomputing rules.
 
-`raid-defense-wasm` translates JSON commands and snapshots over that ECS runtime. It exposes stable contract/error/event codes and the runtime checksum, but it contains no alternate rule implementation.
+The browser owns input, camera, interpolation/presentation, and 3D rendering. It may request deterministic ticks, but it never decides where a raider can move, whether a tower may be placed, what a tower targets, or how much damage occurs.
 
-The browser is a client of that contract. Selection, focus, animation, and rendering are browser concerns; treasury changes, claims, recruitment capacity, raids, damage, control, and other game outcomes are not.
+## ECS storage
 
-## ECS boundary
+Raid Defense composes typed component stores over `collection-kernels::SparseMap<T>` and uses `SparseSet` for entity liveness. These are reusable low-level collection primitives from `rust-kernels`, not a cross-repository game framework.
 
-`ecs-lab` is an experiment harness rather than a general-purpose game ECS framework. Raid Defense therefore reuses the parts that are already authoritative and reusable: entity lifecycle, deterministic sparse-set storage, and position/layout components. Game-specific components remain in the domain core until a shared typed-component contract exists that can represent them without abusing generic `Position` or `Velocity` data.
+Current components:
 
-This keeps the migration real but narrow: the playable runtime now goes through the shared ECS technology without moving game rules into the browser or inventing a second ECS implementation locally.
+- `Transform`: fixed-point X/Z position on the gameplay plane;
+- `Health`: current and maximum hit points;
+- `Attack`: damage, range, and cooldown;
+- `Building`: grid occupancy and building kind;
+- `Raider`: raider identity/spawn edge;
+- `Movement`: current/next cell, sub-cell progress, and speed.
 
-## Deterministic state
+Systems iterate only the components they need. This boundary is intended to scale to large waves and future projectile/effect populations without central entity structs accumulating unrelated fields.
 
-Authoritative runtime state contains the seeded domain state plus the ECS province world. Checksums cover the core checksum and canonical ECS entity/component snapshot. Equal seeds plus equal ordered command streams must replay to equal state and equal checksums.
+## Determinism
 
-Authoritative algorithms use integer state. Raid target/strength selection uses a deterministic integer mixer rather than wall-clock or browser randomness.
+Authoritative positions are integer fixed-point values (`CELL_SCALE = 1000`). Paths are found with deterministic breadth-first search and a fixed neighbor order. Target selection is ordered by distance and entity id. Equal seeds plus equal ordered commands therefore replay to equal component state and equal checksums.
 
-## Current game loop
+Commands validate fully before mutation. In particular, tower placement verifies bounds, protected cells, occupancy, gold, and reachability from all four gates plus every active raider before spending resources or spawning an entity.
 
-A campaign starts at the capital. Forts increase defensive capacity and make adjacent expansion possible. Garrisons are bounded by local fort capacity. Claims require a connected controlled fort with stable control. Time advances resources and control, and every third day can schedule a seeded raid with explicit arrival time. Raid resolution is owned entirely by the core.
+## Current vertical slice
 
-## Evidence
+The first maul slice uses a 17×13 grid with a protected 3×3 town and four edge gates. A wave currently contains one raider from each edge. Guard towers block cells, attack nearby raiders, and award gold on kills. Raiders move toward the town and damage it when they arrive.
 
-Changes promote through four hosted layers:
-
-- fast: format, Clippy, core/ECS runtime/adapter tests;
-- integration: an opening-defense replay trace and transactional rejection checks;
-- workflow: Rust-to-WASM-to-strict-TypeScript browser build;
-- e2e: Playwright commands against the real WASM game.
-
-A failed or missing layer is not treated as success.
+The models are deliberately primitive geometry. The rendering contract is already 3D, so later asset work can replace meshes without changing the authoritative simulation representation.
 
 ## Next systems
 
-The next depth should come from deterministic logistics rather than UI breadth: supply reach, reinforcement travel, fort capacity and infrastructure, frontier exposure, and distinct raider objectives. Those systems should become ECS components only when the shared storage contract can model them directly and clearly. Governance systems such as loyalty, prosperity, taxation, and political pressure should follow once the defense/logistics loop is strong enough for those consequences to matter.
+The next gameplay depth should stay vertical:
+
+1. tower archetypes and upgrade paths;
+2. projectile entities and impact systems for non-instant attacks;
+3. larger timed waves, spawn schedules, and distinct raider archetypes;
+4. movement traits such as ground/flying and slow/status components;
+5. tower sale/rebuild flows and path-preview feedback;
+6. spatial-query acceleration for targeting when entity counts justify it;
+7. richer 3D assets, animation, effects, and terrain while preserving simulation authority in Rust.

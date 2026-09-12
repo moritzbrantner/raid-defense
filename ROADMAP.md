@@ -1,49 +1,63 @@
 # Raid Defense roadmap
 
-The rebuild is vertical: each milestone leaves behind a deterministic playable slice with hosted evidence rather than a broad scaffold with placeholder behavior.
+The roadmap is vertical: every milestone should leave GitHub Pages more playable while preserving deterministic Rust/ECS authority.
 
-## A. Foundation and authoritative core
+## A. Grid-maul foundation
 
-- [x] Replace the farm-game-engine slice with an independent Rust workspace.
-- [x] Establish seeded authoritative state, command validation, replay, and checksums.
-- [x] Implement the first defense loop: forts, garrisons, frontier claims, raids, and resolution.
-- [x] Add repository metadata, pinned Rust/Bun CI, Renovate, Pages, and layered hosted validation.
-- [x] Prove the replacement through exact-head fast -> integration -> workflow -> e2e evidence.
-- [x] Route the playable runtime through the pinned `ecs-lab` sparse-set entity world without moving Raid Defense-specific rules out of the domain core.
+- [x] Replace the earlier province/turn prototype with a real-time grid tower-defense model.
+- [x] Keep gameplay on an integer 2D grid while exposing 3D-ready transforms.
+- [x] Put authoritative entity/component state directly in `raid-defense-core`.
+- [x] Use reusable `rust-kernels` sparse collection primitives rather than depending on `ecs-lab` as a game framework.
+- [x] Add a central 3×3 town and four protected edge spawn gates.
+- [x] Add deterministic tower placement, occupancy, gold cost, and transactional rejection.
+- [x] Allow maul-style path shaping while rejecting placements that seal a route.
+- [x] Add fixed-point raider movement from all four edges toward the town.
+- [x] Add tower targeting, damage, health, kills, rewards, and town damage.
+- [x] Render the playable grid, town, towers, and raiders in 3D through React Three Fiber.
+- [x] Cover the real WASM/3D client with browser acceptance.
 
-## B. Stable contract and WASM boundary
+## B. Tower-defense combat depth
 
-- [x] Add a thin `raid-defense-wasm` adapter over the authoritative runtime.
-- [x] Version command, snapshot, event, and error envelopes.
-- [x] Prove a native/WASM checksum parity path and fail-closed malformed-command handling.
-- [ ] Generate browser DTO types from the authoritative contract instead of maintaining parallel handwritten view types.
-- [ ] Expand parity coverage to representative multi-command traces.
+- [ ] Add tower archetypes with distinct range, fire rate, damage, and cost.
+- [ ] Add deterministic tower upgrades and selling.
+- [ ] Add projectile entities for attacks that should travel rather than resolve instantly.
+- [ ] Add splash, slow, armor, resistances, and status-effect components/systems.
+- [ ] Add clear range/path/build previews without moving legality into the browser.
 
-## C. Replacement browser client
+## C. Waves and raiders
 
-- [x] Replace the monolithic legacy application with a small browser shell against the new contract.
-- [x] Make map selection, province inspection, fort construction, recruitment, advancing time, claims, and raid feedback playable end to end.
-- [x] Keep game state in Rust; React owns interaction state and presentation only.
-- [x] Add focused Playwright flows for successful commands, raid appearance, and rejected-command immutability.
-- [ ] Promote the ECS-backed MVP through GitHub Pages after merge and verify the hosted WASM flow.
+- [ ] Add timed spawn schedules rather than one simultaneous raider per edge.
+- [ ] Add larger waves and deterministic composition recipes.
+- [ ] Add fast, tank, swarm, ranged, boss, and eventually flying raider archetypes.
+- [ ] Add explicit wave completion, preparation windows, and escalating rewards.
+- [ ] Add raider attack behavior for relevant buildings/objectives without turning pathfinding into browser state.
 
-## D. Logistics and defense depth
+## D. ECS scale and performance
 
-- [ ] Model supply reach, reinforcement travel, fort capacity, and frontier exposure as deterministic systems.
-- [ ] Promote reusable logistics/topology data into shared ECS components where the cross-repository contract is genuinely reusable.
-- [ ] Make province topology and infrastructure change where raids can emerge and how quickly they can be answered.
-- [ ] Add distinct raider compositions and objectives without moving combat resolution into the browser.
-- [ ] Preserve bounded, inspectable algorithms and deterministic replay.
+- [ ] Add projectile/effect pools as entity populations grow.
+- [ ] Measure targeting and movement system costs with representative large waves.
+- [ ] Introduce spatial-query acceleration only when measurements justify it.
+- [ ] Keep deterministic replay/checksum coverage across component lifecycle and system ordering.
+- [ ] Use ECS Lab to compare storage/system strategies, then promote only reusable low-level primitives through `rust-kernels`.
 
-## E. Governance after survival
+## E. 3D presentation
 
-- [ ] Add control, loyalty, prosperity, taxation, and political pressure only after the defense loop is strong.
-- [ ] Feed governance consequences back into manpower, supply, intelligence, and raid pressure.
-- [ ] Add progression and objectives through core-owned rules rather than browser state.
+- [ ] Replace primitive meshes with reproducible tower, town, raider, projectile, and terrain assets.
+- [ ] Add animation and effects driven from authoritative events/state.
+- [ ] Add camera presets and mobile-friendly interaction without coupling camera state to simulation.
+- [ ] Add terrain dressing outside the build plane while keeping the gameplay grid legible.
+- [ ] Preserve a performant fallback path for browsers/devices that cannot run the richest rendering path.
 
-## F. Repository hardening
+## F. Game progression
 
-- [ ] Generate and commit the canonical Rust lockfile for fully locked hosted Cargo commands.
-- [ ] Prune browser dependencies no longer needed by the replacement client and refresh the Bun lock deterministically.
-- [ ] Add repository-foundation/convergence checks from coding-tooling as the shared contract stabilizes.
-- [ ] Reassess wasm-pack pinning and installation strategy without weakening reproducibility.
+- [ ] Add build menus, unlocks, tower tech trees, and wave goals.
+- [ ] Add deterministic scenarios/maps with different grid shapes, gates, and town layouts.
+- [ ] Add score/replay persistence only after the combat loop is strong.
+- [ ] Add multiplayer/co-op authority boundaries only after deterministic local simulation is mature.
+
+## G. Repository hardening
+
+- [ ] Generate browser contract types from Rust instead of maintaining handwritten DTO types.
+- [ ] Keep dependency revisions immutable and update them through validated PRs.
+- [ ] Continue fast → integration → workflow → e2e promotion and Pages acceptance.
+- [ ] Add convergence checks as the new ECS/game boundaries stabilize.

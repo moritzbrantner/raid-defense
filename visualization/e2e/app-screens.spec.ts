@@ -3,55 +3,48 @@ import { expect, test } from "@playwright/test";
 async function openGame(page: import("@playwright/test").Page) {
   await page.goto("/");
   await expect(page.getByTestId("raid-defense-game")).toBeVisible();
-  await expect(page.getByTestId("day-value")).toHaveText("0");
+  await expect(page.getByTestId("world-3d")).toBeVisible();
+  await expect(page.getByTestId("gold-value")).toHaveText("120");
 }
 
-test("plays the opening fort claim and reinforcement flow", async ({ page }) => {
+test("builds a guard tower on the authoritative grid", async ({ page }) => {
   await openGame(page);
 
-  await expect(page.getByTestId("treasury-value")).toHaveText("100");
   const initialChecksum = await page.getByTestId("checksum").textContent();
+  await page.getByTestId("cell-x").fill("2");
+  await page.getByTestId("cell-z").fill("2");
+  await page.getByTestId("build-tower").click();
 
-  await page.getByTestId("build-fort").click();
-  await expect(page.getByTestId("event-feedback")).toContainText("fort upgraded to level 1");
-  await expect(page.getByTestId("treasury-value")).toHaveText("80");
-
-  await page.getByTestId("province-1").click();
-  await page.getByTestId("claim-province").click();
-  await expect(page.getByTestId("event-feedback")).toContainText("North March joined the frontier");
-  await expect(page.getByTestId("province-1")).toContainText("0 garrison · fort 0");
-
-  await page.getByTestId("recruit-five").click();
-  await expect(page.getByTestId("event-feedback")).toContainText("5 soldiers reinforced North March");
-  await expect(page.getByTestId("province-1")).toContainText("5 garrison");
-
+  await expect(page.getByTestId("event-feedback")).toContainText("Guard tower built at 2, 2");
+  await expect(page.getByTestId("gold-value")).toHaveText("95");
+  await expect(page.getByTestId("tower-count")).toHaveText("1");
   await expect(page.getByTestId("checksum")).not.toHaveText(initialChecksum ?? "");
 });
 
-test("surfaces the first seeded raid after three days", async ({ page }) => {
+test("runs a real-time wave from the map edges", async ({ page }) => {
   await openGame(page);
 
-  await page.getByTestId("advance-day").click();
-  await page.getByTestId("advance-day").click();
-  await page.getByTestId("advance-day").click();
+  await page.getByTestId("start-wave").click();
+  await expect(page.getByTestId("event-feedback")).toContainText("Wave 1 started from all four edges");
+  await expect(page.getByTestId("wave-value")).toHaveText("1");
 
-  await expect(page.getByTestId("day-value")).toHaveText("3");
-  await expect(page.getByTestId("raid-warning")).toContainText("Raid → Capital");
-  await expect(page.getByTestId("event-feedback")).toContainText("Raid sighted against Capital");
+  await expect
+    .poll(async () => Number(await page.getByTestId("tick-value").textContent()))
+    .toBeGreaterThan(0);
 });
 
-test("rejected frontier claim preserves authoritative checksum", async ({ page }) => {
+test("rejects building on the protected town without mutating state", async ({ page }) => {
   await openGame(page);
 
-  await page.getByTestId("province-2").click();
+  await page.getByTestId("cell-x").fill("8");
+  await page.getByTestId("cell-z").fill("6");
   const checksumBefore = await page.getByTestId("checksum").textContent();
-  const treasuryBefore = await page.getByTestId("treasury-value").textContent();
+  const goldBefore = await page.getByTestId("gold-value").textContent();
 
-  await page.getByTestId("claim-province").click();
+  await page.getByTestId("build-tower").click();
 
-  await expect(page.getByTestId("event-feedback")).toContainText(
-    "adjacent controlled fort with stable control",
-  );
+  await expect(page.getByTestId("event-feedback")).toContainText("reserved for the town or an edge spawn gate");
   await expect(page.getByTestId("checksum")).toHaveText(checksumBefore ?? "");
-  await expect(page.getByTestId("treasury-value")).toHaveText(treasuryBefore ?? "");
+  await expect(page.getByTestId("gold-value")).toHaveText(goldBefore ?? "");
+  await expect(page.getByTestId("tower-count")).toHaveText("0");
 });

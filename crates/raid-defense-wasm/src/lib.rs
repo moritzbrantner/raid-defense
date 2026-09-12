@@ -1,10 +1,12 @@
 #![forbid(unsafe_code)]
 
-use raid_defense_core::{Command, Event, GameError, GameState, Raid};
+use raid_defense_core::{
+    Command, EntityKind, Event, GameError, GameState, TOWER_COST,
+};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-const CONTRACT_VERSION: u8 = 1;
+const CONTRACT_VERSION: u8 = 2;
 
 #[wasm_bindgen]
 pub struct RaidDefenseGame {
@@ -36,19 +38,17 @@ impl RaidDefenseGame {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum CommandDto {
-    BuildFort { province: u8 },
-    Recruit { province: u8, soldiers: u16 },
-    ClaimProvince { province: u8 },
-    AdvanceDay,
+    PlaceTower { x: i16, z: i16 },
+    StartWave,
+    AdvanceTick,
 }
 
 impl From<CommandDto> for Command {
     fn from(value: CommandDto) -> Self {
         match value {
-            CommandDto::BuildFort { province } => Self::BuildFort { province },
-            CommandDto::Recruit { province, soldiers } => Self::Recruit { province, soldiers },
-            CommandDto::ClaimProvince { province } => Self::ClaimProvince { province },
-            CommandDto::AdvanceDay => Self::AdvanceDay,
+            CommandDto::PlaceTower { x, z } => Self::PlaceTower { x, z },
+            CommandDto::StartWave => Self::StartWave,
+            CommandDto::AdvanceTick => Self::AdvanceTick,
         }
     }
 }
@@ -70,44 +70,50 @@ struct ErrorDto {
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum EventDto {
-    FortBuilt { province: u8, level: u8 },
-    Recruited { province: u8, soldiers: u16 },
-    ProvinceClaimed { province: u8 },
-    DayAdvanced { day: u32 },
-    RaidSighted { raid: RaidDto },
-    RaidRepelled { province: u8, losses: u16 },
-    RaidBreached { province: u8, damage: u16 },
+    TowerBuilt { entity: u32, cell: CellDto },
+    WaveStarted { wave: u32, raiders: u16 },
+    TickAdvanced {
+        tick: u64,
+        shots: u16,
+        kills: u16,
+        town_damage: u16,
+    },
 }
 
 impl From<Event> for EventDto {
     fn from(value: Event) -> Self {
         match value {
-            Event::FortBuilt { province, level } => Self::FortBuilt { province, level },
-            Event::Recruited { province, soldiers } => Self::Recruited { province, soldiers },
-            Event::ProvinceClaimed { province } => Self::ProvinceClaimed { province },
-            Event::DayAdvanced { day } => Self::DayAdvanced { day },
-            Event::RaidSighted(raid) => Self::RaidSighted {
-                raid: RaidDto::from(raid),
+            Event::TowerBuilt { entity, cell } => Self::TowerBuilt {
+                entity,
+                cell: CellDto::from(cell),
             },
-            Event::RaidRepelled { province, losses } => Self::RaidRepelled { province, losses },
-            Event::RaidBreached { province, damage } => Self::RaidBreached { province, damage },
+            Event::WaveStarted { wave, raiders } => Self::WaveStarted { wave, raiders },
+            Event::TickAdvanced {
+                tick,
+                shots,
+                kills,
+                town_damage,
+            } => Self::TickAdvanced {
+                tick,
+                shots,
+                kills,
+                town_damage,
+            },
         }
     }
 }
 
 #[derive(Clone, Copy, Serialize)]
-struct RaidDto {
-    target: u8,
-    strength: u16,
-    eta_days: u8,
+struct CellDto {
+    x: i16,
+    z: i16,
 }
 
-impl From<Raid> for RaidDto {
-    fn from(value: Raid) -> Self {
+impl From<raid_defense_core::Cell> for CellDto {
+    fn from(value: raid_defense_core::Cell) -> Self {
         Self {
-            target: value.target,
-            strength: value.strength,
-            eta_days: value.eta_days,
+            x: value.x,
+            z: value.z,
         }
     }
 }
@@ -116,37 +122,50 @@ impl From<Raid> for RaidDto {
 struct SnapshotDto {
     contract_version: u8,
     seed: String,
-    day: u32,
-    treasury: u32,
-    influence: u32,
-    capital_health: u16,
+    tick: u64,
+    gold: u32,
+    wave: u32,
+    town_health: u16,
+    town_max_health: u16,
+    grid_width: i16,
+    grid_height: i16,
+    tower_cost: u32,
     checksum: String,
-    active_raid: Option<RaidDto>,
-    provinces: Vec<ProvinceDto>,
+    entities: Vec<EntityDto>,
 }
 
 impl From<&GameState> for SnapshotDto {
     fn from(state: &GameState) -> Self {
+        let snapshot = state.snapshot();
         Self {
             contract_version: CONTRACT_VERSION,
-            seed: state.seed().to_string(),
-            day: state.day(),
-            treasury: state.treasury(),
-            influence: state.influence(),
-            capital_health: state.capital_health(),
+            seed: snapshot.seed.to_string(),
+            tick: snapshot.tick,
+            gold: snapshot.gold,
+            wave: snapshot.wave,
+            town_health: snapshot.town_health,
+            town_max_health: snapshot.town_max_health,
+            grid_width: snapshot.grid_width,
+            grid_height: snapshot.grid_height,
+            tower_cost: TOWER_COST,
             checksum: state.checksum().to_string(),
-            active_raid: state.active_raid().map(RaidDto::from),
-            provinces: state
-                .provinces()
-                .iter()
-                .map(|province| ProvinceDto {
-                    id: province.id,
-                    name: province.name,
-                    controlled: province.controlled,
-                    fort_level: province.fort_level,
-                    garrison: province.garrison,
-                    control: province.control,
-                    threat: province.threat,
+            entities: snapshot
+                .entities
+                .into_iter()
+                .map(|entity| EntityDto {
+                    id: entity.id,
+                    kind: match entity.kind {
+                        EntityKind::Town => "town",
+                        EntityKind::Tower => "tower",
+                        EntityKind::Raider => "raider",
+                    },
+                    x_milli: entity.x_milli,
+                    z_milli: entity.z_milli,
+                    cell: CellDto::from(entity.cell),
+                    health: entity.health,
+                    max_health: entity.max_health,
+                    attack_damage: entity.attack_damage,
+                    attack_range_milli: entity.attack_range_milli,
                 })
                 .collect(),
         }
@@ -154,14 +173,16 @@ impl From<&GameState> for SnapshotDto {
 }
 
 #[derive(Serialize)]
-struct ProvinceDto {
-    id: u8,
-    name: &'static str,
-    controlled: bool,
-    fort_level: u8,
-    garrison: u16,
-    control: u8,
-    threat: u8,
+struct EntityDto {
+    id: u32,
+    kind: &'static str,
+    x_milli: i32,
+    z_milli: i32,
+    cell: CellDto,
+    health: u16,
+    max_health: u16,
+    attack_damage: u16,
+    attack_range_milli: i32,
 }
 
 fn dispatch_json(state: &mut GameState, command_json: &str) -> String {
@@ -202,14 +223,13 @@ fn dispatch_json(state: &mut GameState, command_json: &str) -> String {
 
 const fn error_code(error: GameError) -> &'static str {
     match error {
-        GameError::UnknownProvince => "unknown_province",
-        GameError::ProvinceAlreadyControlled => "province_already_controlled",
-        GameError::ProvinceNotControlled => "province_not_controlled",
-        GameError::FrontierNotConnected => "frontier_not_connected",
-        GameError::FortAtMaximumLevel => "fort_at_maximum_level",
-        GameError::InvalidRecruitment => "invalid_recruitment",
-        GameError::GarrisonCapacityExceeded => "garrison_capacity_exceeded",
-        GameError::InsufficientTreasury => "insufficient_treasury",
+        GameError::OutOfBounds => "out_of_bounds",
+        GameError::CellOccupied => "cell_occupied",
+        GameError::ProtectedCell => "protected_cell",
+        GameError::PathBlocked => "path_blocked",
+        GameError::InsufficientGold => "insufficient_gold",
+        GameError::RaidersStillActive => "raiders_still_active",
+        GameError::GameOver => "game_over",
     }
 }
 
@@ -246,11 +266,14 @@ mod tests {
     #[test]
     fn adapter_checksum_matches_native_core_after_same_command() {
         let mut adapted = GameState::new(7);
-        let response = dispatch_json(&mut adapted, r#"{"type":"build_fort","province":0}"#);
+        let response = dispatch_json(
+            &mut adapted,
+            r#"{"type":"place_tower","x":2,"z":2}"#,
+        );
 
         let mut native = GameState::new(7);
         native
-            .apply(Command::BuildFort { province: 0 })
+            .apply(Command::PlaceTower { x: 2, z: 2 })
             .expect("native command should succeed");
 
         assert_eq!(
@@ -265,11 +288,14 @@ mod tests {
         let mut state = GameState::new(9);
         let before = state.checksum();
 
-        let response = dispatch_json(&mut state, r#"{"type":"claim_province","province":2}"#);
+        let response = dispatch_json(
+            &mut state,
+            r#"{"type":"place_tower","x":8,"z":6}"#,
+        );
         let value: Value = serde_json::from_str(&response).expect("response should be JSON");
 
         assert_eq!(value["ok"], false);
-        assert_eq!(value["error"]["code"], "frontier_not_connected");
+        assert_eq!(value["error"]["code"], "protected_cell");
         assert_eq!(checksum_from_response(&response), before.to_string());
         assert_eq!(state.checksum(), before);
     }

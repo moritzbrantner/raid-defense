@@ -1,60 +1,64 @@
 # Raid Defense
 
-A deterministic frontier-defense strategy game with Rust-authoritative rules, an ECS-backed runtime, a thin WASM contract boundary, and a browser client that presents rather than reimplements outcomes.
+A deterministic Warcraft III-style maul/tower-defense experiment: build towers on a 2D gameplay grid while the battlefield is rendered as a 3D world.
 
-## Current playable slice
+## Current MVP
 
-The rebuilt game currently includes:
+The playable slice is intentionally small but architectural rather than mocked:
 
-- seeded province state across a frontier;
-- fort construction and garrison recruitment;
-- connected frontier claims;
-- deterministic raid scheduling and resolution;
-- replay from an ordered command stream;
-- an authoritative state checksum;
-- fail-closed command validation with no mutation on rejection;
-- ECS-backed province entities using the shared `ecs-lab` sparse-set runtime;
-- browser controls for selecting provinces, fortifying, recruiting, claiming territory, advancing time, and responding to raid feedback.
+- a 17×13 authoritative build grid;
+- a protected 3×3 town at the center;
+- one raider gate on each edge of the map;
+- guard towers placed directly on grid cells;
+- deterministic shortest-path routing from every gate to the town;
+- maul-style maze building: towers may redirect raiders but cannot seal all routes;
+- fixed-point raider movement;
+- ECS-owned transforms, health, attacks, buildings, raiders, and movement;
+- deterministic tower targeting, damage, kills, and gold rewards;
+- a React Three Fiber client that renders the authoritative Rust/WASM snapshot in 3D;
+- GitHub Pages deployment with browser acceptance against the real WASM game.
 
 ## Architecture
 
 ```text
-crates/raid-defense-core   deterministic domain rules and outcomes
-          |
-          v
-crates/raid-defense-ecs    runtime composition: ecs-lab entities/layout + domain rules
-          |
-          v
-crates/raid-defense-wasm   versioned serialization/browser boundary only
-          |
-          v
-visualization/             input and presentation; deployed with GitHub Pages
+rust-kernels / collection-kernels
+        SparseSet + SparseMap<T>
+                 |
+                 v
+crates/raid-defense-core
+        authoritative ECS + game systems
+                 |
+                 v
+crates/raid-defense-wasm
+        versioned JSON translation only
+                 |
+                 v
+visualization/
+        3D rendering + player input only
 ```
 
-`raid-defense-ecs` pins the tested `ecs-lab` sparse-set/workload crates. The shared ECS currently owns province entity identity and deterministic layout/topology data; Raid Defense-specific fort, control, economy, and raid semantics remain in `raid-defense-core` instead of being forced into generic position/velocity components.
+`raid-defense-core` composes typed sparse component stores over the low-level reusable collection kernels. There is deliberately no second game implementation in JavaScript and no dependency on `ecs-lab` as an application library; `ecs-lab` remains the experiment/reference harness for ECS techniques.
 
-The browser does not recompute simulation outcomes that belong to Rust. The existing Pages client is the MVP surface and runs the real WASM runtime.
+## ECS direction
+
+The current component boundary is designed for the scale of the intended game:
+
+- `Transform` — authoritative 2D world position in fixed-point units, rendered in 3D;
+- `Health` — damageable town, towers, raiders, and future units;
+- `Attack` — damage/range/cooldown for towers and raiders;
+- `Building` — town and tower occupancy on the gameplay grid;
+- `Raider` — wave/spawn identity;
+- `Movement` — deterministic cell-to-cell motion.
+
+Future towers, projectiles, effects, units, status effects, upgrades, and destructible objects should be added as components/systems rather than growing entity-specific inheritance trees.
 
 ## Validation
 
 Hosted validation promotes changes in this order:
 
-1. `fast` — Rust formatting, Clippy with warnings denied, core/ECS runtime/adapter tests.
-2. `integration` — deterministic opening-defense command trace.
-3. `workflow` — frozen Bun install, browser lint, release WASM generation, strict TypeScript, and Vite build.
-4. `e2e` — Chromium/Playwright acceptance against the real WASM game.
+1. `fast` — Rust format, Clippy, unit and adapter tests.
+2. `integration` — deterministic build/wave replay traces and transactional rejection checks.
+3. `workflow` — frozen browser install, lint, release WASM generation, strict TypeScript, and Vite build.
+4. `e2e` — Playwright against the real WASM simulation and 3D client.
 
-GitHub Pages is the integrated browser surface after merge.
-
-## Local commands
-
-```bash
-cargo fmt --all -- --check
-cargo clippy --all-targets -- -D warnings
-cargo test --all-targets
-
-cd visualization
-bun install --frozen-lockfile
-bun run build
-bun run e2e
-```
+GitHub Pages is the integrated playable surface after merge.
