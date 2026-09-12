@@ -38,8 +38,13 @@ impl Policy {
             return None;
         }
 
-        let targets =
-            PlanTargets::for_policy(self, state.completed_waves(), state.houses_unlocked());
+        let rules = state.rules();
+        let targets = PlanTargets::for_policy(
+            self,
+            state.completed_waves(),
+            state.houses_unlocked(),
+            rules.buildings.house.unlock_completed_waves,
+        );
 
         match self {
             Self::Passive => None,
@@ -71,10 +76,17 @@ struct PlanTargets {
 }
 
 impl PlanTargets {
-    fn for_policy(policy: Policy, completed_waves: u32, houses_unlocked: bool) -> Self {
+    fn for_policy(
+        policy: Policy,
+        completed_waves: u32,
+        houses_unlocked: bool,
+        house_unlock_completed_waves: u32,
+    ) -> Self {
         let wave_step = usize::try_from(completed_waves.min(12)).expect("wave step is bounded");
+        let waves_since_house_unlock =
+            completed_waves.saturating_sub(house_unlock_completed_waves);
         let houses = if houses_unlocked {
-            1 + usize::try_from(completed_waves.saturating_sub(10) / 5)
+            1 + usize::try_from(waves_since_house_unlock / 5)
                 .expect("house step fits usize")
                 .min(2)
         } else {
@@ -670,6 +682,12 @@ mod tests {
                 policy: Policy::Defense,
             })
         );
+    }
+
+    #[test]
+    fn house_targets_follow_active_unlock_rule() {
+        let targets = PlanTargets::for_policy(Policy::Balanced, 25, true, 20);
+        assert_eq!(targets.houses, 2);
     }
 
     #[test]
