@@ -1,3 +1,6 @@
+use super::*;
+
+impl GameState {
     fn place_tower(&mut self, cell: Cell, archetype: TowerArchetype) -> Result<Event, GameError> {
         self.validate_build_cell(cell)?;
         let cost = self.rules.tower(archetype).build_cost;
@@ -351,3 +354,4 @@
             completed_wave,
         }
     }
+}
