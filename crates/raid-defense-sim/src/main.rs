@@ -83,8 +83,7 @@ impl PlanTargets {
         house_unlock_completed_waves: u32,
     ) -> Self {
         let wave_step = usize::try_from(completed_waves.min(12)).expect("wave step is bounded");
-        let waves_since_house_unlock =
-            completed_waves.saturating_sub(house_unlock_completed_waves);
+        let waves_since_house_unlock = completed_waves.saturating_sub(house_unlock_completed_waves);
         let houses = if houses_unlocked {
             1 + usize::try_from(waves_since_house_unlock / 5)
                 .expect("house step fits usize")
