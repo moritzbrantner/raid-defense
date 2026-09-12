@@ -1,3 +1,6 @@
+use super::*;
+
+impl GameState {
     fn entity_snapshot(&self, entity: EntityId) -> Option<EntitySnapshot> {
         let key = entity_key(entity);
         let transform = *self.transforms.get(key)?;
@@ -241,9 +244,11 @@
                             })
                     },
                 ),
-                PersonState::ToConstructionSite => person.target_entity.map_or_else(Vec::new, |site| {
-                    self.construction_goal_cells(site, extra_block)
-                }),
+                PersonState::ToConstructionSite => {
+                    person.target_entity.map_or_else(Vec::new, |site| {
+                        self.construction_goal_cells(site, extra_block)
+                    })
+                }
             };
             !goals.is_empty()
                 && self
@@ -322,3 +327,4 @@
     fn path_cell_blocked(&self, cell: Cell, extra_block: Option<Cell>) -> bool {
         !is_town_cell(cell) && (extra_block == Some(cell) || self.cell_has_building(cell))
     }
+}
