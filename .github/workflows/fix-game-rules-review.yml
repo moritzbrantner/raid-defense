@@ -23,57 +23,59 @@ jobs:
       - name: Route raid damage increment through rules
         run: |
           python3 - <<'PY'
+          import re
           from pathlib import Path
 
           path = Path("crates/raid-defense-core/src/lib.rs")
           text = path.read_text()
 
-          old = '''        let damage_bonus = u16::try_from(self.wave / self.rules.raids.damage_increase_every_waves)
-              .unwrap_or(u16::MAX);
-          '''
-          new = '''        let damage_steps =
-              u16::try_from(self.wave / self.rules.raids.damage_increase_every_waves)
-                  .unwrap_or(u16::MAX);
-          let damage_bonus = damage_steps.saturating_mul(self.rules.raids.damage_increase_amount);
-          '''
-          if text.count(old) != 1:
-              raise SystemExit("expected exactly one raid damage scaling block")
-          text = text.replace(old, new, 1)
+          pattern = re.compile(
+              r"        let damage_bonus = u16::try_from\(self\.wave / self\.rules\.raids\.damage_increase_every_waves\)\n"
+              r"\s+\.unwrap_or\(u16::MAX\);\n"
+          )
+          replacement = (
+              "        let damage_steps =\n"
+              "            u16::try_from(self.wave / self.rules.raids.damage_increase_every_waves)\n"
+              "                .unwrap_or(u16::MAX);\n"
+              "        let damage_bonus =\n"
+              "            damage_steps.saturating_mul(self.rules.raids.damage_increase_amount);\n"
+          )
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f"expected exactly one raid damage scaling block, found {count}")
 
-          old_test = '''        rules.buildings.house.people_added = 1;
-              rules.cycle.day_length_ticks = 2;
-          '''
-          new_test = '''        rules.buildings.house.people_added = 1;
-              rules.cycle.day_length_ticks = 2;
-              rules.raids.damage_increase_every_waves = 1;
-              rules.raids.damage_increase_amount = 7;
-          '''
+          old_test = (
+              "        rules.buildings.house.people_added = 1;\n"
+              "        rules.cycle.day_length_ticks = 2;\n"
+          )
+          new_test = old_test + (
+              "        rules.raids.damage_increase_every_waves = 1;\n"
+              "        rules.raids.damage_increase_amount = 7;\n"
+          )
           if text.count(old_test) != 1:
-              raise SystemExit("custom-rules test setup was not found")
+              raise SystemExit("custom-rules test setup was not found exactly once")
           text = text.replace(old_test, new_test, 1)
 
-          old_assert = '''        assert_eq!(
-              state.raider_count(),
-              usize::from(rules.raids.raiders_per_wave)
-          );
-          '''
-          new_assert = '''        assert_eq!(
-              state.raider_count(),
-              usize::from(rules.raids.raiders_per_wave)
-          );
-          for entity in state.raiders.keys().map(key_entity) {
-              assert_eq!(
-                  state
-                      .attacks
-                      .get(entity_key(entity))
-                      .expect("spawned raiders have an attack")
-                      .damage,
-                  rules.raids.base_damage + rules.raids.damage_increase_amount
-              );
-          }
-          '''
+          old_assert = (
+              "        assert_eq!(\n"
+              "            state.raider_count(),\n"
+              "            usize::from(rules.raids.raiders_per_wave)\n"
+              "        );\n"
+          )
+          new_assert = old_assert + (
+              "        for entity in state.raiders.keys().map(key_entity) {\n"
+              "            assert_eq!(\n"
+              "                state\n"
+              "                    .attacks\n"
+              "                    .get(entity_key(entity))\n"
+              "                    .expect(\"spawned raiders have an attack\")\n"
+              "                    .damage,\n"
+              "                rules.raids.base_damage + rules.raids.damage_increase_amount\n"
+              "            );\n"
+              "        }\n"
+          )
           if text.count(old_assert) != 1:
-              raise SystemExit("custom-rules raider assertion was not found")
+              raise SystemExit("custom-rules raider assertion was not found exactly once")
           text = text.replace(old_assert, new_assert, 1)
 
           path.write_text(text)
