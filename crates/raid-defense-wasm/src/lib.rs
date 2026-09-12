@@ -2,12 +2,13 @@
 
 use raid_defense_core::{
     ARROW_TOWER_COST, CANNON_TOWER_COST, Command, EntityKind, Event, GameError, GameState,
-    MAX_TOWER_LEVEL, TowerArchetype,
+    MAX_TOWER_LEVEL, ResourceKind, SAWMILL_COST, SAWMILL_INTERVAL_TICKS, SAWMILL_OUTPUT,
+    TowerArchetype,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-const CONTRACT_VERSION: u8 = 3;
+const CONTRACT_VERSION: u8 = 4;
 
 #[wasm_bindgen]
 pub struct RaidDefenseGame {
@@ -60,6 +61,10 @@ enum CommandDto {
         z: i16,
         archetype: TowerArchetypeDto,
     },
+    PlaceSawmill {
+        x: i16,
+        z: i16,
+    },
     UpgradeTower {
         x: i16,
         z: i16,
@@ -76,6 +81,7 @@ impl From<CommandDto> for Command {
                 z,
                 archetype: archetype.into(),
             },
+            CommandDto::PlaceSawmill { x, z } => Self::PlaceSawmill { x, z },
             CommandDto::UpgradeTower { x, z } => Self::UpgradeTower { x, z },
             CommandDto::StartWave => Self::StartWave,
             CommandDto::AdvanceTick => Self::AdvanceTick,
@@ -105,12 +111,18 @@ enum EventDto {
         cell: CellDto,
         archetype: &'static str,
         level: u8,
+        wood_cost: u32,
+    },
+    SawmillBuilt {
+        entity: u32,
+        cell: CellDto,
+        wood_cost: u32,
     },
     TowerUpgraded {
         entity: u32,
         archetype: &'static str,
         level: u8,
-        cost: u32,
+        wood_cost: u32,
     },
     WaveStarted {
         wave: u32,
@@ -121,6 +133,8 @@ enum EventDto {
         shots: u16,
         impacts: u16,
         kills: u16,
+        wood_produced: u16,
+        wood_stolen: u16,
         town_damage: u16,
     },
 }
@@ -133,22 +147,33 @@ impl From<Event> for EventDto {
                 cell,
                 archetype,
                 level,
+                wood_cost,
             } => Self::TowerBuilt {
                 entity,
                 cell: CellDto::from(cell),
                 archetype: tower_archetype_label(archetype),
                 level,
+                wood_cost,
+            },
+            Event::SawmillBuilt {
+                entity,
+                cell,
+                wood_cost,
+            } => Self::SawmillBuilt {
+                entity,
+                cell: CellDto::from(cell),
+                wood_cost,
             },
             Event::TowerUpgraded {
                 entity,
                 archetype,
                 level,
-                cost,
+                wood_cost,
             } => Self::TowerUpgraded {
                 entity,
                 archetype: tower_archetype_label(archetype),
                 level,
-                cost,
+                wood_cost,
             },
             Event::WaveStarted { wave, raiders } => Self::WaveStarted { wave, raiders },
             Event::TickAdvanced {
@@ -156,12 +181,16 @@ impl From<Event> for EventDto {
                 shots,
                 impacts,
                 kills,
+                wood_produced,
+                wood_stolen,
                 town_damage,
             } => Self::TickAdvanced {
                 tick,
                 shots,
                 impacts,
                 kills,
+                wood_produced,
+                wood_stolen,
                 town_damage,
             },
         }
@@ -188,12 +217,16 @@ struct SnapshotDto {
     contract_version: u8,
     seed: String,
     tick: u64,
-    gold: u32,
+    wood: u32,
+    wood_capacity: u32,
     wave: u32,
     town_health: u16,
     town_max_health: u16,
     grid_width: i16,
     grid_height: i16,
+    sawmill_cost: u32,
+    sawmill_output: u16,
+    sawmill_interval_ticks: u16,
     arrow_tower_cost: u32,
     cannon_tower_cost: u32,
     max_tower_level: u8,
@@ -208,12 +241,16 @@ impl From<&GameState> for SnapshotDto {
             contract_version: CONTRACT_VERSION,
             seed: snapshot.seed.to_string(),
             tick: snapshot.tick,
-            gold: snapshot.gold,
+            wood: snapshot.wood,
+            wood_capacity: snapshot.wood_capacity,
             wave: snapshot.wave,
             town_health: snapshot.town_health,
             town_max_health: snapshot.town_max_health,
             grid_width: snapshot.grid_width,
             grid_height: snapshot.grid_height,
+            sawmill_cost: SAWMILL_COST,
+            sawmill_output: SAWMILL_OUTPUT,
+            sawmill_interval_ticks: SAWMILL_INTERVAL_TICKS,
             arrow_tower_cost: ARROW_TOWER_COST,
             cannon_tower_cost: CANNON_TOWER_COST,
             max_tower_level: MAX_TOWER_LEVEL,
@@ -224,8 +261,9 @@ impl From<&GameState> for SnapshotDto {
                 .map(|entity| EntityDto {
                     id: entity.id,
                     kind: match entity.kind {
-                        EntityKind::Town => "town",
+                        EntityKind::TownHall => "town_hall",
                         EntityKind::Tower => "tower",
+                        EntityKind::Sawmill => "sawmill",
                         EntityKind::Raider => "raider",
                         EntityKind::Projectile => "projectile",
                     },
@@ -240,6 +278,12 @@ impl From<&GameState> for SnapshotDto {
                     tower_level: entity.tower_level,
                     upgrade_cost: entity.upgrade_cost,
                     projectile_target: entity.projectile_target,
+                    stored_wood: entity.stored_wood,
+                    wood_capacity: entity.wood_capacity,
+                    production_resource: entity.production_resource.map(resource_kind_label),
+                    production_amount: entity.production_amount,
+                    production_interval_ticks: entity.production_interval_ticks,
+                    production_progress_ticks: entity.production_progress_ticks,
                 })
                 .collect(),
         }
@@ -261,6 +305,12 @@ struct EntityDto {
     tower_level: u8,
     upgrade_cost: Option<u32>,
     projectile_target: Option<u32>,
+    stored_wood: u32,
+    wood_capacity: u32,
+    production_resource: Option<&'static str>,
+    production_amount: u16,
+    production_interval_ticks: u16,
+    production_progress_ticks: u16,
 }
 
 fn dispatch_json(state: &mut GameState, command_json: &str) -> String {
@@ -306,13 +356,19 @@ const fn tower_archetype_label(archetype: TowerArchetype) -> &'static str {
     }
 }
 
+const fn resource_kind_label(resource: ResourceKind) -> &'static str {
+    match resource {
+        ResourceKind::Wood => "wood",
+    }
+}
+
 const fn error_code(error: GameError) -> &'static str {
     match error {
         GameError::OutOfBounds => "out_of_bounds",
         GameError::CellOccupied => "cell_occupied",
         GameError::ProtectedCell => "protected_cell",
         GameError::PathBlocked => "path_blocked",
-        GameError::InsufficientGold => "insufficient_gold",
+        GameError::InsufficientWood => "insufficient_wood",
         GameError::NoTower => "no_tower",
         GameError::MaxTowerLevel => "max_tower_level",
         GameError::RaidersStillActive => "raiders_still_active",
@@ -351,20 +407,13 @@ mod tests {
     }
 
     #[test]
-    fn adapter_checksum_matches_native_core_after_same_command() {
+    fn sawmill_contract_matches_native_core() {
         let mut adapted = GameState::new(7);
-        let response = dispatch_json(
-            &mut adapted,
-            r#"{"type":"place_tower","x":2,"z":2,"archetype":"arrow"}"#,
-        );
+        let response = dispatch_json(&mut adapted, r#"{"type":"place_sawmill","x":2,"z":2}"#);
 
         let mut native = GameState::new(7);
         native
-            .apply(Command::PlaceTower {
-                x: 2,
-                z: 2,
-                archetype: TowerArchetype::Arrow,
-            })
+            .apply(Command::PlaceSawmill { x: 2, z: 2 })
             .expect("native command should succeed");
 
         assert_eq!(
@@ -375,22 +424,22 @@ mod tests {
     }
 
     #[test]
-    fn upgrade_contract_maps_to_native_command() {
+    fn snapshot_exposes_town_hall_wood_and_sawmill_production() {
         let mut state = GameState::new(7);
-        let built = dispatch_json(
-            &mut state,
-            r#"{"type":"place_tower","x":2,"z":2,"archetype":"arrow"}"#,
-        );
-        let built_value: Value =
-            serde_json::from_str(&built).expect("build response should be JSON");
-        assert_eq!(built_value["ok"], true);
+        state
+            .apply(Command::PlaceSawmill { x: 2, z: 2 })
+            .expect("sawmill should build");
+        let snapshot = SnapshotDto::from(&state);
 
-        let upgraded = dispatch_json(&mut state, r#"{"type":"upgrade_tower","x":2,"z":2}"#);
-        let upgraded_value: Value =
-            serde_json::from_str(&upgraded).expect("upgrade response should be JSON");
-        assert_eq!(upgraded_value["ok"], true);
-        assert_eq!(upgraded_value["event"]["type"], "tower_upgraded");
-        assert_eq!(upgraded_value["event"]["level"], 2);
+        assert_eq!(snapshot.wood, 80);
+        assert!(snapshot.entities.iter().any(|entity| {
+            entity.kind == "town_hall" && entity.stored_wood == 80 && entity.wood_capacity > 80
+        }));
+        assert!(snapshot.entities.iter().any(|entity| {
+            entity.kind == "sawmill"
+                && entity.production_resource == Some("wood")
+                && entity.production_amount > 0
+        }));
     }
 
     #[test]
@@ -411,26 +460,23 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_exposes_projectile_entities_after_a_shot() {
+    fn tick_event_reports_resource_theft() {
         let mut state = GameState::new(11);
-        state
-            .apply(Command::PlaceTower {
-                x: 7,
-                z: 2,
-                archetype: TowerArchetype::Arrow,
-            })
-            .expect("tower should build");
         state.apply(Command::StartWave).expect("wave should start");
-        state
-            .apply(Command::AdvanceTick)
-            .expect("tick should create projectile");
-
-        let snapshot = SnapshotDto::from(&state);
-        assert!(
-            snapshot
-                .entities
-                .iter()
-                .any(|entity| entity.kind == "projectile" && entity.projectile_target.is_some())
-        );
+        let mut stolen = 0_u16;
+        for _ in 0..40 {
+            let response = dispatch_json(&mut state, r#"{"type":"advance_tick"}"#);
+            let value: Value = serde_json::from_str(&response).expect("tick response should be JSON");
+            stolen = stolen.saturating_add(
+                value["event"]["wood_stolen"]
+                    .as_u64()
+                    .and_then(|value| u16::try_from(value).ok())
+                    .unwrap_or(0),
+            );
+            if state.raider_count() == 0 {
+                break;
+            }
+        }
+        assert!(stolen > 0);
     }
 }
