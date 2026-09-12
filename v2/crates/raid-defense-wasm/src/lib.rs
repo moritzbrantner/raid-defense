@@ -253,7 +253,10 @@ mod tests {
             .apply(Command::BuildFort { province: 0 })
             .expect("native command should succeed");
 
-        assert_eq!(checksum_from_response(&response), native.checksum().to_string());
+        assert_eq!(
+            checksum_from_response(&response),
+            native.checksum().to_string()
+        );
         assert_eq!(adapted, native);
     }
 
@@ -262,10 +265,7 @@ mod tests {
         let mut state = GameState::new(9);
         let before = state.checksum();
 
-        let response = dispatch_json(
-            &mut state,
-            r#"{"type":"claim_province","province":2}"#,
-        );
+        let response = dispatch_json(&mut state, r#"{"type":"claim_province","province":2}"#);
         let value: Value = serde_json::from_str(&response).expect("response should be JSON");
 
         assert_eq!(value["ok"], false);
