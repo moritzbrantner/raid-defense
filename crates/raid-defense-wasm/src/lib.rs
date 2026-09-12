@@ -308,11 +308,7 @@ impl From<&GameState> for SnapshotDto {
             cannon_tower_cost: CANNON_TOWER_COST,
             max_tower_level: MAX_TOWER_LEVEL,
             checksum: state.checksum().to_string(),
-            entities: snapshot
-                .entities
-                .into_iter()
-                .map(EntityDto::from)
-                .collect(),
+            entities: snapshot.entities.into_iter().map(EntityDto::from).collect(),
         }
     }
 }
