@@ -49,7 +49,10 @@ fn sawmill_requires_people_to_deliver_wood_to_town_hall() {
         }
     }
 
-    assert!(state.wood() > after_build, "a carrier should eventually deliver produced wood");
+    assert!(
+        state.wood() > after_build,
+        "a carrier should eventually deliver produced wood"
+    );
     assert_eq!(state.people_count(), 2);
 }
 
