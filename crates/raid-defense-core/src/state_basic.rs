@@ -1,3 +1,6 @@
+use super::*;
+
+impl GameState {
     #[must_use]
     pub fn new(seed: u64) -> Self {
         Self::with_rules(seed, STANDARD_RULES)
@@ -362,3 +365,4 @@
 
         hash
     }
+}
