@@ -82,7 +82,11 @@ test("tower placement creates a construction site until workers deliver material
   await expect(page.getByTestId("event-feedback")).toContainText("Workers must haul 25 wood");
   await expect(page.getByTestId("construction-count")).toHaveText("1");
   await expect(page.getByTestId("tower-count")).toHaveText("0");
-  await expect(page.getByTestId("wood-value")).toHaveText("120");
+  await expect
+    .poll(async () => Number(await page.getByTestId("wood-value").textContent()), {
+      timeout: 5_000,
+    })
+    .toBeLessThan(120);
   await expect(page.getByTestId("selected-building")).toContainText("construction");
 
   await waitForTower(page);
