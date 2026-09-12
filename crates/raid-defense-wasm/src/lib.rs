@@ -394,7 +394,7 @@ impl From<raid_defense_core::EntitySnapshot> for EntityDto {
             z_milli: entity.z_milli,
             cell: CellDto::from(entity.cell),
             health: entity.health,
-            max_health: entity.maximum,
+            max_health: entity.max_health,
             attack_damage: entity.attack_damage,
             attack_range_milli: entity.attack_range_milli,
             tower_archetype: entity.tower_archetype.map(tower_archetype_label),
