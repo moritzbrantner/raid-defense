@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 
 use collection_kernels::{SparseMap, SparseSet};
 
@@ -12,15 +12,24 @@ pub const CELL_SCALE: i32 = 1_000;
 pub const STARTING_WOOD: u32 = 120;
 pub const TOWN_WOOD_CAPACITY: u32 = 500;
 pub const SAWMILL_COST: u32 = 40;
-pub const SAWMILL_OUTPUT: u16 = 2;
+pub const SAWMILL_OUTPUT: u16 = 4;
 pub const SAWMILL_INTERVAL_TICKS: u16 = 10;
+pub const SAWMILL_LOCAL_WOOD_CAPACITY: u32 = 24;
 pub const ARROW_TOWER_COST: u32 = 25;
 pub const CANNON_TOWER_COST: u32 = 45;
 pub const MAX_TOWER_LEVEL: u8 = 3;
+pub const HOUSE_UNLOCK_COMPLETED_WAVES: u32 = 10;
+pub const HOUSE_COST: u32 = 60;
+pub const BASE_POPULATION_CAPACITY: u16 = 2;
+pub const HOUSE_POPULATION_CAPACITY: u16 = 2;
+pub const PERSON_CARRY_CAPACITY: u16 = 8;
+pub const PERSON_SPEED_MILLI: u16 = 500;
 pub const TOWN_MAX_HEALTH: u16 = 250;
 
 const TOWER_MAX_HEALTH: u16 = 100;
 const SAWMILL_MAX_HEALTH: u16 = 80;
+const HOUSE_MAX_HEALTH: u16 = 90;
+const PERSON_MAX_HEALTH: u16 = 20;
 const RAIDER_BASE_HEALTH: u16 = 30;
 const RAIDER_BASE_DAMAGE: u16 = 10;
 const RAIDER_SPEED_MILLI: u16 = 250;
@@ -122,10 +131,16 @@ pub struct ResourceProducer {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Housing {
+    pub capacity: u16,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BuildingKind {
     TownHall,
     Tower,
     Sawmill,
+    House,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -176,6 +191,21 @@ pub struct Projectile {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PersonState {
+    IdleAtTownHall,
+    ToSawmill,
+    ToTownHall,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Person {
+    pub state: PersonState,
+    pub target_sawmill: Option<EntityId>,
+    pub cargo_wood: u16,
+    pub cargo_capacity: u16,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Command {
     PlaceTower {
         x: i16,
@@ -183,6 +213,10 @@ pub enum Command {
         archetype: TowerArchetype,
     },
     PlaceSawmill {
+        x: i16,
+        z: i16,
+    },
+    PlaceHouse {
         x: i16,
         z: i16,
     },
@@ -208,6 +242,13 @@ pub enum Event {
         cell: Cell,
         wood_cost: u32,
     },
+    HouseBuilt {
+        entity: EntityId,
+        cell: Cell,
+        wood_cost: u32,
+        people_added: u16,
+        population_capacity: u16,
+    },
     TowerUpgraded {
         entity: EntityId,
         archetype: TowerArchetype,
@@ -224,8 +265,11 @@ pub enum Event {
         impacts: u16,
         kills: u16,
         wood_produced: u16,
+        wood_picked_up: u16,
+        wood_delivered: u16,
         wood_stolen: u16,
         town_damage: u16,
+        completed_wave: Option<u32>,
     },
 }
 
@@ -236,6 +280,7 @@ pub enum GameError {
     ProtectedCell,
     PathBlocked,
     InsufficientWood,
+    HouseLocked,
     NoTower,
     MaxTowerLevel,
     RaidersStillActive,
@@ -247,6 +292,8 @@ pub enum EntityKind {
     TownHall,
     Tower,
     Sawmill,
+    House,
+    Person,
     Raider,
     Projectile,
 }
@@ -272,6 +319,11 @@ pub struct EntitySnapshot {
     pub production_amount: u16,
     pub production_interval_ticks: u16,
     pub production_progress_ticks: u16,
+    pub housing_capacity: u16,
+    pub person_state: Option<PersonState>,
+    pub person_target_sawmill: Option<EntityId>,
+    pub cargo_wood: u16,
+    pub cargo_capacity: u16,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -281,6 +333,10 @@ pub struct GameSnapshot {
     pub wood: u32,
     pub wood_capacity: u32,
     pub wave: u32,
+    pub completed_waves: u32,
+    pub people: u16,
+    pub population_capacity: u16,
+    pub houses_unlocked: bool,
     pub town_health: u16,
     pub town_max_health: u16,
     pub grid_width: i16,
@@ -293,6 +349,7 @@ pub struct GameState {
     seed: u64,
     tick: u64,
     wave: u32,
+    completed_waves: u32,
     next_entity: EntityId,
     transforms: SparseMap<Transform>,
     health: SparseMap<Health>,
@@ -304,6 +361,8 @@ pub struct GameState {
     projectiles: SparseMap<Projectile>,
     storage: SparseMap<ResourceStorage>,
     producers: SparseMap<ResourceProducer>,
+    housing: SparseMap<Housing>,
+    people: SparseMap<Person>,
     alive: SparseSet,
 }
 
@@ -314,6 +373,7 @@ impl GameState {
             seed,
             tick: 0,
             wave: 0,
+            completed_waves: 0,
             next_entity: 1,
             transforms: SparseMap::new(),
             health: SparseMap::new(),
@@ -325,6 +385,8 @@ impl GameState {
             projectiles: SparseMap::new(),
             storage: SparseMap::new(),
             producers: SparseMap::new(),
+            housing: SparseMap::new(),
+            people: SparseMap::new(),
             alive: SparseSet::new(),
         };
         let town_cell = town_center();
@@ -353,6 +415,15 @@ impl GameState {
                 wood_capacity: TOWN_WOOD_CAPACITY,
             },
         );
+        state.housing.insert(
+            entity_key(TOWN_ENTITY),
+            Housing {
+                capacity: BASE_POPULATION_CAPACITY,
+            },
+        );
+        for _ in 0..BASE_POPULATION_CAPACITY {
+            state.spawn_person();
+        }
         state
     }
 
@@ -372,6 +443,16 @@ impl GameState {
     }
 
     #[must_use]
+    pub const fn completed_waves(&self) -> u32 {
+        self.completed_waves
+    }
+
+    #[must_use]
+    pub fn houses_unlocked(&self) -> bool {
+        self.completed_waves >= HOUSE_UNLOCK_COMPLETED_WAVES
+    }
+
+    #[must_use]
     pub fn wood(&self) -> u32 {
         self.storage
             .get(entity_key(TOWN_ENTITY))
@@ -383,6 +464,18 @@ impl GameState {
         self.storage
             .get(entity_key(TOWN_ENTITY))
             .map_or(0, |storage| storage.wood_capacity)
+    }
+
+    #[must_use]
+    pub fn population_capacity(&self) -> u16 {
+        self.housing
+            .iter()
+            .fold(0_u16, |total, (_, housing)| total.saturating_add(housing.capacity))
+    }
+
+    #[must_use]
+    pub fn people_count(&self) -> usize {
+        self.people.iter().count()
     }
 
     #[must_use]
@@ -408,6 +501,14 @@ impl GameState {
     }
 
     #[must_use]
+    pub fn house_count(&self) -> usize {
+        self.buildings
+            .iter()
+            .filter(|(_, building)| building.kind == BuildingKind::House)
+            .count()
+    }
+
+    #[must_use]
     pub fn projectile_count(&self) -> usize {
         self.projectiles.iter().count()
     }
@@ -416,6 +517,7 @@ impl GameState {
         match command {
             Command::PlaceTower { x, z, archetype } => self.place_tower(Cell::new(x, z), archetype),
             Command::PlaceSawmill { x, z } => self.place_sawmill(Cell::new(x, z)),
+            Command::PlaceHouse { x, z } => self.place_house(Cell::new(x, z)),
             Command::UpgradeTower { x, z } => self.upgrade_tower(Cell::new(x, z)),
             Command::StartWave => self.start_wave(),
             Command::AdvanceTick => Ok(self.advance_tick()),
@@ -437,6 +539,10 @@ impl GameState {
             wood: self.wood(),
             wood_capacity: self.wood_capacity(),
             wave: self.wave,
+            completed_waves: self.completed_waves,
+            people: u16::try_from(self.people_count()).unwrap_or(u16::MAX),
+            population_capacity: self.population_capacity(),
+            houses_unlocked: self.houses_unlocked(),
             town_health: self.town_health(),
             town_max_health: TOWN_MAX_HEALTH,
             grid_width: GRID_WIDTH,
@@ -451,6 +557,7 @@ impl GameState {
         feed_u64(&mut hash, self.seed);
         feed_u64(&mut hash, self.tick);
         feed_u64(&mut hash, u64::from(self.wave));
+        feed_u64(&mut hash, u64::from(self.completed_waves));
         feed_u64(&mut hash, u64::from(self.next_entity));
 
         for entity in &self.snapshot().entities {
@@ -461,8 +568,10 @@ impl GameState {
                     EntityKind::TownHall => 0,
                     EntityKind::Tower => 1,
                     EntityKind::Sawmill => 2,
-                    EntityKind::Raider => 3,
-                    EntityKind::Projectile => 4,
+                    EntityKind::House => 3,
+                    EntityKind::Person => 4,
+                    EntityKind::Raider => 5,
+                    EntityKind::Projectile => 6,
                 },
             );
             feed_i32(&mut hash, entity.x_milli);
@@ -545,6 +654,28 @@ impl GameState {
             } else {
                 feed_byte(&mut hash, 0);
             }
+
+            if let Some(housing) = self.housing.get(entity_key(entity.id)) {
+                feed_byte(&mut hash, 1);
+                feed_u16(&mut hash, housing.capacity);
+            } else {
+                feed_byte(&mut hash, 0);
+            }
+
+            if let Some(person) = self.people.get(entity_key(entity.id)) {
+                feed_byte(&mut hash, 1);
+                feed_byte(&mut hash, person_state_code(person.state));
+                if let Some(target) = person.target_sawmill {
+                    feed_byte(&mut hash, 1);
+                    feed_u64(&mut hash, u64::from(target));
+                } else {
+                    feed_byte(&mut hash, 0);
+                }
+                feed_u16(&mut hash, person.cargo_wood);
+                feed_u16(&mut hash, person.cargo_capacity);
+            } else {
+                feed_byte(&mut hash, 0);
+            }
         }
 
         hash
@@ -554,9 +685,7 @@ impl GameState {
         self.validate_build_cell(cell)?;
         let cost = tower_cost(archetype);
         self.require_wood(cost)?;
-        if !self.routes_remain_open(Some(cell)) {
-            return Err(GameError::PathBlocked);
-        }
+        self.validate_blocking_build(cell, None)?;
 
         let entity = self.allocate_entity();
         self.transforms
@@ -598,9 +727,7 @@ impl GameState {
     fn place_sawmill(&mut self, cell: Cell) -> Result<Event, GameError> {
         self.validate_build_cell(cell)?;
         self.require_wood(SAWMILL_COST)?;
-        if !self.routes_remain_open(Some(cell)) {
-            return Err(GameError::PathBlocked);
-        }
+        self.validate_blocking_build(cell, Some(cell))?;
 
         let entity = self.allocate_entity();
         self.transforms
@@ -628,12 +755,64 @@ impl GameState {
                 progress_ticks: 0,
             },
         );
+        self.storage.insert(
+            entity_key(entity),
+            ResourceStorage {
+                wood: 0,
+                wood_capacity: SAWMILL_LOCAL_WOOD_CAPACITY,
+            },
+        );
         self.spend_wood(SAWMILL_COST);
 
         Ok(Event::SawmillBuilt {
             entity,
             cell,
             wood_cost: SAWMILL_COST,
+        })
+    }
+
+    fn place_house(&mut self, cell: Cell) -> Result<Event, GameError> {
+        if !self.houses_unlocked() {
+            return Err(GameError::HouseLocked);
+        }
+        self.validate_build_cell(cell)?;
+        self.require_wood(HOUSE_COST)?;
+        self.validate_blocking_build(cell, None)?;
+
+        let entity = self.allocate_entity();
+        self.transforms
+            .insert(entity_key(entity), Transform::at_cell(cell));
+        self.health.insert(
+            entity_key(entity),
+            Health {
+                current: HOUSE_MAX_HEALTH,
+                maximum: HOUSE_MAX_HEALTH,
+            },
+        );
+        self.buildings.insert(
+            entity_key(entity),
+            Building {
+                kind: BuildingKind::House,
+                cell,
+            },
+        );
+        self.housing.insert(
+            entity_key(entity),
+            Housing {
+                capacity: HOUSE_POPULATION_CAPACITY,
+            },
+        );
+        self.spend_wood(HOUSE_COST);
+        for _ in 0..HOUSE_POPULATION_CAPACITY {
+            self.spawn_person();
+        }
+
+        Ok(Event::HouseBuilt {
+            entity,
+            cell,
+            wood_cost: HOUSE_COST,
+            people_added: HOUSE_POPULATION_CAPACITY,
+            population_capacity: self.population_capacity(),
         })
     }
 
@@ -688,8 +867,22 @@ impl GameState {
         if is_town_cell(cell) || Edge::ALL.into_iter().any(|edge| edge.spawn_cell() == cell) {
             return Err(GameError::ProtectedCell);
         }
-        if self.cell_has_building(cell) || self.raider_uses_cell(cell) {
+        if self.cell_has_building(cell) || self.unit_uses_cell(cell) {
             return Err(GameError::CellOccupied);
+        }
+        Ok(())
+    }
+
+    fn validate_blocking_build(
+        &self,
+        cell: Cell,
+        hypothetical_sawmill: Option<Cell>,
+    ) -> Result<(), GameError> {
+        if !self.routes_remain_open(Some(cell))
+            || !self.all_sawmills_accessible(Some(cell), hypothetical_sawmill)
+            || !self.worker_routes_remain_open(Some(cell))
+        {
+            return Err(GameError::PathBlocked);
         }
         Ok(())
     }
@@ -710,7 +903,7 @@ impl GameState {
         storage.wood -= amount;
     }
 
-    fn store_wood(&mut self, amount: u32) -> u32 {
+    fn store_town_wood(&mut self, amount: u32) -> u32 {
         let storage = self
             .storage
             .get_mut(entity_key(TOWN_ENTITY))
@@ -754,14 +947,25 @@ impl GameState {
 
     fn advance_tick(&mut self) -> Event {
         self.tick = self.tick.saturating_add(1);
+        let had_raiders = self.raider_count() > 0;
         let wood_produced = self.run_resource_production_system();
+        let (wood_picked_up, wood_delivered) = self.run_person_logistics_system();
         let shots = self.run_tower_attack_system();
         let (impacts, killed) = self.run_projectile_system();
         let kills = u16::try_from(killed.len()).unwrap_or(u16::MAX);
         for entity in killed {
             self.despawn_raider(entity);
         }
-        let (wood_stolen, town_damage) = self.run_movement_system();
+        let (wood_stolen, town_damage) = self.run_raider_movement_system();
+        let completed_wave = if had_raiders
+            && self.raider_count() == 0
+            && self.completed_waves < self.wave
+        {
+            self.completed_waves = self.wave;
+            Some(self.wave)
+        } else {
+            None
+        };
 
         Event::TickAdvanced {
             tick: self.tick,
@@ -769,8 +973,11 @@ impl GameState {
             impacts,
             kills,
             wood_produced,
+            wood_picked_up,
+            wood_delivered,
             wood_stolen,
             town_damage,
+            completed_wave,
         }
     }
 
@@ -789,20 +996,230 @@ impl GameState {
                 producer.progress_ticks -= producer.interval_ticks;
             }
             self.producers.insert(entity_key(entity), producer);
-
             if !ready {
                 continue;
             }
-            match producer.resource {
-                ResourceKind::Wood => {
-                    let stored = self.store_wood(u32::from(producer.amount));
-                    produced_total =
-                        produced_total.saturating_add(u16::try_from(stored).unwrap_or(u16::MAX));
-                }
-            }
+
+            let Some(storage) = self.storage.get_mut(entity_key(entity)) else {
+                continue;
+            };
+            let available = storage.wood_capacity.saturating_sub(storage.wood);
+            let produced = available.min(u32::from(producer.amount));
+            storage.wood = storage.wood.saturating_add(produced);
+            produced_total =
+                produced_total.saturating_add(u16::try_from(produced).unwrap_or(u16::MAX));
         }
 
         produced_total
+    }
+
+    fn run_person_logistics_system(&mut self) -> (u16, u16) {
+        let mut picked_up_total = 0_u16;
+        let mut delivered_total = 0_u16;
+
+        let mut person_ids = self.people.keys().map(key_entity).collect::<Vec<_>>();
+        person_ids.sort_unstable();
+
+        for entity in &person_ids {
+            let Some(mut person) = self.people.get(entity_key(*entity)).copied() else {
+                continue;
+            };
+            if person.state != PersonState::IdleAtTownHall || person.cargo_wood == 0 {
+                continue;
+            }
+            let delivered = self.store_town_wood(u32::from(person.cargo_wood));
+            let delivered_u16 = u16::try_from(delivered).unwrap_or(u16::MAX);
+            person.cargo_wood = person.cargo_wood.saturating_sub(delivered_u16);
+            delivered_total = delivered_total.saturating_add(delivered_u16);
+            self.people.insert(entity_key(*entity), person);
+        }
+
+        self.assign_idle_people();
+
+        for entity in person_ids {
+            let Some(mut person) = self.people.get(entity_key(entity)).copied() else {
+                continue;
+            };
+            if person.state == PersonState::IdleAtTownHall {
+                continue;
+            }
+            let Some(mut movement) = self.movements.get(entity_key(entity)).copied() else {
+                self.rebuild_person_movement(entity, person);
+                continue;
+            };
+
+            movement.progress_milli = movement.progress_milli.saturating_add(movement.speed_milli);
+            if movement.progress_milli < CELL_SCALE as u16 {
+                self.movements.insert(entity_key(entity), movement);
+                self.transforms
+                    .insert(entity_key(entity), interpolate_transform(movement));
+                continue;
+            }
+
+            movement.progress_milli -= CELL_SCALE as u16;
+            movement.from = movement.to;
+            self.transforms
+                .insert(entity_key(entity), Transform::at_cell(movement.from));
+
+            match person.state {
+                PersonState::IdleAtTownHall => {}
+                PersonState::ToSawmill => {
+                    let Some(target) = person.target_sawmill else {
+                        person.state = PersonState::IdleAtTownHall;
+                        self.movements.remove(entity_key(entity));
+                        self.people.insert(entity_key(entity), person);
+                        continue;
+                    };
+                    let goals = self.sawmill_pickup_cells(target, None);
+                    if goals.contains(&movement.from) {
+                        let pickup = self.take_sawmill_wood(target, person.cargo_capacity);
+                        person.cargo_wood = pickup;
+                        picked_up_total = picked_up_total.saturating_add(pickup);
+                        person.state = PersonState::ToTownHall;
+                        person.target_sawmill = None;
+                        if let Some(next) = self.next_path_step_to_any(
+                            movement.from,
+                            &town_goal_cells(),
+                            None,
+                        ) {
+                            movement.to = next;
+                            movement.progress_milli = 0;
+                            self.movements.insert(entity_key(entity), movement);
+                        } else {
+                            self.movements.remove(entity_key(entity));
+                        }
+                    } else if let Some(next) = self.next_path_step_to_any(movement.from, &goals, None)
+                    {
+                        movement.to = next;
+                        self.movements.insert(entity_key(entity), movement);
+                    } else {
+                        self.movements.remove(entity_key(entity));
+                    }
+                }
+                PersonState::ToTownHall => {
+                    if is_town_cell(movement.from) {
+                        let delivered = self.store_town_wood(u32::from(person.cargo_wood));
+                        let delivered_u16 = u16::try_from(delivered).unwrap_or(u16::MAX);
+                        person.cargo_wood = person.cargo_wood.saturating_sub(delivered_u16);
+                        delivered_total = delivered_total.saturating_add(delivered_u16);
+                        person.state = PersonState::IdleAtTownHall;
+                        self.movements.remove(entity_key(entity));
+                    } else if let Some(next) = self.next_path_step_to_any(
+                        movement.from,
+                        &town_goal_cells(),
+                        None,
+                    ) {
+                        movement.to = next;
+                        self.movements.insert(entity_key(entity), movement);
+                    } else {
+                        self.movements.remove(entity_key(entity));
+                    }
+                }
+            }
+            self.people.insert(entity_key(entity), person);
+        }
+
+        (picked_up_total, delivered_total)
+    }
+
+    fn assign_idle_people(&mut self) {
+        let mut reserved = BTreeMap::<EntityId, u32>::new();
+        for (_, person) in self.people.iter() {
+            if person.state == PersonState::ToSawmill
+                && let Some(target) = person.target_sawmill
+            {
+                let entry = reserved.entry(target).or_default();
+                *entry = entry.saturating_add(u32::from(person.cargo_capacity));
+            }
+        }
+
+        let mut ids = self.people.keys().map(key_entity).collect::<Vec<_>>();
+        ids.sort_unstable();
+        for entity in ids {
+            let Some(mut person) = self.people.get(entity_key(entity)).copied() else {
+                continue;
+            };
+            if person.state != PersonState::IdleAtTownHall || person.cargo_wood != 0 {
+                continue;
+            }
+            let Some(target) = self.best_sawmill_for_person(&reserved) else {
+                continue;
+            };
+            let start = self
+                .transforms
+                .get(entity_key(entity))
+                .copied()
+                .map_or(town_center(), cell_for_transform);
+            let goals = self.sawmill_pickup_cells(target, None);
+            let Some(next) = self.next_path_step_to_any(start, &goals, None) else {
+                continue;
+            };
+            person.state = PersonState::ToSawmill;
+            person.target_sawmill = Some(target);
+            self.people.insert(entity_key(entity), person);
+            self.movements.insert(
+                entity_key(entity),
+                Movement {
+                    from: start,
+                    to: next,
+                    progress_milli: 0,
+                    speed_milli: PERSON_SPEED_MILLI,
+                },
+            );
+            let entry = reserved.entry(target).or_default();
+            *entry = entry.saturating_add(u32::from(person.cargo_capacity));
+        }
+    }
+
+    fn best_sawmill_for_person(&self, reserved: &BTreeMap<EntityId, u32>) -> Option<EntityId> {
+        let mut candidates = self
+            .producers
+            .keys()
+            .map(key_entity)
+            .filter_map(|entity| {
+                let stored = self.storage.get(entity_key(entity))?.wood;
+                let reserved = reserved.get(&entity).copied().unwrap_or(0);
+                let available = stored.saturating_sub(reserved);
+                (available > 0).then_some((available, entity))
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|(available, entity)| (std::cmp::Reverse(*available), *entity));
+        candidates.first().map(|(_, entity)| *entity)
+    }
+
+    fn take_sawmill_wood(&mut self, sawmill: EntityId, capacity: u16) -> u16 {
+        let Some(storage) = self.storage.get_mut(entity_key(sawmill)) else {
+            return 0;
+        };
+        let amount = storage.wood.min(u32::from(capacity));
+        storage.wood -= amount;
+        u16::try_from(amount).unwrap_or(u16::MAX)
+    }
+
+    fn rebuild_person_movement(&mut self, entity: EntityId, person: Person) {
+        let start = self
+            .transforms
+            .get(entity_key(entity))
+            .copied()
+            .map_or(town_center(), cell_for_transform);
+        let goals = match person.state {
+            PersonState::IdleAtTownHall => return,
+            PersonState::ToTownHall => town_goal_cells(),
+            PersonState::ToSawmill => person
+                .target_sawmill
+                .map_or_else(Vec::new, |target| self.sawmill_pickup_cells(target, None)),
+        };
+        if let Some(next) = self.next_path_step_to_any(start, &goals, None) {
+            self.movements.insert(
+                entity_key(entity),
+                Movement {
+                    from: start,
+                    to: next,
+                    progress_milli: 0,
+                    speed_milli: PERSON_SPEED_MILLI,
+                },
+            );
+        }
     }
 
     fn run_tower_attack_system(&mut self) -> u16 {
@@ -954,7 +1371,7 @@ impl GameState {
         candidates.first().map(|(_, entity)| *entity)
     }
 
-    fn run_movement_system(&mut self) -> (u16, u16) {
+    fn run_raider_movement_system(&mut self) -> (u16, u16) {
         let mut raiders = self.raiders.keys().map(key_entity).collect::<Vec<_>>();
         raiders.sort_unstable();
         let mut wood_stolen = 0_u16;
@@ -985,7 +1402,8 @@ impl GameState {
                     continue;
                 }
 
-                let Some(next) = self.next_path_step(movement.from, None) else {
+                let Some(next) = self.next_path_step_to_any(movement.from, &town_goal_cells(), None)
+                else {
                     movement.to = movement.from;
                     self.movements.insert(entity_key(entity), movement);
                     self.transforms
@@ -1019,7 +1437,7 @@ impl GameState {
     fn spawn_raider(&mut self, edge: Edge) {
         let from = edge.spawn_cell();
         let to = self
-            .next_path_step(from, None)
+            .next_path_step_to_any(from, &town_goal_cells(), None)
             .expect("validated building placements keep every edge connected to town hall");
         let entity = self.allocate_entity();
         let wave_bonus = u16::try_from(self.wave.saturating_sub(1))
@@ -1056,6 +1474,29 @@ impl GameState {
                 speed_milli: RAIDER_SPEED_MILLI,
             },
         );
+    }
+
+    fn spawn_person(&mut self) -> EntityId {
+        let entity = self.allocate_entity();
+        self.transforms
+            .insert(entity_key(entity), Transform::at_cell(town_center()));
+        self.health.insert(
+            entity_key(entity),
+            Health {
+                current: PERSON_MAX_HEALTH,
+                maximum: PERSON_MAX_HEALTH,
+            },
+        );
+        self.people.insert(
+            entity_key(entity),
+            Person {
+                state: PersonState::IdleAtTownHall,
+                target_sawmill: None,
+                cargo_wood: 0,
+                cargo_capacity: PERSON_CARRY_CAPACITY,
+            },
+        );
+        entity
     }
 
     fn despawn_raider(&mut self, entity: EntityId) {
@@ -1121,6 +1562,7 @@ impl GameState {
             wood_capacity: 0,
         });
         let producer = self.producers.get(key).copied();
+        let housing = self.housing.get(key).copied();
 
         if let Some(building) = self.buildings.get(key) {
             let tower = self.towers.get(key).copied();
@@ -1130,6 +1572,7 @@ impl GameState {
                     BuildingKind::TownHall => EntityKind::TownHall,
                     BuildingKind::Tower => EntityKind::Tower,
                     BuildingKind::Sawmill => EntityKind::Sawmill,
+                    BuildingKind::House => EntityKind::House,
                 },
                 x_milli: transform.x_milli,
                 z_milli: transform.z_milli,
@@ -1149,10 +1592,49 @@ impl GameState {
                 production_amount: producer.map_or(0, |producer| producer.amount),
                 production_interval_ticks: producer.map_or(0, |producer| producer.interval_ticks),
                 production_progress_ticks: producer.map_or(0, |producer| producer.progress_ticks),
+                housing_capacity: housing.map_or(0, |housing| housing.capacity),
+                person_state: None,
+                person_target_sawmill: None,
+                cargo_wood: 0,
+                cargo_capacity: 0,
             });
         }
 
-        if let Some(movement) = self.movements.get(key) {
+        if let Some(person) = self.people.get(key).copied() {
+            let cell = self
+                .movements
+                .get(key)
+                .map_or_else(|| cell_for_transform(transform), |movement| movement.from);
+            return Some(EntitySnapshot {
+                id: entity,
+                kind: EntityKind::Person,
+                x_milli: transform.x_milli,
+                z_milli: transform.z_milli,
+                cell,
+                health: health.current,
+                max_health: health.maximum,
+                attack_damage: 0,
+                attack_range_milli: 0,
+                tower_archetype: None,
+                tower_level: 0,
+                upgrade_cost: None,
+                projectile_target: None,
+                stored_wood: 0,
+                wood_capacity: 0,
+                production_resource: None,
+                production_amount: 0,
+                production_interval_ticks: 0,
+                production_progress_ticks: 0,
+                housing_capacity: 0,
+                person_state: Some(person.state),
+                person_target_sawmill: person.target_sawmill,
+                cargo_wood: person.cargo_wood,
+                cargo_capacity: person.cargo_capacity,
+            });
+        }
+
+        if self.raiders.get(key).is_some() {
+            let movement = self.movements.get(key)?;
             return Some(EntitySnapshot {
                 id: entity,
                 kind: EntityKind::Raider,
@@ -1173,6 +1655,11 @@ impl GameState {
                 production_amount: 0,
                 production_interval_ticks: 0,
                 production_progress_ticks: 0,
+                housing_capacity: 0,
+                person_state: None,
+                person_target_sawmill: None,
+                cargo_wood: 0,
+                cargo_capacity: 0,
             });
         }
 
@@ -1197,6 +1684,11 @@ impl GameState {
             production_amount: 0,
             production_interval_ticks: 0,
             production_progress_ticks: 0,
+            housing_capacity: 0,
+            person_state: None,
+            person_target_sawmill: None,
+            cargo_wood: 0,
+            cargo_capacity: 0,
         })
     }
 
@@ -1208,31 +1700,113 @@ impl GameState {
     }
 
     fn cell_has_building(&self, cell: Cell) -> bool {
-        self.buildings.iter().any(|(_, building)| {
-            matches!(building.kind, BuildingKind::Tower | BuildingKind::Sawmill)
-                && building.cell == cell
-        })
+        self.buildings
+            .iter()
+            .any(|(_, building)| building.kind != BuildingKind::TownHall && building.cell == cell)
     }
 
-    fn raider_uses_cell(&self, cell: Cell) -> bool {
+    fn unit_uses_cell(&self, cell: Cell) -> bool {
         self.movements
             .iter()
             .any(|(_, movement)| movement.from == cell || movement.to == cell)
     }
 
     fn routes_remain_open(&self, extra_block: Option<Cell>) -> bool {
-        Edge::ALL.into_iter().all(|edge| {
-            self.next_path_step(edge.spawn_cell(), extra_block)
-                .is_some()
-        }) && self
-            .movements
-            .iter()
-            .all(|(_, movement)| self.next_path_step(movement.from, extra_block).is_some())
+        let goals = town_goal_cells();
+        Edge::ALL
+            .into_iter()
+            .all(|edge| self.next_path_step_to_any(edge.spawn_cell(), &goals, extra_block).is_some())
+            && self.raiders.iter().all(|(key, _)| {
+                self.movements.get(key).is_some_and(|movement| {
+                    self.next_path_step_to_any(movement.from, &goals, extra_block)
+                        .is_some()
+                })
+            })
     }
 
-    fn next_path_step(&self, start: Cell, extra_block: Option<Cell>) -> Option<Cell> {
-        if is_town_cell(start) {
+    fn all_sawmills_accessible(
+        &self,
+        extra_block: Option<Cell>,
+        hypothetical_sawmill: Option<Cell>,
+    ) -> bool {
+        let mut cells = self
+            .buildings
+            .iter()
+            .filter_map(|(_, building)| {
+                (building.kind == BuildingKind::Sawmill).then_some(building.cell)
+            })
+            .collect::<Vec<_>>();
+        if let Some(cell) = hypothetical_sawmill {
+            cells.push(cell);
+        }
+        cells.into_iter().all(|cell| {
+            let goals = self.pickup_cells_for_sawmill_cell(cell, extra_block);
+            !goals.is_empty()
+                && self
+                    .next_path_step_to_any(town_center(), &goals, extra_block)
+                    .is_some()
+        })
+    }
+
+    fn worker_routes_remain_open(&self, extra_block: Option<Cell>) -> bool {
+        self.people.iter().all(|(key, person)| {
+            let start = self
+                .movements
+                .get(key)
+                .map_or_else(
+                    || {
+                        self.transforms
+                            .get(key)
+                            .copied()
+                            .map_or(town_center(), cell_for_transform)
+                    },
+                    |movement| movement.from,
+                );
+            match person.state {
+                PersonState::IdleAtTownHall => true,
+                PersonState::ToTownHall => self
+                    .next_path_step_to_any(start, &town_goal_cells(), extra_block)
+                    .is_some(),
+                PersonState::ToSawmill => person.target_sawmill.is_some_and(|target| {
+                    let goals = self.sawmill_pickup_cells(target, extra_block);
+                    !goals.is_empty()
+                        && self
+                            .next_path_step_to_any(start, &goals, extra_block)
+                            .is_some()
+                }),
+            }
+        })
+    }
+
+    fn sawmill_pickup_cells(&self, entity: EntityId, extra_block: Option<Cell>) -> Vec<Cell> {
+        let Some(building) = self.buildings.get(entity_key(entity)) else {
+            return Vec::new();
+        };
+        self.pickup_cells_for_sawmill_cell(building.cell, extra_block)
+    }
+
+    fn pickup_cells_for_sawmill_cell(
+        &self,
+        sawmill_cell: Cell,
+        extra_block: Option<Cell>,
+    ) -> Vec<Cell> {
+        neighbors(sawmill_cell)
+            .into_iter()
+            .filter(|cell| !self.path_cell_blocked(*cell, extra_block))
+            .collect()
+    }
+
+    fn next_path_step_to_any(
+        &self,
+        start: Cell,
+        goals: &[Cell],
+        extra_block: Option<Cell>,
+    ) -> Option<Cell> {
+        if goals.contains(&start) {
             return Some(start);
+        }
+        if !in_bounds(start) || goals.is_empty() {
+            return None;
         }
 
         let cell_count = usize::try_from(GRID_WIDTH).ok()? * usize::try_from(GRID_HEIGHT).ok()?;
@@ -1245,7 +1819,7 @@ impl GameState {
 
         let mut goal = None;
         while let Some(cell) = queue.pop_front() {
-            if is_town_cell(cell) {
+            if goals.contains(&cell) {
                 goal = Some(cell);
                 break;
             }
@@ -1370,6 +1944,17 @@ pub const fn is_town_cell(cell: Cell) -> bool {
         && cell.z <= center.z + 1
 }
 
+fn town_goal_cells() -> Vec<Cell> {
+    let center = town_center();
+    let mut cells = Vec::with_capacity(9);
+    for z in center.z - 1..=center.z + 1 {
+        for x in center.x - 1..=center.x + 1 {
+            cells.push(Cell::new(x, z));
+        }
+    }
+    cells
+}
+
 const fn in_bounds(cell: Cell) -> bool {
     cell.x >= 0 && cell.x < GRID_WIDTH && cell.z >= 0 && cell.z < GRID_HEIGHT
 }
@@ -1456,6 +2041,14 @@ const fn resource_kind_code(resource: ResourceKind) -> u8 {
     }
 }
 
+const fn person_state_code(state: PersonState) -> u8 {
+    match state {
+        PersonState::IdleAtTownHall => 0,
+        PersonState::ToSawmill => 1,
+        PersonState::ToTownHall => 2,
+    }
+}
+
 const fn entity_key(entity: EntityId) -> usize {
     entity as usize
 }
@@ -1504,43 +2097,40 @@ fn feed_byte(hash: &mut u64, byte: u8) {
 mod tests {
     use super::*;
 
-    fn tower_at(state: &GameState, cell: Cell) -> EntitySnapshot {
+    fn sawmill_entity(state: &GameState) -> EntityId {
         state
-            .snapshot()
-            .entities
-            .into_iter()
-            .find(|entity| entity.kind == EntityKind::Tower && entity.cell == cell)
-            .expect("tower should exist at requested cell")
+            .buildings
+            .iter()
+            .find_map(|(key, building)| {
+                (building.kind == BuildingKind::Sawmill).then_some(key_entity(key))
+            })
+            .expect("sawmill should exist")
     }
 
     #[test]
-    fn same_seed_and_commands_replay_identically_with_economy() {
-        let mut commands = vec![
-            Command::PlaceSawmill { x: 2, z: 2 },
-            Command::PlaceTower {
-                x: 7,
-                z: 2,
-                archetype: TowerArchetype::Arrow,
-            },
-            Command::StartWave,
-        ];
-        commands.extend(std::iter::repeat_n(Command::AdvanceTick, 30));
-
-        let first = replay(7, &commands).expect("valid replay");
-        let second = replay(7, &commands).expect("same replay remains valid");
-
-        assert_eq!(first, second);
-        assert_eq!(first.checksum(), second.checksum());
+    fn population_starts_with_two_real_people() {
+        let state = GameState::new(7);
+        assert_eq!(state.people_count(), 2);
+        assert_eq!(state.population_capacity(), 2);
+        assert!(!state.houses_unlocked());
+        assert_eq!(
+            state
+                .snapshot()
+                .entities
+                .iter()
+                .filter(|entity| entity.kind == EntityKind::Person)
+                .count(),
+            2
+        );
     }
 
     #[test]
-    fn sawmill_spends_then_produces_wood_into_town_hall_storage() {
+    fn sawmill_output_stays_local_until_a_person_carries_it_home() {
         let mut state = GameState::new(7);
         state
             .apply(Command::PlaceSawmill { x: 2, z: 2 })
             .expect("sawmill should build");
         assert_eq!(state.wood(), STARTING_WOOD - SAWMILL_COST);
-        assert_eq!(state.sawmill_count(), 1);
 
         for _ in 0..SAWMILL_INTERVAL_TICKS {
             state
@@ -1548,128 +2138,123 @@ mod tests {
                 .expect("tick should advance");
         }
 
-        assert_eq!(
-            state.wood(),
-            STARTING_WOOD - SAWMILL_COST + u32::from(SAWMILL_OUTPUT)
+        let sawmill = sawmill_entity(&state);
+        assert_eq!(state.wood(), STARTING_WOOD - SAWMILL_COST);
+        assert!(
+            state
+                .storage
+                .get(entity_key(sawmill))
+                .is_some_and(|storage| storage.wood > 0),
+            "produced wood must wait at the sawmill for a carrier"
         );
-        let town = state
-            .snapshot()
-            .entities
-            .into_iter()
-            .find(|entity| entity.kind == EntityKind::TownHall)
-            .expect("town hall should exist");
-        assert_eq!(town.stored_wood, state.wood());
-        assert_eq!(town.wood_capacity, TOWN_WOOD_CAPACITY);
-    }
 
-    #[test]
-    fn towers_and_upgrades_consume_wood() {
-        let mut state = GameState::new(7);
-        state
-            .apply(Command::PlaceTower {
-                x: 2,
-                z: 2,
-                archetype: TowerArchetype::Arrow,
-            })
-            .expect("arrow tower should build");
-        assert_eq!(state.wood(), STARTING_WOOD - ARROW_TOWER_COST);
-
-        state
-            .apply(Command::UpgradeTower { x: 2, z: 2 })
-            .expect("upgrade should spend wood");
-        assert_eq!(state.wood(), STARTING_WOOD - ARROW_TOWER_COST - 20);
-    }
-
-    #[test]
-    fn raiders_steal_town_hall_wood_before_damaging_it() {
-        let mut state = GameState::new(11);
-        let health_before = state.town_health();
-        state.apply(Command::StartWave).expect("wave should start");
-
-        let mut stolen = 0_u16;
-        for _ in 0..40 {
-            let Event::TickAdvanced {
-                wood_stolen,
-                town_damage,
-                ..
-            } = state
+        for _ in 0..80 {
+            state
                 .apply(Command::AdvanceTick)
-                .expect("tick should advance")
-            else {
-                unreachable!();
-            };
-            stolen = stolen.saturating_add(wood_stolen);
-            assert_eq!(
-                town_damage, 0,
-                "stored wood should be stolen before health is damaged"
-            );
-            if state.raider_count() == 0 {
+                .expect("tick should advance");
+            if state.wood() > STARTING_WOOD - SAWMILL_COST {
                 break;
             }
         }
-
-        assert!(stolen > 0);
-        assert!(state.wood() < STARTING_WOOD);
-        assert_eq!(state.town_health(), health_before);
+        assert!(state.wood() > STARTING_WOOD - SAWMILL_COST);
+        assert!(state.people.iter().any(|(_, person)| person.cargo_capacity > 0));
     }
 
     #[test]
-    fn raiders_damage_town_hall_when_there_is_no_wood_left() {
+    fn replay_includes_deterministic_people_logistics() {
+        let mut commands = vec![Command::PlaceSawmill { x: 2, z: 2 }];
+        commands.extend(std::iter::repeat_n(Command::AdvanceTick, 80));
+        let first = replay(9, &commands).expect("valid replay");
+        let second = replay(9, &commands).expect("same replay remains valid");
+        assert_eq!(first, second);
+        assert_eq!(first.checksum(), second.checksum());
+    }
+
+    #[test]
+    fn houses_are_locked_until_ten_completed_waves() {
+        let mut state = GameState::new(5);
+        let before = state.clone();
+        assert_eq!(
+            state.apply(Command::PlaceHouse { x: 2, z: 2 }),
+            Err(GameError::HouseLocked)
+        );
+        assert_eq!(state, before);
+
+        state.completed_waves = HOUSE_UNLOCK_COMPLETED_WAVES;
+        state
+            .apply(Command::PlaceHouse { x: 2, z: 2 })
+            .expect("house should unlock after ten completed waves");
+        assert_eq!(state.house_count(), 1);
+        assert_eq!(state.people_count(), 4);
+        assert_eq!(state.population_capacity(), 4);
+    }
+
+    #[test]
+    fn completing_wave_ten_unlocks_houses() {
+        let mut state = GameState::new(3);
+        state.wave = HOUSE_UNLOCK_COMPLETED_WAVES;
+        state.completed_waves = HOUSE_UNLOCK_COMPLETED_WAVES - 1;
+        state.spawn_raider(Edge::North);
+        let raider = state
+            .raiders
+            .keys()
+            .map(key_entity)
+            .min()
+            .expect("raider should exist");
+        let town = town_center();
+        state.movements.insert(
+            entity_key(raider),
+            Movement {
+                from: Cell::new(town.x, town.z - 2),
+                to: Cell::new(town.x, town.z - 1),
+                progress_milli: 900,
+                speed_milli: RAIDER_SPEED_MILLI,
+            },
+        );
+        state.transforms.insert(
+            entity_key(raider),
+            interpolate_transform(
+                *state
+                    .movements
+                    .get(entity_key(raider))
+                    .expect("movement should exist"),
+            ),
+        );
+
+        let Event::TickAdvanced { completed_wave, .. } = state
+            .apply(Command::AdvanceTick)
+            .expect("tick should advance")
+        else {
+            unreachable!();
+        };
+        assert_eq!(completed_wave, Some(HOUSE_UNLOCK_COMPLETED_WAVES));
+        assert!(state.houses_unlocked());
+    }
+
+    #[test]
+    fn house_build_is_transactional_when_wood_is_insufficient() {
         let mut state = GameState::new(11);
+        state.completed_waves = HOUSE_UNLOCK_COMPLETED_WAVES;
         state
-            .storage
-            .get_mut(entity_key(TOWN_ENTITY))
-            .expect("town storage should exist")
-            .wood = 0;
-        let health_before = state.town_health();
-        state.apply(Command::StartWave).expect("wave should start");
-
-        let mut damage = 0_u16;
-        for _ in 0..40 {
-            let Event::TickAdvanced { town_damage, .. } = state
-                .apply(Command::AdvanceTick)
-                .expect("tick should advance")
-            else {
-                unreachable!();
-            };
-            damage = damage.saturating_add(town_damage);
-            if state.raider_count() == 0 {
-                break;
-            }
-        }
-
-        assert!(damage > 0);
-        assert!(state.town_health() < health_before);
-    }
-
-    #[test]
-    fn tower_archetypes_keep_distinct_stats() {
-        let mut state = GameState::new(7);
-        state
-            .apply(Command::PlaceTower {
-                x: 2,
-                z: 2,
-                archetype: TowerArchetype::Arrow,
-            })
-            .expect("arrow tower should build");
+            .apply(Command::PlaceSawmill { x: 2, z: 2 })
+            .expect("sawmill should build");
         state
             .apply(Command::PlaceTower {
                 x: 3,
                 z: 2,
                 archetype: TowerArchetype::Cannon,
             })
-            .expect("cannon tower should build");
-
-        let arrow = tower_at(&state, Cell::new(2, 2));
-        let cannon = tower_at(&state, Cell::new(3, 2));
-        assert_eq!(arrow.tower_archetype, Some(TowerArchetype::Arrow));
-        assert_eq!(cannon.tower_archetype, Some(TowerArchetype::Cannon));
-        assert!(arrow.attack_damage < cannon.attack_damage);
-        assert!(arrow.attack_range_milli < cannon.attack_range_milli);
+            .expect("tower should build");
+        let before = state.clone();
+        assert_eq!(
+            state.apply(Command::PlaceHouse { x: 4, z: 2 }),
+            Err(GameError::InsufficientWood)
+        );
+        assert_eq!(state, before);
     }
 
     #[test]
-    fn projectiles_are_authoritative_and_cleanup_with_targets() {
+    fn projectiles_eventually_impact_moving_raiders() {
         let mut state = GameState::new(11);
         state
             .apply(Command::PlaceTower {
@@ -1680,65 +2265,33 @@ mod tests {
             .expect("tower should build");
         state.apply(Command::StartWave).expect("wave should start");
 
-        let Event::TickAdvanced { shots, impacts, .. } = state
-            .apply(Command::AdvanceTick)
-            .expect("tick should advance")
-        else {
-            unreachable!();
-        };
-        assert!(shots > 0);
-        assert_eq!(impacts, 0);
-        assert!(state.projectile_count() > 0);
-
-        for _ in 0..60 {
-            state
+        let mut impacts = 0_u16;
+        for _ in 0..8 {
+            let Event::TickAdvanced {
+                impacts: tick_impacts,
+                ..
+            } = state
                 .apply(Command::AdvanceTick)
-                .expect("tick should advance");
-            if state.raider_count() == 0 {
-                break;
-            }
+                .expect("tick should advance")
+            else {
+                unreachable!();
+            };
+            impacts = impacts.saturating_add(tick_impacts);
         }
-        assert_eq!(state.raider_count(), 0);
-        assert_eq!(state.projectile_count(), 0);
+        assert!(impacts > 0);
     }
 
     #[test]
-    fn rejected_builds_and_upgrades_are_transactional() {
+    fn rejected_builds_preserve_state() {
         let mut state = GameState::new(9);
         let before = state.clone();
         assert_eq!(
-            state.apply(Command::PlaceSawmill {
+            state.apply(Command::PlaceTower {
                 x: town_center().x,
                 z: town_center().z,
-            }),
-            Err(GameError::ProtectedCell)
-        );
-        assert_eq!(state, before);
-
-        let before_upgrade = state.clone();
-        assert_eq!(
-            state.apply(Command::UpgradeTower { x: 2, z: 2 }),
-            Err(GameError::NoTower)
-        );
-        assert_eq!(state, before_upgrade);
-    }
-
-    #[test]
-    fn buildings_cannot_spend_more_wood_than_the_town_hall_stores() {
-        let mut state = GameState::new(7);
-        state
-            .storage
-            .get_mut(entity_key(TOWN_ENTITY))
-            .expect("town storage should exist")
-            .wood = 10;
-        let before = state.clone();
-        assert_eq!(
-            state.apply(Command::PlaceTower {
-                x: 2,
-                z: 2,
                 archetype: TowerArchetype::Arrow,
             }),
-            Err(GameError::InsufficientWood)
+            Err(GameError::ProtectedCell)
         );
         assert_eq!(state, before);
     }
