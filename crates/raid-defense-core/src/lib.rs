@@ -1505,8 +1505,9 @@ impl GameState {
             .unwrap_or(u16::MAX)
             .saturating_mul(self.rules.raids.health_per_wave);
         let max_health = self.rules.raids.base_health.saturating_add(wave_bonus);
-        let damage_bonus = u16::try_from(self.wave / self.rules.raids.damage_increase_every_waves)
+        let damage_steps = u16::try_from(self.wave / self.rules.raids.damage_increase_every_waves)
             .unwrap_or(u16::MAX);
+        let damage_bonus = damage_steps.saturating_mul(self.rules.raids.damage_increase_amount);
         self.transforms
             .insert(entity_key(entity), Transform::at_cell(from));
         self.health.insert(
@@ -2452,6 +2453,8 @@ mod tests {
         rules.buildings.house.population_capacity = 3;
         rules.buildings.house.people_added = 1;
         rules.cycle.day_length_ticks = 2;
+        rules.raids.damage_increase_every_waves = 1;
+        rules.raids.damage_increase_amount = 7;
 
         let mut state = GameState::with_rules(23, rules);
         let starting_wood = state.wood();
@@ -2480,6 +2483,16 @@ mod tests {
             state.raider_count(),
             usize::from(rules.raids.raiders_per_wave)
         );
+        for entity in state.raiders.keys().map(key_entity) {
+            assert_eq!(
+                state
+                    .attacks
+                    .get(entity_key(entity))
+                    .expect("spawned raiders have an attack")
+                    .damage,
+                rules.raids.base_damage + rules.raids.damage_increase_amount
+            );
+        }
     }
 
     #[test]
