@@ -43,13 +43,15 @@ export type EntityView = {
 };
 
 export type SnapshotView = {
-  contract_version: 5;
+  contract_version: 6;
   seed: string;
   tick: number;
   wood: number;
   wood_capacity: number;
   wave: number;
   completed_waves: number;
+  day_ticks_remaining: number;
+  is_night: boolean;
   people: number;
   population_capacity: number;
   houses_unlocked: boolean;
@@ -126,7 +128,7 @@ export type RaidDefenseEvent =
     };
 
 export type DispatchResponse = {
-  contract_version: 5;
+  contract_version: 6;
   ok: boolean;
   event: RaidDefenseEvent | null;
   error: { code: string } | null;

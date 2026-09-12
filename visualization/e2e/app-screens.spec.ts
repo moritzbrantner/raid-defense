@@ -8,12 +8,25 @@ async function openGame(page: import("@playwright/test").Page) {
   await expect(page.getByTestId("people-value")).toHaveText("2/2");
   await expect(page.getByTestId("sawmill-count")).toHaveText("0");
   await expect(page.getByTestId("completed-waves-value")).toHaveText("0");
+  await expect(page.getByTestId("cycle-timer")).toContainText("Day ·");
 }
 
 async function selectCell(page: import("@playwright/test").Page, x: number, z: number) {
   await page.getByTestId("cell-x").fill(String(x));
   await page.getByTestId("cell-z").fill(String(z));
 }
+
+test("cycle timer counts down through daytime and shows nighttime", async ({ page }) => {
+  await openGame(page);
+
+  const initialTimer = await page.getByTestId("cycle-timer").textContent();
+  await expect
+    .poll(async () => page.getByTestId("cycle-timer").textContent(), { timeout: 3_000 })
+    .not.toBe(initialTimer);
+
+  await page.getByTestId("start-wave").click();
+  await expect(page.getByTestId("cycle-timer")).toHaveText("Night · Wave 1");
+});
 
 test("sawmill wood waits for real people to carry it back to the Town Hall", async ({ page }) => {
   await openGame(page);
@@ -114,7 +127,6 @@ test("rejects building on the protected Town Hall without mutating state", async
   await openGame(page);
 
   await selectCell(page, 8, 6);
-  const checksumBefore = await page.getByTestId("checksum").textContent();
   const woodBefore = await page.getByTestId("wood-value").textContent();
 
   await page.getByTestId("build-sawmill").click();
@@ -122,7 +134,6 @@ test("rejects building on the protected Town Hall without mutating state", async
   await expect(page.getByTestId("event-feedback")).toContainText(
     "reserved for the Town Hall or an edge spawn gate",
   );
-  await expect(page.getByTestId("checksum")).toHaveText(checksumBefore ?? "");
   await expect(page.getByTestId("wood-value")).toHaveText(woodBefore ?? "");
   await expect(page.getByTestId("sawmill-count")).toHaveText("0");
 });

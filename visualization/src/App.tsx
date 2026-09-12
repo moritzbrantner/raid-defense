@@ -18,6 +18,13 @@ function towerName(archetype: TowerArchetype) {
   return archetype === "arrow" ? "Arrow tower" : "Cannon tower";
 }
 
+function formatCycleTimer(ticks: number) {
+  const totalSeconds = Math.ceil((ticks * TICK_INTERVAL_MS) / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
 function describeEvent(event: RaidDefenseEvent | null) {
   if (!event) {
     return "Command accepted.";
@@ -467,7 +474,7 @@ function App() {
   }, []);
 
   const raiderCount = snapshot?.entities.filter((entity) => entity.kind === "raider").length ?? 0;
-  const sawmillCount = snapshot?.entities.filter((entity) => entity.kind === "sawmill").length ?? 0;
+  const townHealth = snapshot?.town_health;
 
   function issue(command: RaidDefenseCommand) {
     if (!client) {
@@ -483,7 +490,7 @@ function App() {
   }
 
   useEffect(() => {
-    if (!client || !snapshot || snapshot.town_health === 0 || (raiderCount === 0 && sawmillCount === 0)) {
+    if (!client || townHealth === undefined || townHealth === 0) {
       return;
     }
 
@@ -507,7 +514,7 @@ function App() {
     }, TICK_INTERVAL_MS);
 
     return () => window.clearInterval(timer);
-  }, [client, raiderCount, sawmillCount, snapshot?.town_health]);
+  }, [client, townHealth]);
 
   if (!snapshot) {
     return (
@@ -537,7 +544,7 @@ function App() {
     Math.min(100, (snapshot.town_health / snapshot.town_max_health) * 100),
   );
   const woodPercent = Math.max(0, Math.min(100, (snapshot.wood / snapshot.wood_capacity) * 100));
-  const canStartWave = raiderCount === 0 && snapshot.town_health > 0;
+  const canStartWave = !snapshot.is_night && snapshot.town_health > 0;
   const canUpgrade =
     selectedTower !== undefined &&
     selectedTower.upgrade_cost !== null &&
@@ -577,6 +584,14 @@ function App() {
           <div>
             <dt>Hauling</dt>
             <dd data-testid="hauling-value">{carryingPeople}</dd>
+          </div>
+          <div>
+            <dt>Cycle</dt>
+            <dd data-testid="cycle-timer">
+              {snapshot.is_night
+                ? `Night · Wave ${snapshot.wave}`
+                : `Day · ${formatCycleTimer(snapshot.day_ticks_remaining)}`}
+            </dd>
           </div>
           <div>
             <dt>Wave</dt>

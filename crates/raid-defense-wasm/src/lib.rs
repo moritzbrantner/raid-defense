@@ -9,7 +9,7 @@ use raid_defense_core::{
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-const CONTRACT_VERSION: u8 = 5;
+const CONTRACT_VERSION: u8 = 6;
 
 #[wasm_bindgen]
 pub struct RaidDefenseGame {
@@ -256,6 +256,8 @@ struct SnapshotDto {
     wood_capacity: u32,
     wave: u32,
     completed_waves: u32,
+    day_ticks_remaining: u16,
+    is_night: bool,
     people: u16,
     population_capacity: u16,
     houses_unlocked: bool,
@@ -289,6 +291,8 @@ impl From<&GameState> for SnapshotDto {
             wood_capacity: snapshot.wood_capacity,
             wave: snapshot.wave,
             completed_waves: snapshot.completed_waves,
+            day_ticks_remaining: state.day_ticks_remaining(),
+            is_night: state.is_night(),
             people: snapshot.people,
             population_capacity: snapshot.population_capacity,
             houses_unlocked: snapshot.houses_unlocked,
@@ -495,6 +499,19 @@ mod tests {
                 .count(),
             2
         );
+    }
+
+    #[test]
+    fn snapshot_exposes_authoritative_day_night_state() {
+        let mut state = GameState::new(7);
+        let day = SnapshotDto::from(&state);
+        assert_eq!(day.day_ticks_remaining, raid_defense_core::DAY_LENGTH_TICKS);
+        assert!(!day.is_night);
+
+        state.apply(Command::StartWave).expect("wave should start");
+        let night = SnapshotDto::from(&state);
+        assert_eq!(night.day_ticks_remaining, 0);
+        assert!(night.is_night);
     }
 
     #[test]
