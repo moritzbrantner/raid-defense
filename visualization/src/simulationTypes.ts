@@ -5,7 +5,15 @@ export type CellView = {
 
 export type TowerArchetype = "arrow" | "cannon";
 export type ResourceKind = "wood";
-export type EntityKind = "town_hall" | "tower" | "sawmill" | "raider" | "projectile";
+export type PersonState = "idle_at_town_hall" | "to_sawmill" | "to_town_hall";
+export type EntityKind =
+  | "town_hall"
+  | "tower"
+  | "sawmill"
+  | "house"
+  | "person"
+  | "raider"
+  | "projectile";
 
 export type EntityView = {
   id: number;
@@ -27,15 +35,24 @@ export type EntityView = {
   production_amount: number;
   production_interval_ticks: number;
   production_progress_ticks: number;
+  housing_capacity: number;
+  person_state: PersonState | null;
+  person_target_sawmill: number | null;
+  cargo_wood: number;
+  cargo_capacity: number;
 };
 
 export type SnapshotView = {
-  contract_version: 4;
+  contract_version: 5;
   seed: string;
   tick: number;
   wood: number;
   wood_capacity: number;
   wave: number;
+  completed_waves: number;
+  people: number;
+  population_capacity: number;
+  houses_unlocked: boolean;
   town_health: number;
   town_max_health: number;
   grid_width: number;
@@ -43,6 +60,11 @@ export type SnapshotView = {
   sawmill_cost: number;
   sawmill_output: number;
   sawmill_interval_ticks: number;
+  sawmill_local_wood_capacity: number;
+  house_cost: number;
+  house_unlock_completed_waves: number;
+  house_population_capacity: number;
+  person_carry_capacity: number;
   arrow_tower_cost: number;
   cannon_tower_cost: number;
   max_tower_level: number;
@@ -53,6 +75,7 @@ export type SnapshotView = {
 export type RaidDefenseCommand =
   | { type: "place_tower"; x: number; z: number; archetype: TowerArchetype }
   | { type: "place_sawmill"; x: number; z: number }
+  | { type: "place_house"; x: number; z: number }
   | { type: "upgrade_tower"; x: number; z: number }
   | { type: "start_wave" }
   | { type: "advance_tick" };
@@ -73,6 +96,14 @@ export type RaidDefenseEvent =
       wood_cost: number;
     }
   | {
+      type: "house_built";
+      entity: number;
+      cell: CellView;
+      wood_cost: number;
+      people_added: number;
+      population_capacity: number;
+    }
+  | {
       type: "tower_upgraded";
       entity: number;
       archetype: TowerArchetype;
@@ -87,12 +118,15 @@ export type RaidDefenseEvent =
       impacts: number;
       kills: number;
       wood_produced: number;
+      wood_picked_up: number;
+      wood_delivered: number;
       wood_stolen: number;
       town_damage: number;
+      completed_wave: number | null;
     };
 
 export type DispatchResponse = {
-  contract_version: 4;
+  contract_version: 5;
   ok: boolean;
   event: RaidDefenseEvent | null;
   error: { code: string } | null;
