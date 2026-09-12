@@ -1,6 +1,7 @@
 use crate::rules::{
     BuildingRules, CycleRules, EconomyRules, GameRules, HouseRules, PopulationRules, RaidRules,
-    SawmillRules, TowerArchetypeRules, TowerLevelRules, TowerRules, TownHallRules,
+    SawmillRules, StorageHouseRules, TowerArchetypeRules, TowerLevelRules, TowerRules,
+    TownHallRules,
 };
 
 /// The standard Raid Defense balance profile.
@@ -11,9 +12,13 @@ pub const STANDARD_RULES: GameRules = GameRules {
     economy: EconomyRules {
         starting_wood: 120,
         town_wood_capacity: 500,
+        forest_tile_count: 18,
+        forest_tile_wood: 80,
+        sawmill_harvest_radius: 5,
         sawmill_output: 4,
         sawmill_interval_ticks: 10,
         sawmill_local_wood_capacity: 24,
+        storage_house_wood_capacity: 160,
     },
     population: PopulationRules {
         starting_people: 2,
@@ -27,6 +32,10 @@ pub const STANDARD_RULES: GameRules = GameRules {
         sawmill: SawmillRules {
             wood_cost: 40,
             max_health: 80,
+        },
+        storage_house: StorageHouseRules {
+            wood_cost: 50,
+            max_health: 110,
         },
         house: HouseRules {
             wood_cost: 60,
