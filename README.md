@@ -9,13 +9,14 @@ The playable slice is intentionally small but architectural rather than mocked:
 - a 17×13 authoritative build grid;
 - a protected 3×3 town at the center;
 - one raider gate on each edge of the map;
-- guard towers placed directly on grid cells;
+- Arrow and Cannon tower archetypes placed directly on grid cells;
+- three deterministic upgrade levels with archetype-specific costs and combat stats;
 - deterministic shortest-path routing from every gate to the town;
 - maul-style maze building: towers may redirect raiders but cannot seal all routes;
-- fixed-point raider movement;
-- ECS-owned transforms, health, attacks, buildings, raiders, and movement;
-- deterministic tower targeting, damage, kills, and gold rewards;
-- a React Three Fiber client that renders the authoritative Rust/WASM snapshot in 3D;
+- fixed-point raider and projectile movement;
+- ECS-owned transforms, health, attacks, buildings, towers, raiders, movement, and projectiles;
+- deterministic tower targeting, projectile impacts, damage, kills, and gold rewards;
+- a React Three Fiber client that renders the authoritative Rust/WASM snapshot in 3D, including in-flight projectiles;
 - GitHub Pages deployment with browser acceptance against the real WASM game.
 
 ## Architecture
@@ -45,12 +46,14 @@ The current component boundary is designed for the scale of the intended game:
 
 - `Transform` — authoritative 2D world position in fixed-point units, rendered in 3D;
 - `Health` — damageable town, towers, raiders, and future units;
-- `Attack` — damage/range/cooldown for towers and raiders;
+- `Attack` — damage, range, cooldown, and projectile launch speed;
 - `Building` — town and tower occupancy on the gameplay grid;
+- `Tower` — tower archetype and upgrade level;
 - `Raider` — wave/spawn identity;
-- `Movement` — deterministic cell-to-cell motion.
+- `Movement` — deterministic cell-to-cell raider motion;
+- `Projectile` — target, damage payload, speed, and originating tower archetype.
 
-Future towers, projectiles, effects, units, status effects, upgrades, and destructible objects should be added as components/systems rather than growing entity-specific inheritance trees.
+Future effects, units, status effects, movement traits, destructible objects, and additional tower/raider families should be added as components/systems rather than growing entity-specific inheritance trees.
 
 ## Validation
 
