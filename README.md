@@ -52,6 +52,8 @@ Every `GameState` owns one immutable rules profile. Systems consume that profile
 
 Structural simulation contracts remain separate: grid dimensions, fixed-point representation, deterministic path-neighbor order, and stable tie-breaking are engine invariants rather than ordinary balance knobs.
 
+For normal balance changes, edit `default_rules.rs` and the relevant acceptance expectations; do not modify an ECS system merely to change a cost, rate, threshold, health value, or scaling curve.
+
 `GameState::new(seed)` creates the standard game. Validated custom rule profiles are available for tests and future game modes. External JSON/TOML rule loading is intentionally not part of the core yet; the typed profile gives one authoritative configuration surface without adding format/versioning complexity before it is needed.
 
 ## ECS direction
