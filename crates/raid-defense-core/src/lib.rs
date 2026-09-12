@@ -131,8 +131,14 @@ pub enum Command {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Event {
-    TowerBuilt { entity: EntityId, cell: Cell },
-    WaveStarted { wave: u32, raiders: u16 },
+    TowerBuilt {
+        entity: EntityId,
+        cell: Cell,
+    },
+    WaveStarted {
+        wave: u32,
+        raiders: u16,
+    },
     TickAdvanced {
         tick: u64,
         shots: u16,
@@ -544,9 +550,7 @@ impl GameState {
             let Some(mut movement) = self.movements.get(entity_key(entity)).copied() else {
                 continue;
             };
-            movement.progress_milli = movement
-                .progress_milli
-                .saturating_add(movement.speed_milli);
+            movement.progress_milli = movement.progress_milli.saturating_add(movement.speed_milli);
 
             if movement.progress_milli >= CELL_SCALE as u16 {
                 movement.progress_milli -= CELL_SCALE as u16;
@@ -698,9 +702,9 @@ impl GameState {
     }
 
     fn cell_has_building(&self, cell: Cell) -> bool {
-        self.buildings.iter().any(|(_, building)| {
-            building.kind == BuildingKind::GuardTower && building.cell == cell
-        })
+        self.buildings
+            .iter()
+            .any(|(_, building)| building.kind == BuildingKind::GuardTower && building.cell == cell)
     }
 
     fn raider_uses_cell(&self, cell: Cell) -> bool {
@@ -710,12 +714,13 @@ impl GameState {
     }
 
     fn routes_remain_open(&self, extra_block: Option<Cell>) -> bool {
-        Edge::ALL
-            .into_iter()
-            .all(|edge| self.next_path_step(edge.spawn_cell(), extra_block).is_some())
-            && self.movements.iter().all(|(_, movement)| {
-                self.next_path_step(movement.from, extra_block).is_some()
-            })
+        Edge::ALL.into_iter().all(|edge| {
+            self.next_path_step(edge.spawn_cell(), extra_block)
+                .is_some()
+        }) && self
+            .movements
+            .iter()
+            .all(|(_, movement)| self.next_path_step(movement.from, extra_block).is_some())
     }
 
     fn next_path_step(&self, start: Cell, extra_block: Option<Cell>) -> Option<Cell> {
@@ -875,10 +880,7 @@ mod tests {
 
     #[test]
     fn same_seed_and_commands_replay_identically() {
-        let mut commands = vec![
-            Command::PlaceTower { x: 7, z: 2 },
-            Command::StartWave,
-        ];
+        let mut commands = vec![Command::PlaceTower { x: 7, z: 2 }, Command::StartWave];
         commands.extend(std::iter::repeat_n(Command::AdvanceTick, 24));
 
         let first = replay(7, &commands).expect("valid replay");
@@ -953,9 +955,10 @@ mod tests {
         let mut kills = 0_u16;
         for _ in 0..40 {
             let Event::TickAdvanced {
-                kills: tick_kills,
-                ..
-            } = state.apply(Command::AdvanceTick).expect("tick should advance")
+                kills: tick_kills, ..
+            } = state
+                .apply(Command::AdvanceTick)
+                .expect("tick should advance")
             else {
                 unreachable!();
             };
