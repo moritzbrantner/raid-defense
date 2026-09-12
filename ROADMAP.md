@@ -9,10 +9,11 @@ The rebuild is vertical: each milestone leaves behind a deterministic playable s
 - [x] Implement the first defense loop: forts, garrisons, frontier claims, raids, and resolution.
 - [x] Add repository metadata, pinned Rust/Bun CI, Renovate, Pages, and layered hosted validation.
 - [x] Prove the replacement through exact-head fast -> integration -> workflow -> e2e evidence.
+- [x] Route the playable runtime through the pinned `ecs-lab` sparse-set entity world without moving Raid Defense-specific rules out of the domain core.
 
 ## B. Stable contract and WASM boundary
 
-- [x] Add a thin `raid-defense-wasm` adapter over `raid-defense-core`.
+- [x] Add a thin `raid-defense-wasm` adapter over the authoritative runtime.
 - [x] Version command, snapshot, event, and error envelopes.
 - [x] Prove a native/WASM checksum parity path and fail-closed malformed-command handling.
 - [ ] Generate browser DTO types from the authoritative contract instead of maintaining parallel handwritten view types.
@@ -22,13 +23,14 @@ The rebuild is vertical: each milestone leaves behind a deterministic playable s
 
 - [x] Replace the monolithic legacy application with a small browser shell against the new contract.
 - [x] Make map selection, province inspection, fort construction, recruitment, advancing time, claims, and raid feedback playable end to end.
-- [x] Keep game state in the Rust core; React owns interaction state and presentation only.
+- [x] Keep game state in Rust; React owns interaction state and presentation only.
 - [x] Add focused Playwright flows for successful commands, raid appearance, and rejected-command immutability.
-- [ ] Promote the replacement through GitHub Pages after merge.
+- [ ] Promote the ECS-backed MVP through GitHub Pages after merge and verify the hosted WASM flow.
 
 ## D. Logistics and defense depth
 
 - [ ] Model supply reach, reinforcement travel, fort capacity, and frontier exposure as deterministic systems.
+- [ ] Promote reusable logistics/topology data into shared ECS components where the cross-repository contract is genuinely reusable.
 - [ ] Make province topology and infrastructure change where raids can emerge and how quickly they can be answered.
 - [ ] Add distinct raider compositions and objectives without moving combat resolution into the browser.
 - [ ] Preserve bounded, inspectable algorithms and deterministic replay.
