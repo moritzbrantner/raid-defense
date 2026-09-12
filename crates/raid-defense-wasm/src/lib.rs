@@ -516,7 +516,7 @@ mod tests {
         state
             .apply(Command::PlaceSawmill { x: 2, z: 2 })
             .expect("sawmill should build");
-        for _ in 0..SAWMILL_INTERVAL_TICKS {
+        for _ in 0..state.rules().economy.sawmill_interval_ticks {
             state
                 .apply(Command::AdvanceTick)
                 .expect("economy tick should advance");
@@ -525,11 +525,11 @@ mod tests {
         assert!(snapshot.entities.iter().any(|entity| {
             entity.kind == "sawmill"
                 && entity.production_resource == Some("wood")
-                && entity.wood_capacity == SAWMILL_LOCAL_WOOD_CAPACITY
+                && entity.wood_capacity == state.rules().economy.sawmill_local_wood_capacity
         }));
         assert!(snapshot.entities.iter().any(|entity| {
             entity.kind == "person"
-                && entity.cargo_capacity == PERSON_CARRY_CAPACITY
+                && entity.cargo_capacity == state.rules().population.carry_capacity
                 && entity.person_state.is_some()
         }));
     }
