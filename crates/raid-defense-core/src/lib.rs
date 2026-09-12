@@ -859,6 +859,18 @@ impl GameState {
     }
 
     fn despawn_raider(&mut self, entity: EntityId) {
+        let mut dependent_projectiles = self
+            .projectiles
+            .iter()
+            .filter_map(|(key, projectile)| {
+                (projectile.target == entity).then_some(key_entity(key))
+            })
+            .collect::<Vec<_>>();
+        dependent_projectiles.sort_unstable();
+        for projectile in dependent_projectiles {
+            self.despawn_projectile(projectile);
+        }
+
         let key = entity_key(entity);
         self.transforms.remove(key);
         self.health.remove(key);
