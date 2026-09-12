@@ -17,7 +17,11 @@ impl GameState {
         }
         candidates.sort_by_key(|cell| {
             let index = u64::try_from(cell_index(*cell).unwrap_or_default()).unwrap_or_default();
-            (mix64(self.seed ^ index.wrapping_mul(0x9e37_79b9)), cell.z, cell.x)
+            (
+                mix64(self.seed ^ index.wrapping_mul(0x9e37_79b9)),
+                cell.z,
+                cell.x,
+            )
         });
 
         let mut selected = Vec::with_capacity(desired);
@@ -140,8 +144,11 @@ impl GameState {
             .buildings
             .iter()
             .filter_map(|(key, building)| {
-                matches!(building.kind, BuildingKind::TownHall | BuildingKind::StorageHouse)
-                    .then_some(key_entity(key))
+                matches!(
+                    building.kind,
+                    BuildingKind::TownHall | BuildingKind::StorageHouse
+                )
+                .then_some(key_entity(key))
             })
             .collect::<Vec<_>>();
         ids.sort_unstable();
@@ -261,7 +268,9 @@ impl GameState {
             })
             .collect::<Vec<_>>();
         candidates.sort_unstable();
-        candidates.first().map_or(TOWN_ENTITY, |(_, entity)| *entity)
+        candidates
+            .first()
+            .map_or(TOWN_ENTITY, |(_, entity)| *entity)
     }
 
     pub(super) fn storage_goal_cells(
@@ -293,9 +302,9 @@ impl GameState {
     }
 
     pub(super) fn construction_remaining(&self, site: EntityId) -> u32 {
-        self.storage
-            .get(entity_key(site))
-            .map_or(0, |storage| storage.wood_capacity.saturating_sub(storage.wood))
+        self.storage.get(entity_key(site)).map_or(0, |storage| {
+            storage.wood_capacity.saturating_sub(storage.wood)
+        })
     }
 
     pub(super) fn deliver_construction_wood(&mut self, site: EntityId, amount: u16) -> u16 {
@@ -320,8 +329,10 @@ impl GameState {
         tower.level = 1;
         self.towers.insert(entity_key(site), tower);
         self.storage.remove(entity_key(site));
-        self.attacks
-            .insert(entity_key(site), attack_for(self.rules, tower.archetype, 1, 0));
+        self.attacks.insert(
+            entity_key(site),
+            attack_for(self.rules, tower.archetype, 1, 0),
+        );
         true
     }
 
