@@ -15,7 +15,11 @@ pub enum RulesError {
     StartingPopulationExceedsCapacity,
     StartingWoodExceedsCapacity,
     HousePopulationExceedsCapacity,
+    ZeroForestCount,
+    ZeroForestWood,
+    ZeroSawmillHarvestRadius,
     ZeroSawmillInterval,
+    ZeroStorageCapacity,
     InvalidTowerLevelCount,
     NegativeTowerRange,
     ZeroRaidersPerWave,
@@ -34,8 +38,20 @@ impl GameRules {
         if self.buildings.house.people_added > self.buildings.house.population_capacity {
             return Err(RulesError::HousePopulationExceedsCapacity);
         }
+        if self.economy.forest_tile_count == 0 {
+            return Err(RulesError::ZeroForestCount);
+        }
+        if self.economy.forest_tile_wood == 0 {
+            return Err(RulesError::ZeroForestWood);
+        }
+        if self.economy.sawmill_harvest_radius == 0 {
+            return Err(RulesError::ZeroSawmillHarvestRadius);
+        }
         if self.economy.sawmill_interval_ticks == 0 {
             return Err(RulesError::ZeroSawmillInterval);
+        }
+        if self.economy.storage_house_wood_capacity == 0 {
+            return Err(RulesError::ZeroStorageCapacity);
         }
         if self.towers.max_level == 0 || self.towers.max_level > 3 {
             return Err(RulesError::InvalidTowerLevelCount);
@@ -77,7 +93,7 @@ impl GameRules {
 
     #[must_use]
     pub const fn tower_upgrade_cost(self, archetype: TowerArchetype, level: u8) -> Option<u32> {
-        if level >= self.towers.max_level {
+        if level == 0 || level >= self.towers.max_level {
             return None;
         }
         self.tower_level(archetype, level).upgrade_cost
@@ -98,11 +114,18 @@ impl GameRules {
 
         feed_u64(&mut hash, u64::from(self.economy.starting_wood));
         feed_u64(&mut hash, u64::from(self.economy.town_wood_capacity));
+        feed_u16(&mut hash, self.economy.forest_tile_count);
+        feed_u64(&mut hash, u64::from(self.economy.forest_tile_wood));
+        feed_u16(&mut hash, self.economy.sawmill_harvest_radius);
         feed_u16(&mut hash, self.economy.sawmill_output);
         feed_u16(&mut hash, self.economy.sawmill_interval_ticks);
         feed_u64(
             &mut hash,
             u64::from(self.economy.sawmill_local_wood_capacity),
+        );
+        feed_u64(
+            &mut hash,
+            u64::from(self.economy.storage_house_wood_capacity),
         );
 
         feed_u16(&mut hash, self.population.starting_people);
@@ -114,6 +137,8 @@ impl GameRules {
         feed_u16(&mut hash, self.buildings.town_hall.max_health);
         feed_u64(&mut hash, u64::from(self.buildings.sawmill.wood_cost));
         feed_u16(&mut hash, self.buildings.sawmill.max_health);
+        feed_u64(&mut hash, u64::from(self.buildings.storage_house.wood_cost));
+        feed_u16(&mut hash, self.buildings.storage_house.max_health);
         feed_u64(&mut hash, u64::from(self.buildings.house.wood_cost));
         feed_u16(&mut hash, self.buildings.house.max_health);
         feed_u64(
@@ -150,9 +175,13 @@ impl GameRules {
 pub struct EconomyRules {
     pub starting_wood: u32,
     pub town_wood_capacity: u32,
+    pub forest_tile_count: u16,
+    pub forest_tile_wood: u32,
+    pub sawmill_harvest_radius: u16,
     pub sawmill_output: u16,
     pub sawmill_interval_ticks: u16,
     pub sawmill_local_wood_capacity: u32,
+    pub storage_house_wood_capacity: u32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -168,6 +197,7 @@ pub struct PopulationRules {
 pub struct BuildingRules {
     pub town_hall: TownHallRules,
     pub sawmill: SawmillRules,
+    pub storage_house: StorageHouseRules,
     pub house: HouseRules,
 }
 
@@ -178,6 +208,12 @@ pub struct TownHallRules {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SawmillRules {
+    pub wood_cost: u32,
+    pub max_health: u16,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StorageHouseRules {
     pub wood_cost: u32,
     pub max_health: u16,
 }
@@ -331,6 +367,14 @@ mod tests {
         let mut rules = STANDARD_RULES;
         rules.towers.arrow.levels[0].range_milli = -1;
         assert_eq!(rules.validate(), Err(RulesError::NegativeTowerRange));
+    }
+
+    #[test]
+    fn resource_rules_participate_in_rule_identity() {
+        let standard = STANDARD_RULES.fingerprint();
+        let mut changed = STANDARD_RULES;
+        changed.economy.forest_tile_wood += 1;
+        assert_ne!(standard, changed.fingerprint());
     }
 
     #[test]
