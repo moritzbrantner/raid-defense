@@ -38,7 +38,8 @@ impl Policy {
             return None;
         }
 
-        let targets = PlanTargets::for_policy(self, state.completed_waves(), state.houses_unlocked());
+        let targets =
+            PlanTargets::for_policy(self, state.completed_waves(), state.houses_unlocked());
 
         match self {
             Self::Passive => None,
@@ -254,13 +255,17 @@ fn main() {
 
 fn run_cli() -> Result<(), String> {
     let args = env::args().skip(1).collect::<Vec<_>>();
-    if args.iter().any(|argument| argument == "--help" || argument == "-h") {
+    if args
+        .iter()
+        .any(|argument| argument == "--help" || argument == "-h")
+    {
         print_help();
         return Ok(());
     }
 
     let config = Config::parse(&args)?;
-    let mut results = Vec::with_capacity(config.runs as usize);
+    let capacity = usize::try_from(config.runs).expect("run count fits usize");
+    let mut results = Vec::with_capacity(capacity);
     for offset in 0..config.runs {
         let seed = config.seed.wrapping_add(u64::from(offset));
         results.push(simulate(seed, config.ticks, config.policy));
@@ -321,64 +326,96 @@ fn simulate(seed: u64, tick_limit: u64, policy: Policy) -> SimulationResult {
 }
 
 fn choose_economy_action(state: &GameState, targets: PlanTargets) -> Option<Command> {
-    if state.sawmill_count() < targets.sawmills {
-        return try_place_sawmill(state);
+    if state.sawmill_count() < targets.sawmills
+        && let Some(command) = try_place_sawmill(state)
+    {
+        return Some(command);
     }
-    if state.storage_house_count() < targets.storage_houses {
-        return try_place_storage_house(state);
+    if state.storage_house_count() < targets.storage_houses
+        && let Some(command) = try_place_storage_house(state)
+    {
+        return Some(command);
     }
-    if state.house_count() < targets.houses {
-        return try_place_house(state);
+    if state.house_count() < targets.houses
+        && let Some(command) = try_place_house(state)
+    {
+        return Some(command);
     }
-    if state.tower_count() < targets.towers {
-        return try_place_tower(state);
+    if state.tower_count() < targets.towers
+        && let Some(command) = try_place_tower(state)
+    {
+        return Some(command);
     }
     try_upgrade_tower(state)
 }
 
 fn choose_balanced_action(state: &GameState, targets: PlanTargets) -> Option<Command> {
-    if state.sawmill_count() == 0 {
-        return try_place_sawmill(state);
+    if state.sawmill_count() == 0
+        && let Some(command) = try_place_sawmill(state)
+    {
+        return Some(command);
     }
-    if state.storage_house_count() == 0 {
-        return try_place_storage_house(state);
+    if state.storage_house_count() == 0
+        && let Some(command) = try_place_storage_house(state)
+    {
+        return Some(command);
     }
-    if state.tower_count() < targets.towers {
-        return try_place_tower(state);
+    if state.tower_count() < targets.towers
+        && let Some(command) = try_place_tower(state)
+    {
+        return Some(command);
     }
-    if state.house_count() < targets.houses {
-        return try_place_house(state);
+    if state.house_count() < targets.houses
+        && let Some(command) = try_place_house(state)
+    {
+        return Some(command);
     }
-    if state.sawmill_count() < targets.sawmills {
-        return try_place_sawmill(state);
+    if state.sawmill_count() < targets.sawmills
+        && let Some(command) = try_place_sawmill(state)
+    {
+        return Some(command);
     }
-    if state.storage_house_count() < targets.storage_houses {
-        return try_place_storage_house(state);
+    if state.storage_house_count() < targets.storage_houses
+        && let Some(command) = try_place_storage_house(state)
+    {
+        return Some(command);
     }
     try_upgrade_tower(state)
 }
 
 fn choose_defense_action(state: &GameState, targets: PlanTargets) -> Option<Command> {
-    if state.sawmill_count() == 0 {
-        return try_place_sawmill(state);
+    if state.sawmill_count() == 0
+        && let Some(command) = try_place_sawmill(state)
+    {
+        return Some(command);
     }
-    if state.storage_house_count() == 0 {
-        return try_place_storage_house(state);
+    if state.storage_house_count() == 0
+        && let Some(command) = try_place_storage_house(state)
+    {
+        return Some(command);
     }
-    if state.tower_count() < targets.towers {
-        return try_place_tower(state);
+    if state.tower_count() < targets.towers
+        && let Some(command) = try_place_tower(state)
+    {
+        return Some(command);
     }
     if let Some(command) = try_upgrade_tower(state) {
         return Some(command);
     }
-    if state.house_count() < targets.houses {
-        return try_place_house(state);
+    if state.house_count() < targets.houses
+        && let Some(command) = try_place_house(state)
+    {
+        return Some(command);
     }
-    if state.sawmill_count() < targets.sawmills {
-        return try_place_sawmill(state);
+    if state.sawmill_count() < targets.sawmills
+        && let Some(command) = try_place_sawmill(state)
+    {
+        return Some(command);
     }
-    if state.storage_house_count() < targets.storage_houses {
-        return try_place_storage_house(state);
+    if state.storage_house_count() < targets.storage_houses
+        && let Some(command) = try_place_storage_house(state)
+    {
+        return Some(command);
     }
     None
 }
@@ -487,7 +524,11 @@ fn try_upgrade_tower(state: &GameState) -> Option<Command> {
     None
 }
 
-fn first_valid_placement<F>(state: &GameState, cells: Vec<Cell>, command_for: F) -> Option<Command>
+fn first_valid_placement<F>(
+    state: &GameState,
+    cells: Vec<Cell>,
+    command_for: F,
+) -> Option<Command>
 where
     F: Fn(Cell) -> Command,
 {
@@ -534,7 +575,7 @@ fn print_report(config: &Config, results: &[SimulationResult]) {
         config.policy, config.runs, config.ticks, config.seed
     );
     println!(
-        "seed\tstatus\tticks\twaves\thealth\twood\ttowers\tsites\tsawmills\tstorage\tpeople\tpeak_raiders\tkills\tstolen\tdamage\tchecksum"
+        "seed\tpolicy\tstatus\tticks\twaves\thealth\twood\ttowers\tsites\tsawmills\tstorage\thouses\tpeople\tforests\tcommands\tpeak_raiders\tshots\timpacts\tkills\tproduced\tpicked\tdelivered\ttowers_completed\tstolen\tdamage\tchecksum"
     );
 
     for result in results {
@@ -544,8 +585,9 @@ fn print_report(config: &Config, results: &[SimulationResult]) {
             "destroyed"
         };
         println!(
-            "{}\t{}\t{}\t{}/{}\t{}/{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:016x}",
+            "{}\t{}\t{}\t{}\t{}/{}\t{}/{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:016x}",
             result.seed,
+            result.policy,
             status,
             result.ticks,
             result.completed_waves,
@@ -557,9 +599,18 @@ fn print_report(config: &Config, results: &[SimulationResult]) {
             result.construction_sites,
             result.sawmills,
             result.storage_houses,
+            result.houses,
             result.people,
+            result.forests,
+            result.commands_applied,
             result.metrics.peak_raiders,
+            result.metrics.shots,
+            result.metrics.impacts,
             result.metrics.kills,
+            result.metrics.wood_produced,
+            result.metrics.wood_picked_up,
+            result.metrics.wood_delivered,
+            result.metrics.towers_completed,
             result.metrics.wood_stolen,
             result.metrics.town_damage,
             result.checksum,
@@ -573,6 +624,10 @@ fn print_report(config: &Config, results: &[SimulationResult]) {
     let completed_waves = results
         .iter()
         .map(|result| u64::from(result.completed_waves))
+        .sum::<u64>();
+    let kills = results
+        .iter()
+        .map(|result| result.metrics.kills)
         .sum::<u64>();
     let wood_produced = results
         .iter()
@@ -589,9 +644,10 @@ fn print_report(config: &Config, results: &[SimulationResult]) {
     let runs = u64::try_from(results.len()).expect("run count fits u64");
 
     println!(
-        "summary survived={survived}/{} avg_completed_waves={} avg_wood_produced={} avg_wood_delivered={} avg_wood_stolen={}",
+        "summary survived={survived}/{} avg_completed_waves={} avg_kills={} avg_wood_produced={} avg_wood_delivered={} avg_wood_stolen={}",
         results.len(),
         completed_waves / runs,
+        kills / runs,
         wood_produced / runs,
         wood_delivered / runs,
         wood_stolen / runs,
