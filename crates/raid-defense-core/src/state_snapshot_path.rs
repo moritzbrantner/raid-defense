@@ -43,10 +43,8 @@ impl GameState {
                 attack_range_milli: attack.range_milli,
                 tower_archetype: tower.map(|tower| tower.archetype),
                 tower_level: tower.map_or(0, |tower| tower.level),
-                upgrade_cost: tower.and_then(|tower| {
-                    self.rules
-                        .tower_upgrade_cost(tower.archetype, tower.level)
-                }),
+                upgrade_cost: tower
+                    .and_then(|tower| self.rules.tower_upgrade_cost(tower.archetype, tower.level)),
                 projectile_target: None,
                 stored_wood: storage.wood,
                 wood_capacity: storage.wood_capacity,
