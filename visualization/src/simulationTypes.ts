@@ -4,7 +4,8 @@ export type CellView = {
 };
 
 export type TowerArchetype = "arrow" | "cannon";
-export type EntityKind = "town" | "tower" | "raider" | "projectile";
+export type ResourceKind = "wood";
+export type EntityKind = "town_hall" | "tower" | "sawmill" | "raider" | "projectile";
 
 export type EntityView = {
   id: number;
@@ -20,18 +21,28 @@ export type EntityView = {
   tower_level: number;
   upgrade_cost: number | null;
   projectile_target: number | null;
+  stored_wood: number;
+  wood_capacity: number;
+  production_resource: ResourceKind | null;
+  production_amount: number;
+  production_interval_ticks: number;
+  production_progress_ticks: number;
 };
 
 export type SnapshotView = {
-  contract_version: 3;
+  contract_version: 4;
   seed: string;
   tick: number;
-  gold: number;
+  wood: number;
+  wood_capacity: number;
   wave: number;
   town_health: number;
   town_max_health: number;
   grid_width: number;
   grid_height: number;
+  sawmill_cost: number;
+  sawmill_output: number;
+  sawmill_interval_ticks: number;
   arrow_tower_cost: number;
   cannon_tower_cost: number;
   max_tower_level: number;
@@ -41,6 +52,7 @@ export type SnapshotView = {
 
 export type RaidDefenseCommand =
   | { type: "place_tower"; x: number; z: number; archetype: TowerArchetype }
+  | { type: "place_sawmill"; x: number; z: number }
   | { type: "upgrade_tower"; x: number; z: number }
   | { type: "start_wave" }
   | { type: "advance_tick" };
@@ -52,13 +64,20 @@ export type RaidDefenseEvent =
       cell: CellView;
       archetype: TowerArchetype;
       level: number;
+      wood_cost: number;
+    }
+  | {
+      type: "sawmill_built";
+      entity: number;
+      cell: CellView;
+      wood_cost: number;
     }
   | {
       type: "tower_upgraded";
       entity: number;
       archetype: TowerArchetype;
       level: number;
-      cost: number;
+      wood_cost: number;
     }
   | { type: "wave_started"; wave: number; raiders: number }
   | {
@@ -67,11 +86,13 @@ export type RaidDefenseEvent =
       shots: number;
       impacts: number;
       kills: number;
+      wood_produced: number;
+      wood_stolen: number;
       town_damage: number;
     };
 
 export type DispatchResponse = {
-  contract_version: 3;
+  contract_version: 4;
   ok: boolean;
   event: RaidDefenseEvent | null;
   error: { code: string } | null;

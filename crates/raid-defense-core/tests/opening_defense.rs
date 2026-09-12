@@ -2,25 +2,21 @@ use raid_defense_core::{Command, GameError, GameState, TowerArchetype, replay};
 
 fn opening_trace() -> Vec<Command> {
     let mut commands = vec![
+        Command::PlaceSawmill { x: 2, z: 2 },
         Command::PlaceTower {
             x: 7,
             z: 2,
             archetype: TowerArchetype::Arrow,
         },
-        Command::PlaceTower {
-            x: 9,
-            z: 2,
-            archetype: TowerArchetype::Cannon,
-        },
         Command::UpgradeTower { x: 7, z: 2 },
         Command::StartWave,
     ];
-    commands.extend(std::iter::repeat_n(Command::AdvanceTick, 28));
+    commands.extend(std::iter::repeat_n(Command::AdvanceTick, 36));
     commands
 }
 
 #[test]
-fn opening_defense_trace_is_replayable() {
+fn opening_economy_defense_trace_is_replayable() {
     let commands = opening_trace();
     let first = replay(0x5eed, &commands).expect("opening trace should remain valid");
     let second = replay(0x5eed, &commands).expect("same trace should replay");
@@ -28,7 +24,8 @@ fn opening_defense_trace_is_replayable() {
     assert_eq!(first, second);
     assert_eq!(first.checksum(), second.checksum());
     assert_eq!(first.wave(), 1);
-    assert_eq!(first.tower_count(), 2);
+    assert_eq!(first.tower_count(), 1);
+    assert_eq!(first.sawmill_count(), 1);
 }
 
 #[test]

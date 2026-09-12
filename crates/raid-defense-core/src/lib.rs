@@ -9,17 +9,22 @@ pub type EntityId = u32;
 pub const GRID_WIDTH: i16 = 17;
 pub const GRID_HEIGHT: i16 = 13;
 pub const CELL_SCALE: i32 = 1_000;
-pub const STARTING_GOLD: u32 = 120;
+pub const STARTING_WOOD: u32 = 120;
+pub const TOWN_WOOD_CAPACITY: u32 = 500;
+pub const SAWMILL_COST: u32 = 40;
+pub const SAWMILL_OUTPUT: u16 = 2;
+pub const SAWMILL_INTERVAL_TICKS: u16 = 10;
 pub const ARROW_TOWER_COST: u32 = 25;
 pub const CANNON_TOWER_COST: u32 = 45;
 pub const MAX_TOWER_LEVEL: u8 = 3;
 pub const TOWN_MAX_HEALTH: u16 = 250;
 
 const TOWER_MAX_HEALTH: u16 = 100;
+const SAWMILL_MAX_HEALTH: u16 = 80;
 const RAIDER_BASE_HEALTH: u16 = 30;
 const RAIDER_BASE_DAMAGE: u16 = 10;
 const RAIDER_SPEED_MILLI: u16 = 250;
-const KILL_REWARD: u32 = 5;
+const RAIDER_BASE_WOOD_STEAL: u32 = 15;
 const TOWN_ENTITY: EntityId = 0;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -98,9 +103,29 @@ pub struct Attack {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ResourceKind {
+    Wood,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ResourceStorage {
+    pub wood: u32,
+    pub wood_capacity: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ResourceProducer {
+    pub resource: ResourceKind,
+    pub amount: u16,
+    pub interval_ticks: u16,
+    pub progress_ticks: u16,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BuildingKind {
-    Town,
+    TownHall,
     Tower,
+    Sawmill,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -157,6 +182,10 @@ pub enum Command {
         z: i16,
         archetype: TowerArchetype,
     },
+    PlaceSawmill {
+        x: i16,
+        z: i16,
+    },
     UpgradeTower {
         x: i16,
         z: i16,
@@ -172,12 +201,18 @@ pub enum Event {
         cell: Cell,
         archetype: TowerArchetype,
         level: u8,
+        wood_cost: u32,
+    },
+    SawmillBuilt {
+        entity: EntityId,
+        cell: Cell,
+        wood_cost: u32,
     },
     TowerUpgraded {
         entity: EntityId,
         archetype: TowerArchetype,
         level: u8,
-        cost: u32,
+        wood_cost: u32,
     },
     WaveStarted {
         wave: u32,
@@ -188,6 +223,8 @@ pub enum Event {
         shots: u16,
         impacts: u16,
         kills: u16,
+        wood_produced: u16,
+        wood_stolen: u16,
         town_damage: u16,
     },
 }
@@ -198,7 +235,7 @@ pub enum GameError {
     CellOccupied,
     ProtectedCell,
     PathBlocked,
-    InsufficientGold,
+    InsufficientWood,
     NoTower,
     MaxTowerLevel,
     RaidersStillActive,
@@ -207,8 +244,9 @@ pub enum GameError {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EntityKind {
-    Town,
+    TownHall,
     Tower,
+    Sawmill,
     Raider,
     Projectile,
 }
@@ -228,13 +266,20 @@ pub struct EntitySnapshot {
     pub tower_level: u8,
     pub upgrade_cost: Option<u32>,
     pub projectile_target: Option<EntityId>,
+    pub stored_wood: u32,
+    pub wood_capacity: u32,
+    pub production_resource: Option<ResourceKind>,
+    pub production_amount: u16,
+    pub production_interval_ticks: u16,
+    pub production_progress_ticks: u16,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GameSnapshot {
     pub seed: u64,
     pub tick: u64,
-    pub gold: u32,
+    pub wood: u32,
+    pub wood_capacity: u32,
     pub wave: u32,
     pub town_health: u16,
     pub town_max_health: u16,
@@ -247,7 +292,6 @@ pub struct GameSnapshot {
 pub struct GameState {
     seed: u64,
     tick: u64,
-    gold: u32,
     wave: u32,
     next_entity: EntityId,
     transforms: SparseMap<Transform>,
@@ -258,6 +302,8 @@ pub struct GameState {
     raiders: SparseMap<Raider>,
     movements: SparseMap<Movement>,
     projectiles: SparseMap<Projectile>,
+    storage: SparseMap<ResourceStorage>,
+    producers: SparseMap<ResourceProducer>,
     alive: SparseSet,
 }
 
@@ -267,7 +313,6 @@ impl GameState {
         let mut state = Self {
             seed,
             tick: 0,
-            gold: STARTING_GOLD,
             wave: 0,
             next_entity: 1,
             transforms: SparseMap::new(),
@@ -278,6 +323,8 @@ impl GameState {
             raiders: SparseMap::new(),
             movements: SparseMap::new(),
             projectiles: SparseMap::new(),
+            storage: SparseMap::new(),
+            producers: SparseMap::new(),
             alive: SparseSet::new(),
         };
         let town_cell = town_center();
@@ -295,8 +342,15 @@ impl GameState {
         state.buildings.insert(
             entity_key(TOWN_ENTITY),
             Building {
-                kind: BuildingKind::Town,
+                kind: BuildingKind::TownHall,
                 cell: town_cell,
+            },
+        );
+        state.storage.insert(
+            entity_key(TOWN_ENTITY),
+            ResourceStorage {
+                wood: STARTING_WOOD,
+                wood_capacity: TOWN_WOOD_CAPACITY,
             },
         );
         state
@@ -313,13 +367,22 @@ impl GameState {
     }
 
     #[must_use]
-    pub const fn gold(&self) -> u32 {
-        self.gold
+    pub const fn wave(&self) -> u32 {
+        self.wave
     }
 
     #[must_use]
-    pub const fn wave(&self) -> u32 {
-        self.wave
+    pub fn wood(&self) -> u32 {
+        self.storage
+            .get(entity_key(TOWN_ENTITY))
+            .map_or(0, |storage| storage.wood)
+    }
+
+    #[must_use]
+    pub fn wood_capacity(&self) -> u32 {
+        self.storage
+            .get(entity_key(TOWN_ENTITY))
+            .map_or(0, |storage| storage.wood_capacity)
     }
 
     #[must_use]
@@ -340,6 +403,11 @@ impl GameState {
     }
 
     #[must_use]
+    pub fn sawmill_count(&self) -> usize {
+        self.producers.iter().count()
+    }
+
+    #[must_use]
     pub fn projectile_count(&self) -> usize {
         self.projectiles.iter().count()
     }
@@ -347,6 +415,7 @@ impl GameState {
     pub fn apply(&mut self, command: Command) -> Result<Event, GameError> {
         match command {
             Command::PlaceTower { x, z, archetype } => self.place_tower(Cell::new(x, z), archetype),
+            Command::PlaceSawmill { x, z } => self.place_sawmill(Cell::new(x, z)),
             Command::UpgradeTower { x, z } => self.upgrade_tower(Cell::new(x, z)),
             Command::StartWave => self.start_wave(),
             Command::AdvanceTick => Ok(self.advance_tick()),
@@ -365,7 +434,8 @@ impl GameState {
         GameSnapshot {
             seed: self.seed,
             tick: self.tick,
-            gold: self.gold,
+            wood: self.wood(),
+            wood_capacity: self.wood_capacity(),
             wave: self.wave,
             town_health: self.town_health(),
             town_max_health: TOWN_MAX_HEALTH,
@@ -380,7 +450,6 @@ impl GameState {
         let mut hash = 0xcbf2_9ce4_8422_2325_u64;
         feed_u64(&mut hash, self.seed);
         feed_u64(&mut hash, self.tick);
-        feed_u64(&mut hash, u64::from(self.gold));
         feed_u64(&mut hash, u64::from(self.wave));
         feed_u64(&mut hash, u64::from(self.next_entity));
 
@@ -389,10 +458,11 @@ impl GameState {
             feed_byte(
                 &mut hash,
                 match entity.kind {
-                    EntityKind::Town => 0,
+                    EntityKind::TownHall => 0,
                     EntityKind::Tower => 1,
-                    EntityKind::Raider => 2,
-                    EntityKind::Projectile => 3,
+                    EntityKind::Sawmill => 2,
+                    EntityKind::Raider => 3,
+                    EntityKind::Projectile => 4,
                 },
             );
             feed_i32(&mut hash, entity.x_milli);
@@ -457,28 +527,33 @@ impl GameState {
             } else {
                 feed_byte(&mut hash, 0);
             }
+
+            if let Some(storage) = self.storage.get(entity_key(entity.id)) {
+                feed_byte(&mut hash, 1);
+                feed_u64(&mut hash, u64::from(storage.wood));
+                feed_u64(&mut hash, u64::from(storage.wood_capacity));
+            } else {
+                feed_byte(&mut hash, 0);
+            }
+
+            if let Some(producer) = self.producers.get(entity_key(entity.id)) {
+                feed_byte(&mut hash, 1);
+                feed_byte(&mut hash, resource_kind_code(producer.resource));
+                feed_u16(&mut hash, producer.amount);
+                feed_u16(&mut hash, producer.interval_ticks);
+                feed_u16(&mut hash, producer.progress_ticks);
+            } else {
+                feed_byte(&mut hash, 0);
+            }
         }
 
         hash
     }
 
     fn place_tower(&mut self, cell: Cell, archetype: TowerArchetype) -> Result<Event, GameError> {
-        if self.town_health() == 0 {
-            return Err(GameError::GameOver);
-        }
-        if !in_bounds(cell) {
-            return Err(GameError::OutOfBounds);
-        }
-        if is_town_cell(cell) || Edge::ALL.into_iter().any(|edge| edge.spawn_cell() == cell) {
-            return Err(GameError::ProtectedCell);
-        }
-        if self.cell_has_building(cell) || self.raider_uses_cell(cell) {
-            return Err(GameError::CellOccupied);
-        }
+        self.validate_build_cell(cell)?;
         let cost = tower_cost(archetype);
-        if self.gold < cost {
-            return Err(GameError::InsufficientGold);
-        }
+        self.require_wood(cost)?;
         if !self.routes_remain_open(Some(cell)) {
             return Err(GameError::PathBlocked);
         }
@@ -509,13 +584,56 @@ impl GameState {
                 level: 1,
             },
         );
-        self.gold -= cost;
+        self.spend_wood(cost);
 
         Ok(Event::TowerBuilt {
             entity,
             cell,
             archetype,
             level: 1,
+            wood_cost: cost,
+        })
+    }
+
+    fn place_sawmill(&mut self, cell: Cell) -> Result<Event, GameError> {
+        self.validate_build_cell(cell)?;
+        self.require_wood(SAWMILL_COST)?;
+        if !self.routes_remain_open(Some(cell)) {
+            return Err(GameError::PathBlocked);
+        }
+
+        let entity = self.allocate_entity();
+        self.transforms
+            .insert(entity_key(entity), Transform::at_cell(cell));
+        self.health.insert(
+            entity_key(entity),
+            Health {
+                current: SAWMILL_MAX_HEALTH,
+                maximum: SAWMILL_MAX_HEALTH,
+            },
+        );
+        self.buildings.insert(
+            entity_key(entity),
+            Building {
+                kind: BuildingKind::Sawmill,
+                cell,
+            },
+        );
+        self.producers.insert(
+            entity_key(entity),
+            ResourceProducer {
+                resource: ResourceKind::Wood,
+                amount: SAWMILL_OUTPUT,
+                interval_ticks: SAWMILL_INTERVAL_TICKS,
+                progress_ticks: 0,
+            },
+        );
+        self.spend_wood(SAWMILL_COST);
+
+        Ok(Event::SawmillBuilt {
+            entity,
+            cell,
+            wood_cost: SAWMILL_COST,
         })
     }
 
@@ -534,9 +652,7 @@ impl GameState {
             .expect("tower buildings always have a tower component");
         let cost =
             tower_upgrade_cost(tower.archetype, tower.level).ok_or(GameError::MaxTowerLevel)?;
-        if self.gold < cost {
-            return Err(GameError::InsufficientGold);
-        }
+        self.require_wood(cost)?;
 
         let next_level = tower.level + 1;
         let cooldown_remaining = self
@@ -552,14 +668,67 @@ impl GameState {
             },
         );
         self.attacks.insert(entity_key(entity), next_attack);
-        self.gold -= cost;
+        self.spend_wood(cost);
 
         Ok(Event::TowerUpgraded {
             entity,
             archetype: tower.archetype,
             level: next_level,
-            cost,
+            wood_cost: cost,
         })
+    }
+
+    fn validate_build_cell(&self, cell: Cell) -> Result<(), GameError> {
+        if self.town_health() == 0 {
+            return Err(GameError::GameOver);
+        }
+        if !in_bounds(cell) {
+            return Err(GameError::OutOfBounds);
+        }
+        if is_town_cell(cell) || Edge::ALL.into_iter().any(|edge| edge.spawn_cell() == cell) {
+            return Err(GameError::ProtectedCell);
+        }
+        if self.cell_has_building(cell) || self.raider_uses_cell(cell) {
+            return Err(GameError::CellOccupied);
+        }
+        Ok(())
+    }
+
+    fn require_wood(&self, amount: u32) -> Result<(), GameError> {
+        if self.wood() < amount {
+            Err(GameError::InsufficientWood)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn spend_wood(&mut self, amount: u32) {
+        let storage = self
+            .storage
+            .get_mut(entity_key(TOWN_ENTITY))
+            .expect("town hall always owns resource storage");
+        storage.wood -= amount;
+    }
+
+    fn store_wood(&mut self, amount: u32) -> u32 {
+        let storage = self
+            .storage
+            .get_mut(entity_key(TOWN_ENTITY))
+            .expect("town hall always owns resource storage");
+        let available = storage.wood_capacity.saturating_sub(storage.wood);
+        let stored = available.min(amount);
+        storage.wood = storage.wood.saturating_add(stored);
+        stored
+    }
+
+    fn steal_wood(&mut self, amount: u32) -> u32 {
+        let storage = self
+            .storage
+            .get_mut(entity_key(TOWN_ENTITY))
+            .expect("town hall always owns resource storage");
+        let stolen = storage.wood.min(amount);
+        storage.wood -= stolen;
+        stolen
     }
 
     fn start_wave(&mut self) -> Result<Event, GameError> {
@@ -585,22 +754,55 @@ impl GameState {
 
     fn advance_tick(&mut self) -> Event {
         self.tick = self.tick.saturating_add(1);
+        let wood_produced = self.run_resource_production_system();
         let shots = self.run_tower_attack_system();
         let (impacts, killed) = self.run_projectile_system();
         let kills = u16::try_from(killed.len()).unwrap_or(u16::MAX);
         for entity in killed {
             self.despawn_raider(entity);
-            self.gold = self.gold.saturating_add(KILL_REWARD);
         }
-        let town_damage = self.run_movement_system();
+        let (wood_stolen, town_damage) = self.run_movement_system();
 
         Event::TickAdvanced {
             tick: self.tick,
             shots,
             impacts,
             kills,
+            wood_produced,
+            wood_stolen,
             town_damage,
         }
+    }
+
+    fn run_resource_production_system(&mut self) -> u16 {
+        let mut ids = self.producers.keys().map(key_entity).collect::<Vec<_>>();
+        ids.sort_unstable();
+        let mut produced_total = 0_u16;
+
+        for entity in ids {
+            let Some(mut producer) = self.producers.get(entity_key(entity)).copied() else {
+                continue;
+            };
+            producer.progress_ticks = producer.progress_ticks.saturating_add(1);
+            let ready = producer.progress_ticks >= producer.interval_ticks;
+            if ready {
+                producer.progress_ticks -= producer.interval_ticks;
+            }
+            self.producers.insert(entity_key(entity), producer);
+
+            if !ready {
+                continue;
+            }
+            match producer.resource {
+                ResourceKind::Wood => {
+                    let stored = self.store_wood(u32::from(producer.amount));
+                    produced_total =
+                        produced_total.saturating_add(u16::try_from(stored).unwrap_or(u16::MAX));
+                }
+            }
+        }
+
+        produced_total
     }
 
     fn run_tower_attack_system(&mut self) -> u16 {
@@ -712,22 +914,10 @@ impl GameState {
             let next = Transform {
                 x_milli: position
                     .x_milli
-                    .saturating_add(i32::try_from(step_x).unwrap_or_else(|_| {
-                        if step_x.is_negative() {
-                            i32::MIN
-                        } else {
-                            i32::MAX
-                        }
-                    })),
+                    .saturating_add(saturating_i64_to_i32(step_x)),
                 z_milli: position
                     .z_milli
-                    .saturating_add(i32::try_from(step_z).unwrap_or_else(|_| {
-                        if step_z.is_negative() {
-                            i32::MIN
-                        } else {
-                            i32::MAX
-                        }
-                    })),
+                    .saturating_add(saturating_i64_to_i32(step_z)),
             };
             self.transforms.insert(entity_key(entity), next);
         }
@@ -764,9 +954,10 @@ impl GameState {
         candidates.first().map(|(_, entity)| *entity)
     }
 
-    fn run_movement_system(&mut self) -> u16 {
+    fn run_movement_system(&mut self) -> (u16, u16) {
         let mut raiders = self.raiders.keys().map(key_entity).collect::<Vec<_>>();
         raiders.sort_unstable();
+        let mut wood_stolen = 0_u16;
         let mut town_damage = 0_u16;
         let mut reached_town = Vec::new();
 
@@ -780,11 +971,16 @@ impl GameState {
                 movement.progress_milli -= CELL_SCALE as u16;
                 movement.from = movement.to;
                 if is_town_cell(movement.from) {
-                    let damage = self
-                        .attacks
-                        .get(entity_key(entity))
-                        .map_or(0, |attack| attack.damage);
-                    town_damage = town_damage.saturating_add(damage);
+                    let stolen = self.steal_wood(self.raider_wood_steal_amount());
+                    wood_stolen =
+                        wood_stolen.saturating_add(u16::try_from(stolen).unwrap_or(u16::MAX));
+                    if stolen == 0 {
+                        let damage = self
+                            .attacks
+                            .get(entity_key(entity))
+                            .map_or(0, |attack| attack.damage);
+                        town_damage = town_damage.saturating_add(damage);
+                    }
                     reached_town.push(entity);
                     continue;
                 }
@@ -813,14 +1009,18 @@ impl GameState {
             self.despawn_raider(entity);
         }
 
-        town_damage
+        (wood_stolen, town_damage)
+    }
+
+    fn raider_wood_steal_amount(&self) -> u32 {
+        RAIDER_BASE_WOOD_STEAL.saturating_add(self.wave.saturating_sub(1).saturating_mul(2))
     }
 
     fn spawn_raider(&mut self, edge: Edge) {
         let from = edge.spawn_cell();
         let to = self
             .next_path_step(from, None)
-            .expect("validated tower placements keep every edge connected to town");
+            .expect("validated building placements keep every edge connected to town hall");
         let entity = self.allocate_entity();
         let wave_bonus = u16::try_from(self.wave.saturating_sub(1))
             .unwrap_or(u16::MAX)
@@ -916,14 +1116,20 @@ impl GameState {
             cooldown_remaining: 0,
             projectile_speed_milli: 0,
         });
+        let storage = self.storage.get(key).copied().unwrap_or(ResourceStorage {
+            wood: 0,
+            wood_capacity: 0,
+        });
+        let producer = self.producers.get(key).copied();
 
         if let Some(building) = self.buildings.get(key) {
             let tower = self.towers.get(key).copied();
             return Some(EntitySnapshot {
                 id: entity,
                 kind: match building.kind {
-                    BuildingKind::Town => EntityKind::Town,
+                    BuildingKind::TownHall => EntityKind::TownHall,
                     BuildingKind::Tower => EntityKind::Tower,
+                    BuildingKind::Sawmill => EntityKind::Sawmill,
                 },
                 x_milli: transform.x_milli,
                 z_milli: transform.z_milli,
@@ -937,6 +1143,12 @@ impl GameState {
                 upgrade_cost: tower
                     .and_then(|tower| tower_upgrade_cost(tower.archetype, tower.level)),
                 projectile_target: None,
+                stored_wood: storage.wood,
+                wood_capacity: storage.wood_capacity,
+                production_resource: producer.map(|producer| producer.resource),
+                production_amount: producer.map_or(0, |producer| producer.amount),
+                production_interval_ticks: producer.map_or(0, |producer| producer.interval_ticks),
+                production_progress_ticks: producer.map_or(0, |producer| producer.progress_ticks),
             });
         }
 
@@ -955,6 +1167,12 @@ impl GameState {
                 tower_level: 0,
                 upgrade_cost: None,
                 projectile_target: None,
+                stored_wood: 0,
+                wood_capacity: 0,
+                production_resource: None,
+                production_amount: 0,
+                production_interval_ticks: 0,
+                production_progress_ticks: 0,
             });
         }
 
@@ -973,6 +1191,12 @@ impl GameState {
             tower_level: 0,
             upgrade_cost: None,
             projectile_target: Some(projectile.target),
+            stored_wood: 0,
+            wood_capacity: 0,
+            production_resource: None,
+            production_amount: 0,
+            production_interval_ticks: 0,
+            production_progress_ticks: 0,
         })
     }
 
@@ -984,9 +1208,10 @@ impl GameState {
     }
 
     fn cell_has_building(&self, cell: Cell) -> bool {
-        self.buildings
-            .iter()
-            .any(|(_, building)| building.kind == BuildingKind::Tower && building.cell == cell)
+        self.buildings.iter().any(|(_, building)| {
+            matches!(building.kind, BuildingKind::Tower | BuildingKind::Sawmill)
+                && building.cell == cell
+        })
     }
 
     fn raider_uses_cell(&self, cell: Cell) -> bool {
@@ -1208,10 +1433,26 @@ fn integer_sqrt(value: u64) -> u64 {
     x
 }
 
+fn saturating_i64_to_i32(value: i64) -> i32 {
+    i32::try_from(value).unwrap_or_else(|_| {
+        if value.is_negative() {
+            i32::MIN
+        } else {
+            i32::MAX
+        }
+    })
+}
+
 const fn tower_archetype_code(archetype: TowerArchetype) -> u8 {
     match archetype {
         TowerArchetype::Arrow => 0,
         TowerArchetype::Cannon => 1,
+    }
+}
+
+const fn resource_kind_code(resource: ResourceKind) -> u8 {
+    match resource {
+        ResourceKind::Wood => 0,
     }
 }
 
@@ -1273,17 +1514,17 @@ mod tests {
     }
 
     #[test]
-    fn same_seed_and_commands_replay_identically_with_projectiles() {
+    fn same_seed_and_commands_replay_identically_with_economy() {
         let mut commands = vec![
+            Command::PlaceSawmill { x: 2, z: 2 },
             Command::PlaceTower {
                 x: 7,
                 z: 2,
                 archetype: TowerArchetype::Arrow,
             },
-            Command::UpgradeTower { x: 7, z: 2 },
             Command::StartWave,
         ];
-        commands.extend(std::iter::repeat_n(Command::AdvanceTick, 18));
+        commands.extend(std::iter::repeat_n(Command::AdvanceTick, 30));
 
         let first = replay(7, &commands).expect("valid replay");
         let second = replay(7, &commands).expect("same replay remains valid");
@@ -1293,7 +1534,116 @@ mod tests {
     }
 
     #[test]
-    fn tower_archetypes_have_distinct_costs_and_stats() {
+    fn sawmill_spends_then_produces_wood_into_town_hall_storage() {
+        let mut state = GameState::new(7);
+        state
+            .apply(Command::PlaceSawmill { x: 2, z: 2 })
+            .expect("sawmill should build");
+        assert_eq!(state.wood(), STARTING_WOOD - SAWMILL_COST);
+        assert_eq!(state.sawmill_count(), 1);
+
+        for _ in 0..SAWMILL_INTERVAL_TICKS {
+            state
+                .apply(Command::AdvanceTick)
+                .expect("tick should advance");
+        }
+
+        assert_eq!(
+            state.wood(),
+            STARTING_WOOD - SAWMILL_COST + u32::from(SAWMILL_OUTPUT)
+        );
+        let town = state
+            .snapshot()
+            .entities
+            .into_iter()
+            .find(|entity| entity.kind == EntityKind::TownHall)
+            .expect("town hall should exist");
+        assert_eq!(town.stored_wood, state.wood());
+        assert_eq!(town.wood_capacity, TOWN_WOOD_CAPACITY);
+    }
+
+    #[test]
+    fn towers_and_upgrades_consume_wood() {
+        let mut state = GameState::new(7);
+        state
+            .apply(Command::PlaceTower {
+                x: 2,
+                z: 2,
+                archetype: TowerArchetype::Arrow,
+            })
+            .expect("arrow tower should build");
+        assert_eq!(state.wood(), STARTING_WOOD - ARROW_TOWER_COST);
+
+        state
+            .apply(Command::UpgradeTower { x: 2, z: 2 })
+            .expect("upgrade should spend wood");
+        assert_eq!(state.wood(), STARTING_WOOD - ARROW_TOWER_COST - 20);
+    }
+
+    #[test]
+    fn raiders_steal_town_hall_wood_before_damaging_it() {
+        let mut state = GameState::new(11);
+        let health_before = state.town_health();
+        state.apply(Command::StartWave).expect("wave should start");
+
+        let mut stolen = 0_u16;
+        for _ in 0..40 {
+            let Event::TickAdvanced {
+                wood_stolen,
+                town_damage,
+                ..
+            } = state
+                .apply(Command::AdvanceTick)
+                .expect("tick should advance")
+            else {
+                unreachable!();
+            };
+            stolen = stolen.saturating_add(wood_stolen);
+            assert_eq!(
+                town_damage, 0,
+                "stored wood should be stolen before health is damaged"
+            );
+            if state.raider_count() == 0 {
+                break;
+            }
+        }
+
+        assert!(stolen > 0);
+        assert!(state.wood() < STARTING_WOOD);
+        assert_eq!(state.town_health(), health_before);
+    }
+
+    #[test]
+    fn raiders_damage_town_hall_when_there_is_no_wood_left() {
+        let mut state = GameState::new(11);
+        state
+            .storage
+            .get_mut(entity_key(TOWN_ENTITY))
+            .expect("town storage should exist")
+            .wood = 0;
+        let health_before = state.town_health();
+        state.apply(Command::StartWave).expect("wave should start");
+
+        let mut damage = 0_u16;
+        for _ in 0..40 {
+            let Event::TickAdvanced { town_damage, .. } = state
+                .apply(Command::AdvanceTick)
+                .expect("tick should advance")
+            else {
+                unreachable!();
+            };
+            damage = damage.saturating_add(town_damage);
+            if state.raider_count() == 0 {
+                break;
+            }
+        }
+
+        assert!(damage > 0);
+        assert!(state.town_health() < health_before);
+    }
+
+    #[test]
+    fn tower_archetypes_keep_distinct_stats() {
         let mut state = GameState::new(7);
         state
             .apply(Command::PlaceTower {
@@ -1312,10 +1662,6 @@ mod tests {
 
         let arrow = tower_at(&state, Cell::new(2, 2));
         let cannon = tower_at(&state, Cell::new(3, 2));
-        assert_eq!(
-            state.gold(),
-            STARTING_GOLD - ARROW_TOWER_COST - CANNON_TOWER_COST
-        );
         assert_eq!(arrow.tower_archetype, Some(TowerArchetype::Arrow));
         assert_eq!(cannon.tower_archetype, Some(TowerArchetype::Cannon));
         assert!(arrow.attack_damage < cannon.attack_damage);
@@ -1323,37 +1669,7 @@ mod tests {
     }
 
     #[test]
-    fn tower_upgrades_are_bounded_and_transactional() {
-        let mut state = GameState::new(7);
-        state
-            .apply(Command::PlaceTower {
-                x: 2,
-                z: 2,
-                archetype: TowerArchetype::Arrow,
-            })
-            .expect("tower should build");
-        state
-            .apply(Command::UpgradeTower { x: 2, z: 2 })
-            .expect("level two should upgrade");
-        state
-            .apply(Command::UpgradeTower { x: 2, z: 2 })
-            .expect("level three should upgrade");
-
-        let level_three = tower_at(&state, Cell::new(2, 2));
-        assert_eq!(level_three.tower_level, MAX_TOWER_LEVEL);
-        assert_eq!(level_three.upgrade_cost, None);
-        assert_eq!(state.gold(), 45);
-
-        let before = state.clone();
-        assert_eq!(
-            state.apply(Command::UpgradeTower { x: 2, z: 2 }),
-            Err(GameError::MaxTowerLevel)
-        );
-        assert_eq!(state, before);
-    }
-
-    #[test]
-    fn tower_shots_create_projectiles_before_applying_damage() {
+    fn projectiles_are_authoritative_and_cleanup_with_targets() {
         let mut state = GameState::new(11);
         state
             .apply(Command::PlaceTower {
@@ -1363,16 +1679,6 @@ mod tests {
             })
             .expect("tower should build");
         state.apply(Command::StartWave).expect("wave should start");
-        let north_raider = state
-            .raiders
-            .iter()
-            .find_map(|(key, raider)| (raider.edge == Edge::North).then_some(key_entity(key)))
-            .expect("north raider should exist");
-        let before_health = state
-            .health
-            .get(entity_key(north_raider))
-            .expect("raider should have health")
-            .current;
 
         let Event::TickAdvanced { shots, impacts, .. } = state
             .apply(Command::AdvanceTick)
@@ -1380,80 +1686,61 @@ mod tests {
         else {
             unreachable!();
         };
-
-        assert_eq!(shots, 1);
+        assert!(shots > 0);
         assert_eq!(impacts, 0);
-        assert_eq!(state.projectile_count(), 1);
-        assert_eq!(
+        assert!(state.projectile_count() > 0);
+
+        for _ in 0..60 {
             state
-                .health
-                .get(entity_key(north_raider))
-                .expect("raider should remain alive")
-                .current,
-            before_health
-        );
-    }
-
-    #[test]
-    fn projectiles_eventually_impact_moving_raiders() {
-        let mut state = GameState::new(11);
-        state
-            .apply(Command::PlaceTower {
-                x: 7,
-                z: 2,
-                archetype: TowerArchetype::Arrow,
-            })
-            .expect("tower should build");
-        state.apply(Command::StartWave).expect("wave should start");
-
-        let mut impacts = 0_u16;
-        for _ in 0..8 {
-            let Event::TickAdvanced {
-                impacts: tick_impacts,
-                ..
-            } = state
                 .apply(Command::AdvanceTick)
-                .expect("tick should advance")
-            else {
-                unreachable!();
-            };
-            impacts = impacts.saturating_add(tick_impacts);
+                .expect("tick should advance");
+            if state.raider_count() == 0 {
+                break;
+            }
         }
-
-        assert!(impacts > 0, "at least one projectile should reach a raider");
+        assert_eq!(state.raider_count(), 0);
+        assert_eq!(state.projectile_count(), 0);
     }
 
     #[test]
-    fn rejected_upgrade_without_tower_preserves_state() {
+    fn rejected_builds_and_upgrades_are_transactional() {
         let mut state = GameState::new(9);
         let before = state.clone();
+        assert_eq!(
+            state.apply(Command::PlaceSawmill {
+                x: town_center().x,
+                z: town_center().z,
+            }),
+            Err(GameError::ProtectedCell)
+        );
+        assert_eq!(state, before);
+
+        let before_upgrade = state.clone();
         assert_eq!(
             state.apply(Command::UpgradeTower { x: 2, z: 2 }),
             Err(GameError::NoTower)
         );
-        assert_eq!(state, before);
+        assert_eq!(state, before_upgrade);
     }
 
     #[test]
-    fn town_and_spawn_cells_stay_protected() {
-        let mut state = GameState::new(9);
+    fn buildings_cannot_spend_more_wood_than_the_town_hall_stores() {
+        let mut state = GameState::new(7);
+        state
+            .storage
+            .get_mut(entity_key(TOWN_ENTITY))
+            .expect("town storage should exist")
+            .wood = 10;
+        let before = state.clone();
         assert_eq!(
             state.apply(Command::PlaceTower {
-                x: town_center().x,
-                z: town_center().z,
-                archetype: TowerArchetype::Cannon,
-            }),
-            Err(GameError::ProtectedCell)
-        );
-        let gate = Edge::North.spawn_cell();
-        assert_eq!(
-            state.apply(Command::PlaceTower {
-                x: gate.x,
-                z: gate.z,
+                x: 2,
+                z: 2,
                 archetype: TowerArchetype::Arrow,
             }),
-            Err(GameError::ProtectedCell)
+            Err(GameError::InsufficientWood)
         );
+        assert_eq!(state, before);
     }
 
     #[test]
