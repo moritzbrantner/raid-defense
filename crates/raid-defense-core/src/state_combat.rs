@@ -1,3 +1,6 @@
+use super::*;
+
+impl GameState {
     fn run_tower_attack_system(&mut self) -> u16 {
         let mut tower_ids = self
             .towers
@@ -358,3 +361,4 @@
         let inserted = self.alive.insert(entity_key(entity));
         assert!(inserted, "entity ids must be unique");
     }
+}
