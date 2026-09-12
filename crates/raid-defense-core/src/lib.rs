@@ -580,10 +580,10 @@ impl GameState {
             self.transforms.insert(entity_key(entity), transform);
         }
 
-        if town_damage > 0 {
-            if let Some(health) = self.health.get_mut(entity_key(TOWN_ENTITY)) {
-                health.current = health.current.saturating_sub(town_damage);
-            }
+        if town_damage > 0
+            && let Some(health) = self.health.get_mut(entity_key(TOWN_ENTITY))
+        {
+            health.current = health.current.saturating_sub(town_damage);
         }
         for entity in reached_town {
             self.despawn_raider(entity);
@@ -769,7 +769,6 @@ impl GameState {
     }
 }
 
-#[must_use]
 pub fn replay(seed: u64, commands: &[Command]) -> Result<GameState, GameError> {
     let mut state = GameState::new(seed);
     for command in commands {
