@@ -1,4 +1,6 @@
-use raid_defense_core::{Command, GameError, GameState, TowerArchetype, replay};
+use raid_defense_core::{
+    Command, GameError, GameState, HOUSE_UNLOCK_COMPLETED_WAVES, TowerArchetype, replay,
+};
 
 fn opening_trace() -> Vec<Command> {
     let mut commands = vec![
@@ -11,12 +13,12 @@ fn opening_trace() -> Vec<Command> {
         Command::UpgradeTower { x: 7, z: 2 },
         Command::StartWave,
     ];
-    commands.extend(std::iter::repeat_n(Command::AdvanceTick, 36));
+    commands.extend(std::iter::repeat_n(Command::AdvanceTick, 60));
     commands
 }
 
 #[test]
-fn opening_economy_defense_trace_is_replayable() {
+fn opening_economy_defense_trace_is_replayable_with_people_logistics() {
     let commands = opening_trace();
     let first = replay(0x5eed, &commands).expect("opening trace should remain valid");
     let second = replay(0x5eed, &commands).expect("same trace should replay");
@@ -26,6 +28,42 @@ fn opening_economy_defense_trace_is_replayable() {
     assert_eq!(first.wave(), 1);
     assert_eq!(first.tower_count(), 1);
     assert_eq!(first.sawmill_count(), 1);
+    assert_eq!(first.people_count(), 2);
+    assert_eq!(first.population_capacity(), 2);
+}
+
+#[test]
+fn sawmill_requires_people_to_deliver_wood_to_town_hall() {
+    let mut state = GameState::new(0x5eed);
+    state
+        .apply(Command::PlaceSawmill { x: 2, z: 2 })
+        .expect("sawmill should build");
+    let after_build = state.wood();
+
+    for _ in 0..100 {
+        state
+            .apply(Command::AdvanceTick)
+            .expect("economy tick should advance");
+        if state.wood() > after_build {
+            break;
+        }
+    }
+
+    assert!(state.wood() > after_build, "a carrier should eventually deliver produced wood");
+    assert_eq!(state.people_count(), 2);
+}
+
+#[test]
+fn houses_are_unavailable_before_ten_completed_waves() {
+    let mut state = GameState::new(0x5eed);
+    let before = state.clone();
+
+    let rejected = state.apply(Command::PlaceHouse { x: 2, z: 2 });
+
+    assert_eq!(rejected, Err(GameError::HouseLocked));
+    assert_eq!(state, before);
+    assert_eq!(state.completed_waves(), 0);
+    assert_eq!(HOUSE_UNLOCK_COMPLETED_WAVES, 10);
 }
 
 #[test]
