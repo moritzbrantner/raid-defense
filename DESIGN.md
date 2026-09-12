@@ -8,6 +8,27 @@ The central tension is **economy versus defense**, but the economy is deliberate
 
 Buildings also shape the battlefield. Towers, Sawmills, and Houses occupy grid cells, raiders repath around them, and placement is rejected if it would remove required raider or worker routes.
 
+## Rules and configuration architecture
+
+Gameplay tuning is an explicit input to the simulation rather than a collection of hidden globals.
+
+`rules.rs` defines a typed `GameRules` schema. It groups rules by domain:
+
+- economy — starting storage, production cadence, and local buffers;
+- population — starting people, capacity, health, movement, and carrying capacity;
+- buildings — costs, health, House unlock progression, and population effects;
+- towers — build costs, level stats, upgrade costs, health, and level limit;
+- raids — wave size, health/damage scaling, movement, and resource theft;
+- cycle — daytime length, automatic raid cadence, and whether raids pause the economy.
+
+`default_rules.rs` contains `STANDARD_RULES`, the single ordinary balance table for the shipped game. Systems do not own copies of these values: each `GameState` stores one immutable `GameRules` value and reads from it whenever a rule affects simulation behavior.
+
+This distinction is deliberate. A designer should be able to change a Sawmill cost, House unlock wave, carrier capacity, tower damage, raid scaling, or day duration by changing a rules profile rather than rewriting a system. By contrast, grid dimensions, fixed-point representation, deterministic path-neighbor order, and stable tie-breaking remain engine invariants because changing them alters simulation representation/topology rather than ordinary balance.
+
+Rules validate before a configurable game starts. Invalid profiles fail closed instead of being silently normalized. Every complete rule set also has a deterministic fingerprint, which is included in game checksums so two states produced under different rules cannot accidentally claim the same authoritative identity.
+
+`GameState::new(seed)` remains the standard-game convenience constructor. Custom profiles use the validated rules constructor. This gives tests and future game modes a supported extension point without making JSON/TOML parsing or mod loading part of the core simulation prematurely.
+
 ## Resource and logistics model
 
 Wood is the first material resource.
@@ -17,7 +38,7 @@ Wood is the first material resource.
 - Production fills the local Sawmill buffer; it never teleports directly to the Town Hall.
 - People are ECS entities with `Person` cargo/task state, `Transform`, `Health`, and `Movement`.
 - Idle people at the Town Hall are deterministically assigned to Sawmills with waiting wood.
-- A person travels to an accessible Sawmill-adjacent cell, picks up at most their cargo capacity, then returns through the authoritative grid and deposits the load at the Town Hall.
+- A person travels to an accessible Sawmill-adjacent cell, picks up at most their configured cargo capacity, then returns through the authoritative grid and deposits the load at the Town Hall.
 - If Sawmills outproduce the available carriers, their local buffers fill and additional theoretical production is lost. Population is therefore real logistics throughput rather than a passive percentage bonus.
 - Towers, upgrades, Sawmills, and Houses consume Town Hall wood.
 - Raider kills do not mint resources.
@@ -25,26 +46,32 @@ Wood is the first material resource.
 
 ## Population and progression
 
-The settlement begins with two people and population capacity for two, supplied by the Town Hall.
+Under the standard profile, the settlement begins with two people and population capacity for two, supplied by the Town Hall.
 
-Houses are the first progression-gated economic building. They become available only after **10 waves have completed**. `completed_waves` is tracked separately from the current/last-started `wave`, so starting wave 10 cannot unlock the building early.
+Houses are the first progression-gated economic building. The standard profile makes them available only after **10 waves have completed**. `completed_waves` is tracked separately from the current/last-started `wave`, so starting wave 10 cannot unlock the building early.
 
-A House:
+A standard House:
 
 - costs wood;
 - occupies and path-shapes one grid cell;
-- adds two authoritative population capacity through a `Housing` component;
-- introduces two additional people in the same successful command transaction.
+- adds authoritative population capacity through a `Housing` component;
+- introduces additional people in the same successful command transaction.
 
-This keeps population expansion tied to both progression and an immediate economic/defensive opportunity cost.
+The exact cost, unlock threshold, capacity, and number of people are rules-profile data, not House-system constants.
+
+## Day/night cycle
+
+Time pressure is authoritative simulation state. The standard profile has a 600-tick peaceful day (60 seconds at the current 100 ms browser tick cadence). When that countdown expires, Rust starts the next raid automatically. While raiders are active, the standard profile pauses Sawmill production and carrier logistics. Completing the wave starts a fresh daytime period.
+
+Those policy values live in `CycleRules`. The state machine remains the same if a future profile uses a longer day, manual-only raids, or allows economic work during combat.
 
 ## Authority boundary
 
-`raid-defense-core` is the sole authority for ECS state and game outcomes. It owns entity lifecycle, population, housing, local and Town Hall storage, production, carrier assignment/pathing/cargo transfer, grid occupancy, wave completion, building unlocks, raider pathfinding, targeting, projectiles, upgrades, theft, damage, health, command validation, replay, and checksums.
+`raid-defense-core` is the sole authority for ECS state and game outcomes. It owns immutable game rules, entity lifecycle, population, housing, local and Town Hall storage, production, carrier assignment/pathing/cargo transfer, grid occupancy, day/night phase progression, wave completion, building unlocks, raider pathfinding, targeting, projectiles, upgrades, theft, damage, health, command validation, replay, and checksums.
 
-`raid-defense-wasm` is a versioned serialization adapter only. It maps commands/events/snapshots without recomputing rules.
+`raid-defense-wasm` is a versioned serialization adapter only. It maps commands/events/snapshots without recomputing rules. Values such as costs and unlock thresholds come from the active `GameState` rules, not duplicate adapter constants.
 
-The browser owns input, camera, and 3D presentation. It requests deterministic ticks but does not decide production, carrier assignments, cargo transfers, unlocks, movement, targeting, damage, or resource theft.
+The browser owns input, camera, and 3D presentation. It requests deterministic ticks but does not decide production, carrier assignments, cargo transfers, phase transitions, unlocks, movement, targeting, damage, or resource theft.
 
 ## ECS storage
 
@@ -54,7 +81,7 @@ Current components include:
 
 - `Transform` — fixed-point X/Z world position;
 - `Health` — current and maximum hit points;
-- `Attack` — tower/raider combat values;
+- `Attack` — tower/raider combat values instantiated from active rules;
 - `Building` — authoritative grid occupancy and building kind;
 - `Tower` — tower archetype and upgrade level;
 - `ResourceStorage` — Town Hall and Sawmill wood storage;
@@ -71,7 +98,7 @@ Authoritative positions are integer fixed-point values (`CELL_SCALE = 1000`). Gr
 
 Building commands validate completely before mutation. A new blocking building must keep every edge/active raider connected to the Town Hall, every Sawmill reachable by workers, and every currently moving worker able to finish their task.
 
-Equal seeds plus equal ordered commands therefore replay to equal ECS state and equal checksums.
+Equal rules, seeds, and ordered commands replay to equal ECS state and equal checksums. Different rules intentionally produce a different checksum identity even if a changed rule has not yet affected an entity.
 
 ## Current vertical slice
 
@@ -81,20 +108,23 @@ The current playable loop has:
 - central Town Hall with stored wood;
 - Arrow and Cannon towers with three upgrade levels and real projectile entities;
 - Sawmills that create buffered wood;
-- two starting carrier people who shuttle between Town Hall and Sawmills;
+- starting carrier people who shuttle between Town Hall and Sawmills;
 - raiders from four edges that steal Town Hall wood;
+- deterministic daytime preparation followed by automatic night raids;
 - completed-wave progression;
-- Houses unlocked after 10 completed waves to expand population/logistics capacity.
+- Houses unlocked by completed-wave progression to expand population/logistics capacity;
+- a centralized, validated rules profile controlling ordinary balance and progression values.
 
 ## Next mechanics
 
 The strongest next mechanics remain vertical rather than content-heavy:
 
-1. automatic preparation/raid cadence so economic growth always consumes scarce time;
-2. richer worker allocation/priorities once there are multiple resource types;
-3. distinct raider archetypes and larger scheduled waves;
-4. worker vulnerability/evacuation only if it improves the economy-defense decision rather than adding busywork;
-5. movement/status effects and projectile variants;
-6. tower sale/rebuild and authoritative/advisory path-preview feedback;
-7. spatial-query acceleration once measured entity counts justify it;
-8. richer 3D assets, animation, cargo feedback, terrain, and impact effects without moving simulation authority out of Rust.
+1. richer worker allocation/priorities once there are multiple resource types;
+2. distinct raider archetypes and larger scheduled waves;
+3. worker vulnerability/evacuation only if it improves the economy-defense decision rather than adding busywork;
+4. movement/status effects and projectile variants;
+5. tower sale/rebuild and authoritative/advisory path-preview feedback;
+6. spatial-query acceleration once measured entity counts justify it;
+7. richer 3D assets, animation, cargo feedback, terrain, and impact effects without moving simulation authority out of Rust.
+
+External rule-file loading or mod profiles can be added later if there is a concrete need. The current typed Rust profile already provides one authoritative configuration surface without introducing parsing/versioning complexity prematurely.
