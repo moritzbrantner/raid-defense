@@ -346,9 +346,7 @@ impl GameState {
 
     pub fn apply(&mut self, command: Command) -> Result<Event, GameError> {
         match command {
-            Command::PlaceTower { x, z, archetype } => {
-                self.place_tower(Cell::new(x, z), archetype)
-            }
+            Command::PlaceTower { x, z, archetype } => self.place_tower(Cell::new(x, z), archetype),
             Command::UpgradeTower { x, z } => self.upgrade_tower(Cell::new(x, z)),
             Command::StartWave => self.start_wave(),
             Command::AdvanceTick => Ok(self.advance_tick()),
@@ -464,11 +462,7 @@ impl GameState {
         hash
     }
 
-    fn place_tower(
-        &mut self,
-        cell: Cell,
-        archetype: TowerArchetype,
-    ) -> Result<Event, GameError> {
+    fn place_tower(&mut self, cell: Cell, archetype: TowerArchetype) -> Result<Event, GameError> {
         if self.town_health() == 0 {
             return Err(GameError::GameOver);
         }
@@ -538,8 +532,8 @@ impl GameState {
             .get(entity_key(entity))
             .copied()
             .expect("tower buildings always have a tower component");
-        let cost = tower_upgrade_cost(tower.archetype, tower.level)
-            .ok_or(GameError::MaxTowerLevel)?;
+        let cost =
+            tower_upgrade_cost(tower.archetype, tower.level).ok_or(GameError::MaxTowerLevel)?;
         if self.gold < cost {
             return Err(GameError::InsufficientGold);
         }
@@ -669,7 +663,8 @@ impl GameState {
             let Some(projectile) = self.projectiles.get(entity_key(entity)).copied() else {
                 continue;
             };
-            let Some(target_health) = self.health.get(entity_key(projectile.target)).copied() else {
+            let Some(target_health) = self.health.get(entity_key(projectile.target)).copied()
+            else {
                 despawn.push(entity);
                 continue;
             };
@@ -681,10 +676,7 @@ impl GameState {
                 despawn.push(entity);
                 continue;
             };
-            let Some(target_position) = self
-                .transforms
-                .get(entity_key(projectile.target))
-                .copied()
+            let Some(target_position) = self.transforms.get(entity_key(projectile.target)).copied()
             else {
                 despawn.push(entity);
                 continue;
@@ -930,9 +922,8 @@ impl GameState {
                 attack_range_milli: attack.range_milli,
                 tower_archetype: tower.map(|tower| tower.archetype),
                 tower_level: tower.map_or(0, |tower| tower.level),
-                upgrade_cost: tower.and_then(|tower| {
-                    tower_upgrade_cost(tower.archetype, tower.level)
-                }),
+                upgrade_cost: tower
+                    .and_then(|tower| tower_upgrade_cost(tower.archetype, tower.level)),
                 projectile_target: None,
             });
         }
@@ -1309,7 +1300,10 @@ mod tests {
 
         let arrow = tower_at(&state, Cell::new(2, 2));
         let cannon = tower_at(&state, Cell::new(3, 2));
-        assert_eq!(state.gold(), STARTING_GOLD - ARROW_TOWER_COST - CANNON_TOWER_COST);
+        assert_eq!(
+            state.gold(),
+            STARTING_GOLD - ARROW_TOWER_COST - CANNON_TOWER_COST
+        );
         assert_eq!(arrow.tower_archetype, Some(TowerArchetype::Arrow));
         assert_eq!(cannon.tower_archetype, Some(TowerArchetype::Cannon));
         assert!(arrow.attack_damage < cannon.attack_damage);
@@ -1368,11 +1362,9 @@ mod tests {
             .expect("raider should have health")
             .current;
 
-        let Event::TickAdvanced {
-            shots,
-            impacts,
-            ..
-        } = state.apply(Command::AdvanceTick).expect("tick should advance")
+        let Event::TickAdvanced { shots, impacts, .. } = state
+            .apply(Command::AdvanceTick)
+            .expect("tick should advance")
         else {
             unreachable!();
         };
@@ -1407,7 +1399,9 @@ mod tests {
             let Event::TickAdvanced {
                 impacts: tick_impacts,
                 ..
-            } = state.apply(Command::AdvanceTick).expect("tick should advance")
+            } = state
+                .apply(Command::AdvanceTick)
+                .expect("tick should advance")
             else {
                 unreachable!();
             };
