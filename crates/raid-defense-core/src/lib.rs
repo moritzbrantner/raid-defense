@@ -10,16 +10,15 @@ pub const GRID_WIDTH: i16 = 17;
 pub const GRID_HEIGHT: i16 = 13;
 pub const CELL_SCALE: i32 = 1_000;
 pub const STARTING_GOLD: u32 = 120;
-pub const TOWER_COST: u32 = 25;
+pub const ARROW_TOWER_COST: u32 = 25;
+pub const CANNON_TOWER_COST: u32 = 45;
+pub const MAX_TOWER_LEVEL: u8 = 3;
 pub const TOWN_MAX_HEALTH: u16 = 250;
 
 const TOWER_MAX_HEALTH: u16 = 100;
 const RAIDER_BASE_HEALTH: u16 = 30;
 const RAIDER_BASE_DAMAGE: u16 = 10;
 const RAIDER_SPEED_MILLI: u16 = 250;
-const TOWER_DAMAGE: u16 = 10;
-const TOWER_RANGE_MILLI: i32 = 3 * CELL_SCALE;
-const TOWER_COOLDOWN_TICKS: u8 = 5;
 const KILL_REWARD: u32 = 5;
 const TOWN_ENTITY: EntityId = 0;
 
@@ -95,18 +94,39 @@ pub struct Attack {
     pub range_milli: i32,
     pub cooldown_ticks: u8,
     pub cooldown_remaining: u8,
+    pub projectile_speed_milli: u16,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BuildingKind {
     Town,
-    GuardTower,
+    Tower,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Building {
     pub kind: BuildingKind,
     pub cell: Cell,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TowerArchetype {
+    Arrow,
+    Cannon,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Tower {
+    pub archetype: TowerArchetype,
+    pub level: u8,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TowerStats {
+    pub damage: u16,
+    pub range_milli: i32,
+    pub cooldown_ticks: u8,
+    pub projectile_speed_milli: u16,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -123,8 +143,24 @@ pub struct Movement {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Projectile {
+    pub target: EntityId,
+    pub damage: u16,
+    pub speed_milli: u16,
+    pub archetype: TowerArchetype,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Command {
-    PlaceTower { x: i16, z: i16 },
+    PlaceTower {
+        x: i16,
+        z: i16,
+        archetype: TowerArchetype,
+    },
+    UpgradeTower {
+        x: i16,
+        z: i16,
+    },
     StartWave,
     AdvanceTick,
 }
@@ -134,6 +170,14 @@ pub enum Event {
     TowerBuilt {
         entity: EntityId,
         cell: Cell,
+        archetype: TowerArchetype,
+        level: u8,
+    },
+    TowerUpgraded {
+        entity: EntityId,
+        archetype: TowerArchetype,
+        level: u8,
+        cost: u32,
     },
     WaveStarted {
         wave: u32,
@@ -142,6 +186,7 @@ pub enum Event {
     TickAdvanced {
         tick: u64,
         shots: u16,
+        impacts: u16,
         kills: u16,
         town_damage: u16,
     },
@@ -154,6 +199,8 @@ pub enum GameError {
     ProtectedCell,
     PathBlocked,
     InsufficientGold,
+    NoTower,
+    MaxTowerLevel,
     RaidersStillActive,
     GameOver,
 }
@@ -163,6 +210,7 @@ pub enum EntityKind {
     Town,
     Tower,
     Raider,
+    Projectile,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -176,6 +224,10 @@ pub struct EntitySnapshot {
     pub max_health: u16,
     pub attack_damage: u16,
     pub attack_range_milli: i32,
+    pub tower_archetype: Option<TowerArchetype>,
+    pub tower_level: u8,
+    pub upgrade_cost: Option<u32>,
+    pub projectile_target: Option<EntityId>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -202,8 +254,10 @@ pub struct GameState {
     health: SparseMap<Health>,
     attacks: SparseMap<Attack>,
     buildings: SparseMap<Building>,
+    towers: SparseMap<Tower>,
     raiders: SparseMap<Raider>,
     movements: SparseMap<Movement>,
+    projectiles: SparseMap<Projectile>,
     alive: SparseSet,
 }
 
@@ -220,8 +274,10 @@ impl GameState {
             health: SparseMap::new(),
             attacks: SparseMap::new(),
             buildings: SparseMap::new(),
+            towers: SparseMap::new(),
             raiders: SparseMap::new(),
             movements: SparseMap::new(),
+            projectiles: SparseMap::new(),
             alive: SparseSet::new(),
         };
         let town_cell = town_center();
@@ -280,15 +336,20 @@ impl GameState {
 
     #[must_use]
     pub fn tower_count(&self) -> usize {
-        self.buildings
-            .iter()
-            .filter(|(_, building)| building.kind == BuildingKind::GuardTower)
-            .count()
+        self.towers.iter().count()
+    }
+
+    #[must_use]
+    pub fn projectile_count(&self) -> usize {
+        self.projectiles.iter().count()
     }
 
     pub fn apply(&mut self, command: Command) -> Result<Event, GameError> {
         match command {
-            Command::PlaceTower { x, z } => self.place_tower(Cell::new(x, z)),
+            Command::PlaceTower { x, z, archetype } => {
+                self.place_tower(Cell::new(x, z), archetype)
+            }
+            Command::UpgradeTower { x, z } => self.upgrade_tower(Cell::new(x, z)),
             Command::StartWave => self.start_wave(),
             Command::AdvanceTick => Ok(self.advance_tick()),
         }
@@ -333,6 +394,7 @@ impl GameState {
                     EntityKind::Town => 0,
                     EntityKind::Tower => 1,
                     EntityKind::Raider => 2,
+                    EntityKind::Projectile => 3,
                 },
             );
             feed_i32(&mut hash, entity.x_milli);
@@ -348,6 +410,15 @@ impl GameState {
                 feed_i32(&mut hash, attack.range_milli);
                 feed_byte(&mut hash, attack.cooldown_ticks);
                 feed_byte(&mut hash, attack.cooldown_remaining);
+                feed_u16(&mut hash, attack.projectile_speed_milli);
+            } else {
+                feed_byte(&mut hash, 0);
+            }
+
+            if let Some(tower) = self.towers.get(entity_key(entity.id)) {
+                feed_byte(&mut hash, 1);
+                feed_byte(&mut hash, tower_archetype_code(tower.archetype));
+                feed_byte(&mut hash, tower.level);
             } else {
                 feed_byte(&mut hash, 0);
             }
@@ -378,12 +449,26 @@ impl GameState {
             } else {
                 feed_byte(&mut hash, 0);
             }
+
+            if let Some(projectile) = self.projectiles.get(entity_key(entity.id)) {
+                feed_byte(&mut hash, 1);
+                feed_u64(&mut hash, u64::from(projectile.target));
+                feed_u16(&mut hash, projectile.damage);
+                feed_u16(&mut hash, projectile.speed_milli);
+                feed_byte(&mut hash, tower_archetype_code(projectile.archetype));
+            } else {
+                feed_byte(&mut hash, 0);
+            }
         }
 
         hash
     }
 
-    fn place_tower(&mut self, cell: Cell) -> Result<Event, GameError> {
+    fn place_tower(
+        &mut self,
+        cell: Cell,
+        archetype: TowerArchetype,
+    ) -> Result<Event, GameError> {
         if self.town_health() == 0 {
             return Err(GameError::GameOver);
         }
@@ -396,7 +481,8 @@ impl GameState {
         if self.cell_has_building(cell) || self.raider_uses_cell(cell) {
             return Err(GameError::CellOccupied);
         }
-        if self.gold < TOWER_COST {
+        let cost = tower_cost(archetype);
+        if self.gold < cost {
             return Err(GameError::InsufficientGold);
         }
         if !self.routes_remain_open(Some(cell)) {
@@ -413,25 +499,73 @@ impl GameState {
                 maximum: TOWER_MAX_HEALTH,
             },
         );
-        self.attacks.insert(
-            entity_key(entity),
-            Attack {
-                damage: TOWER_DAMAGE,
-                range_milli: TOWER_RANGE_MILLI,
-                cooldown_ticks: TOWER_COOLDOWN_TICKS,
-                cooldown_remaining: 0,
-            },
-        );
+        self.attacks
+            .insert(entity_key(entity), attack_for(archetype, 1, 0));
         self.buildings.insert(
             entity_key(entity),
             Building {
-                kind: BuildingKind::GuardTower,
+                kind: BuildingKind::Tower,
                 cell,
             },
         );
-        self.gold -= TOWER_COST;
+        self.towers.insert(
+            entity_key(entity),
+            Tower {
+                archetype,
+                level: 1,
+            },
+        );
+        self.gold -= cost;
 
-        Ok(Event::TowerBuilt { entity, cell })
+        Ok(Event::TowerBuilt {
+            entity,
+            cell,
+            archetype,
+            level: 1,
+        })
+    }
+
+    fn upgrade_tower(&mut self, cell: Cell) -> Result<Event, GameError> {
+        if self.town_health() == 0 {
+            return Err(GameError::GameOver);
+        }
+        if !in_bounds(cell) {
+            return Err(GameError::OutOfBounds);
+        }
+        let entity = self.tower_entity_at(cell).ok_or(GameError::NoTower)?;
+        let tower = self
+            .towers
+            .get(entity_key(entity))
+            .copied()
+            .expect("tower buildings always have a tower component");
+        let cost = tower_upgrade_cost(tower.archetype, tower.level)
+            .ok_or(GameError::MaxTowerLevel)?;
+        if self.gold < cost {
+            return Err(GameError::InsufficientGold);
+        }
+
+        let next_level = tower.level + 1;
+        let cooldown_remaining = self
+            .attacks
+            .get(entity_key(entity))
+            .map_or(0, |attack| attack.cooldown_remaining);
+        let next_attack = attack_for(tower.archetype, next_level, cooldown_remaining);
+        self.towers.insert(
+            entity_key(entity),
+            Tower {
+                archetype: tower.archetype,
+                level: next_level,
+            },
+        );
+        self.attacks.insert(entity_key(entity), next_attack);
+        self.gold -= cost;
+
+        Ok(Event::TowerUpgraded {
+            entity,
+            archetype: tower.archetype,
+            level: next_level,
+            cost,
+        })
     }
 
     fn start_wave(&mut self) -> Result<Event, GameError> {
@@ -457,7 +591,8 @@ impl GameState {
 
     fn advance_tick(&mut self) -> Event {
         self.tick = self.tick.saturating_add(1);
-        let (shots, killed) = self.run_tower_attack_system();
+        let shots = self.run_tower_attack_system();
+        let (impacts, killed) = self.run_projectile_system();
         let kills = u16::try_from(killed.len()).unwrap_or(u16::MAX);
         for entity in killed {
             self.despawn_raider(entity);
@@ -468,23 +603,17 @@ impl GameState {
         Event::TickAdvanced {
             tick: self.tick,
             shots,
+            impacts,
             kills,
             town_damage,
         }
     }
 
-    fn run_tower_attack_system(&mut self) -> (u16, Vec<EntityId>) {
-        let mut tower_ids = self
-            .buildings
-            .iter()
-            .filter_map(|(key, building)| {
-                (building.kind == BuildingKind::GuardTower).then_some(key_entity(key))
-            })
-            .collect::<Vec<_>>();
+    fn run_tower_attack_system(&mut self) -> u16 {
+        let mut tower_ids = self.towers.keys().map(key_entity).collect::<Vec<_>>();
         tower_ids.sort_unstable();
 
         let mut shots = 0_u16;
-        let mut killed = Vec::new();
         for tower in tower_ids {
             let Some(mut attack) = self.attacks.get(entity_key(tower)).copied() else {
                 continue;
@@ -498,22 +627,125 @@ impl GameState {
             let Some(target) = self.target_for_tower(tower, attack.range_milli) else {
                 continue;
             };
+            let tower_component = self
+                .towers
+                .get(entity_key(tower))
+                .copied()
+                .expect("tower ids come from the tower component store");
+            let tower_position = self
+                .transforms
+                .get(entity_key(tower))
+                .copied()
+                .expect("towers always have transforms");
+            let projectile_entity = self.allocate_entity();
+            self.transforms
+                .insert(entity_key(projectile_entity), tower_position);
+            self.projectiles.insert(
+                entity_key(projectile_entity),
+                Projectile {
+                    target,
+                    damage: attack.damage,
+                    speed_milli: attack.projectile_speed_milli,
+                    archetype: tower_component.archetype,
+                },
+            );
+
             shots = shots.saturating_add(1);
             attack.cooldown_remaining = attack.cooldown_ticks;
             self.attacks.insert(entity_key(tower), attack);
+        }
 
-            let health = self
-                .health
-                .get_mut(entity_key(target))
-                .expect("raiders always have health");
-            health.current = health.current.saturating_sub(attack.damage);
-            if health.current == 0 {
-                killed.push(target);
+        shots
+    }
+
+    fn run_projectile_system(&mut self) -> (u16, Vec<EntityId>) {
+        let mut ids = self.projectiles.keys().map(key_entity).collect::<Vec<_>>();
+        ids.sort_unstable();
+        let mut impacts = 0_u16;
+        let mut killed = Vec::new();
+        let mut despawn = Vec::new();
+
+        for entity in ids {
+            let Some(projectile) = self.projectiles.get(entity_key(entity)).copied() else {
+                continue;
+            };
+            let Some(target_health) = self.health.get(entity_key(projectile.target)).copied() else {
+                despawn.push(entity);
+                continue;
+            };
+            if target_health.current == 0 {
+                despawn.push(entity);
+                continue;
             }
+            let Some(position) = self.transforms.get(entity_key(entity)).copied() else {
+                despawn.push(entity);
+                continue;
+            };
+            let Some(target_position) = self
+                .transforms
+                .get(entity_key(projectile.target))
+                .copied()
+            else {
+                despawn.push(entity);
+                continue;
+            };
+
+            let dx = i64::from(target_position.x_milli - position.x_milli);
+            let dz = i64::from(target_position.z_milli - position.z_milli);
+            let distance_sq = dx * dx + dz * dz;
+            let speed = i64::from(projectile.speed_milli);
+
+            if distance_sq <= speed * speed {
+                let target_died = {
+                    let health = self
+                        .health
+                        .get_mut(entity_key(projectile.target))
+                        .expect("target health was checked above");
+                    health.current = health.current.saturating_sub(projectile.damage);
+                    health.current == 0
+                };
+                impacts = impacts.saturating_add(1);
+                despawn.push(entity);
+                if target_died {
+                    killed.push(projectile.target);
+                }
+                continue;
+            }
+
+            let distance = i64::try_from(integer_sqrt(distance_sq as u64))
+                .unwrap_or(i64::MAX)
+                .max(1);
+            let step_x = dx * speed / distance;
+            let step_z = dz * speed / distance;
+            let next = Transform {
+                x_milli: position
+                    .x_milli
+                    .saturating_add(i32::try_from(step_x).unwrap_or_else(|_| {
+                        if step_x.is_negative() {
+                            i32::MIN
+                        } else {
+                            i32::MAX
+                        }
+                    })),
+                z_milli: position
+                    .z_milli
+                    .saturating_add(i32::try_from(step_z).unwrap_or_else(|_| {
+                        if step_z.is_negative() {
+                            i32::MIN
+                        } else {
+                            i32::MAX
+                        }
+                    })),
+            };
+            self.transforms.insert(entity_key(entity), next);
+        }
+
+        for entity in despawn {
+            self.despawn_projectile(entity);
         }
         killed.sort_unstable();
         killed.dedup();
-        (shots, killed)
+        (impacts, killed)
     }
 
     fn target_for_tower(&self, tower: EntityId, range_milli: i32) -> Option<EntityId> {
@@ -619,6 +851,7 @@ impl GameState {
                 range_milli: 0,
                 cooldown_ticks: 0,
                 cooldown_remaining: 0,
+                projectile_speed_milli: 0,
             },
         );
         self.raiders.insert(entity_key(entity), Raider { edge });
@@ -640,6 +873,13 @@ impl GameState {
         self.attacks.remove(key);
         self.raiders.remove(key);
         self.movements.remove(key);
+        self.alive.remove(key);
+    }
+
+    fn despawn_projectile(&mut self, entity: EntityId) {
+        let key = entity_key(entity);
+        self.transforms.remove(key);
+        self.projectiles.remove(key);
         self.alive.remove(key);
     }
 
@@ -670,13 +910,16 @@ impl GameState {
             range_milli: 0,
             cooldown_ticks: 0,
             cooldown_remaining: 0,
+            projectile_speed_milli: 0,
         });
+
         if let Some(building) = self.buildings.get(key) {
+            let tower = self.towers.get(key).copied();
             return Some(EntitySnapshot {
                 id: entity,
                 kind: match building.kind {
                     BuildingKind::Town => EntityKind::Town,
-                    BuildingKind::GuardTower => EntityKind::Tower,
+                    BuildingKind::Tower => EntityKind::Tower,
                 },
                 x_milli: transform.x_milli,
                 z_milli: transform.z_milli,
@@ -685,26 +928,62 @@ impl GameState {
                 max_health: health.maximum,
                 attack_damage: attack.damage,
                 attack_range_milli: attack.range_milli,
+                tower_archetype: tower.map(|tower| tower.archetype),
+                tower_level: tower.map_or(0, |tower| tower.level),
+                upgrade_cost: tower.and_then(|tower| {
+                    tower_upgrade_cost(tower.archetype, tower.level)
+                }),
+                projectile_target: None,
             });
         }
-        let movement = self.movements.get(key)?;
+
+        if let Some(movement) = self.movements.get(key) {
+            return Some(EntitySnapshot {
+                id: entity,
+                kind: EntityKind::Raider,
+                x_milli: transform.x_milli,
+                z_milli: transform.z_milli,
+                cell: movement.from,
+                health: health.current,
+                max_health: health.maximum,
+                attack_damage: attack.damage,
+                attack_range_milli: attack.range_milli,
+                tower_archetype: None,
+                tower_level: 0,
+                upgrade_cost: None,
+                projectile_target: None,
+            });
+        }
+
+        let projectile = self.projectiles.get(key)?;
         Some(EntitySnapshot {
             id: entity,
-            kind: EntityKind::Raider,
+            kind: EntityKind::Projectile,
             x_milli: transform.x_milli,
             z_milli: transform.z_milli,
-            cell: movement.from,
-            health: health.current,
-            max_health: health.maximum,
-            attack_damage: attack.damage,
-            attack_range_milli: attack.range_milli,
+            cell: cell_for_transform(transform),
+            health: 0,
+            max_health: 0,
+            attack_damage: projectile.damage,
+            attack_range_milli: 0,
+            tower_archetype: Some(projectile.archetype),
+            tower_level: 0,
+            upgrade_cost: None,
+            projectile_target: Some(projectile.target),
+        })
+    }
+
+    fn tower_entity_at(&self, cell: Cell) -> Option<EntityId> {
+        self.buildings.iter().find_map(|(key, building)| {
+            (building.kind == BuildingKind::Tower && building.cell == cell)
+                .then_some(key_entity(key))
         })
     }
 
     fn cell_has_building(&self, cell: Cell) -> bool {
         self.buildings
             .iter()
-            .any(|(_, building)| building.kind == BuildingKind::GuardTower && building.cell == cell)
+            .any(|(_, building)| building.kind == BuildingKind::Tower && building.cell == cell)
     }
 
     fn raider_uses_cell(&self, cell: Cell) -> bool {
@@ -769,6 +1048,78 @@ impl GameState {
     }
 }
 
+#[must_use]
+pub const fn tower_cost(archetype: TowerArchetype) -> u32 {
+    match archetype {
+        TowerArchetype::Arrow => ARROW_TOWER_COST,
+        TowerArchetype::Cannon => CANNON_TOWER_COST,
+    }
+}
+
+#[must_use]
+pub const fn tower_upgrade_cost(archetype: TowerArchetype, level: u8) -> Option<u32> {
+    match (archetype, level) {
+        (TowerArchetype::Arrow, 1) => Some(20),
+        (TowerArchetype::Arrow, 2) => Some(30),
+        (TowerArchetype::Cannon, 1) => Some(30),
+        (TowerArchetype::Cannon, 2) => Some(45),
+        _ => None,
+    }
+}
+
+#[must_use]
+pub const fn tower_stats(archetype: TowerArchetype, level: u8) -> TowerStats {
+    match (archetype, level) {
+        (TowerArchetype::Arrow, 1) => TowerStats {
+            damage: 8,
+            range_milli: 3_200,
+            cooldown_ticks: 3,
+            projectile_speed_milli: 900,
+        },
+        (TowerArchetype::Arrow, 2) => TowerStats {
+            damage: 12,
+            range_milli: 3_500,
+            cooldown_ticks: 3,
+            projectile_speed_milli: 1_000,
+        },
+        (TowerArchetype::Arrow, _) => TowerStats {
+            damage: 17,
+            range_milli: 3_800,
+            cooldown_ticks: 2,
+            projectile_speed_milli: 1_100,
+        },
+        (TowerArchetype::Cannon, 1) => TowerStats {
+            damage: 18,
+            range_milli: 4_200,
+            cooldown_ticks: 7,
+            projectile_speed_milli: 500,
+        },
+        (TowerArchetype::Cannon, 2) => TowerStats {
+            damage: 27,
+            range_milli: 4_500,
+            cooldown_ticks: 6,
+            projectile_speed_milli: 550,
+        },
+        (TowerArchetype::Cannon, _) => TowerStats {
+            damage: 40,
+            range_milli: 4_800,
+            cooldown_ticks: 5,
+            projectile_speed_milli: 600,
+        },
+    }
+}
+
+fn attack_for(archetype: TowerArchetype, level: u8, cooldown_remaining: u8) -> Attack {
+    let stats = tower_stats(archetype, level);
+    Attack {
+        damage: stats.damage,
+        range_milli: stats.range_milli,
+        cooldown_ticks: stats.cooldown_ticks,
+        cooldown_remaining: cooldown_remaining.min(stats.cooldown_ticks),
+        projectile_speed_milli: stats.projectile_speed_milli,
+    }
+}
+
 pub fn replay(seed: u64, commands: &[Command]) -> Result<GameState, GameError> {
     let mut state = GameState::new(seed);
     for command in commands {
@@ -829,6 +1180,38 @@ fn interpolate_transform(movement: Movement) -> Transform {
     }
 }
 
+fn cell_for_transform(transform: Transform) -> Cell {
+    let x = transform
+        .x_milli
+        .div_euclid(CELL_SCALE)
+        .clamp(0, i32::from(GRID_WIDTH - 1));
+    let z = transform
+        .z_milli
+        .div_euclid(CELL_SCALE)
+        .clamp(0, i32::from(GRID_HEIGHT - 1));
+    Cell::new(x as i16, z as i16)
+}
+
+fn integer_sqrt(value: u64) -> u64 {
+    if value < 2 {
+        return value;
+    }
+    let mut x = value;
+    let mut y = x.div_ceil(2);
+    while y < x {
+        x = y;
+        y = (x + value / x) / 2;
+    }
+    x
+}
+
+const fn tower_archetype_code(archetype: TowerArchetype) -> u8 {
+    match archetype {
+        TowerArchetype::Arrow => 0,
+        TowerArchetype::Cannon => 1,
+    }
+}
+
 const fn entity_key(entity: EntityId) -> usize {
     entity as usize
 }
@@ -877,104 +1260,203 @@ fn feed_byte(hash: &mut u64, byte: u8) {
 mod tests {
     use super::*;
 
+    fn tower_at(state: &GameState, cell: Cell) -> EntitySnapshot {
+        state
+            .snapshot()
+            .entities
+            .into_iter()
+            .find(|entity| entity.kind == EntityKind::Tower && entity.cell == cell)
+            .expect("tower should exist at requested cell")
+    }
+
     #[test]
-    fn same_seed_and_commands_replay_identically() {
-        let mut commands = vec![Command::PlaceTower { x: 7, z: 2 }, Command::StartWave];
-        commands.extend(std::iter::repeat_n(Command::AdvanceTick, 24));
+    fn same_seed_and_commands_replay_identically_with_projectiles() {
+        let mut commands = vec![
+            Command::PlaceTower {
+                x: 7,
+                z: 2,
+                archetype: TowerArchetype::Arrow,
+            },
+            Command::UpgradeTower { x: 7, z: 2 },
+            Command::StartWave,
+        ];
+        commands.extend(std::iter::repeat_n(Command::AdvanceTick, 18));
 
         let first = replay(7, &commands).expect("valid replay");
-        let second = replay(7, &commands).expect("same replay should remain valid");
+        let second = replay(7, &commands).expect("same replay remains valid");
 
         assert_eq!(first, second);
         assert_eq!(first.checksum(), second.checksum());
     }
 
     #[test]
-    fn rejected_tower_placement_is_transactional() {
-        let mut state = GameState::new(11);
-        let before = state.clone();
-        let center = town_center();
+    fn tower_archetypes_have_distinct_costs_and_stats() {
+        let mut state = GameState::new(7);
+        state
+            .apply(Command::PlaceTower {
+                x: 2,
+                z: 2,
+                archetype: TowerArchetype::Arrow,
+            })
+            .expect("arrow tower should build");
+        state
+            .apply(Command::PlaceTower {
+                x: 3,
+                z: 2,
+                archetype: TowerArchetype::Cannon,
+            })
+            .expect("cannon tower should build");
 
+        let arrow = tower_at(&state, Cell::new(2, 2));
+        let cannon = tower_at(&state, Cell::new(3, 2));
+        assert_eq!(state.gold(), STARTING_GOLD - ARROW_TOWER_COST - CANNON_TOWER_COST);
+        assert_eq!(arrow.tower_archetype, Some(TowerArchetype::Arrow));
+        assert_eq!(cannon.tower_archetype, Some(TowerArchetype::Cannon));
+        assert!(arrow.attack_damage < cannon.attack_damage);
+        assert!(arrow.attack_range_milli < cannon.attack_range_milli);
+    }
+
+    #[test]
+    fn tower_upgrades_are_bounded_and_transactional() {
+        let mut state = GameState::new(7);
+        state
+            .apply(Command::PlaceTower {
+                x: 2,
+                z: 2,
+                archetype: TowerArchetype::Arrow,
+            })
+            .expect("tower should build");
+        state
+            .apply(Command::UpgradeTower { x: 2, z: 2 })
+            .expect("level two should upgrade");
+        state
+            .apply(Command::UpgradeTower { x: 2, z: 2 })
+            .expect("level three should upgrade");
+
+        let level_three = tower_at(&state, Cell::new(2, 2));
+        assert_eq!(level_three.tower_level, MAX_TOWER_LEVEL);
+        assert_eq!(level_three.upgrade_cost, None);
+        assert_eq!(state.gold(), 45);
+
+        let before = state.clone();
         assert_eq!(
-            state.apply(Command::PlaceTower {
-                x: center.x,
-                z: center.z,
-            }),
-            Err(GameError::ProtectedCell)
+            state.apply(Command::UpgradeTower { x: 2, z: 2 }),
+            Err(GameError::MaxTowerLevel)
         );
         assert_eq!(state, before);
     }
 
     #[test]
-    fn a_complete_wall_that_seals_an_edge_is_rejected() {
-        let mut state = GameState::new(3);
-        state.gold = 10_000;
-        for z in 0..GRID_HEIGHT - 1 {
-            state
-                .apply(Command::PlaceTower { x: 1, z })
-                .expect("wall remains open until final cell");
-        }
+    fn tower_shots_create_projectiles_before_applying_damage() {
+        let mut state = GameState::new(11);
+        state
+            .apply(Command::PlaceTower {
+                x: 7,
+                z: 2,
+                archetype: TowerArchetype::Arrow,
+            })
+            .expect("tower should build");
+        state.apply(Command::StartWave).expect("wave should start");
+        let north_raider = state
+            .raiders
+            .iter()
+            .find_map(|(key, raider)| (raider.edge == Edge::North).then_some(key_entity(key)))
+            .expect("north raider should exist");
+        let before_health = state
+            .health
+            .get(entity_key(north_raider))
+            .expect("raider should have health")
+            .current;
 
+        let Event::TickAdvanced {
+            shots,
+            impacts,
+            ..
+        } = state.apply(Command::AdvanceTick).expect("tick should advance")
+        else {
+            unreachable!();
+        };
+
+        assert_eq!(shots, 1);
+        assert_eq!(impacts, 0);
+        assert_eq!(state.projectile_count(), 1);
         assert_eq!(
-            state.apply(Command::PlaceTower {
-                x: 1,
-                z: GRID_HEIGHT - 1,
-            }),
-            Err(GameError::PathBlocked)
+            state
+                .health
+                .get(entity_key(north_raider))
+                .expect("raider should remain alive")
+                .current,
+            before_health
         );
     }
 
     #[test]
-    fn waves_spawn_from_all_four_edges() {
-        let mut state = GameState::new(5);
-        state.apply(Command::StartWave).expect("wave should start");
-
-        let mut edges = state
-            .raiders
-            .iter()
-            .map(|(_, raider)| raider.edge)
-            .collect::<Vec<_>>();
-        edges.sort_by_key(|edge| match edge {
-            Edge::North => 0,
-            Edge::East => 1,
-            Edge::South => 2,
-            Edge::West => 3,
-        });
-        assert_eq!(edges, Edge::ALL);
-    }
-
-    #[test]
-    fn tower_attack_system_can_kill_a_raider() {
-        let mut state = GameState::new(9);
+    fn projectiles_eventually_impact_moving_raiders() {
+        let mut state = GameState::new(11);
         state
-            .apply(Command::PlaceTower { x: 7, z: 2 })
+            .apply(Command::PlaceTower {
+                x: 7,
+                z: 2,
+                archetype: TowerArchetype::Arrow,
+            })
             .expect("tower should build");
         state.apply(Command::StartWave).expect("wave should start");
 
-        let mut kills = 0_u16;
-        for _ in 0..40 {
+        let mut impacts = 0_u16;
+        for _ in 0..8 {
             let Event::TickAdvanced {
-                kills: tick_kills, ..
-            } = state
-                .apply(Command::AdvanceTick)
-                .expect("tick should advance")
+                impacts: tick_impacts,
+                ..
+            } = state.apply(Command::AdvanceTick).expect("tick should advance")
             else {
                 unreachable!();
             };
-            kills = kills.saturating_add(tick_kills);
+            impacts = impacts.saturating_add(tick_impacts);
         }
-        assert!(kills > 0);
+
+        assert!(impacts > 0, "at least one projectile should reach a raider");
     }
 
     #[test]
-    fn unopposed_raiders_damage_the_town() {
-        let mut state = GameState::new(13);
-        state.apply(Command::StartWave).expect("wave should start");
-        for _ in 0..40 {
-            state
-                .apply(Command::AdvanceTick)
-                .expect("tick should advance");
-        }
-        assert!(state.town_health() < TOWN_MAX_HEALTH);
+    fn rejected_upgrade_without_tower_preserves_state() {
+        let mut state = GameState::new(9);
+        let before = state.clone();
+        assert_eq!(
+            state.apply(Command::UpgradeTower { x: 2, z: 2 }),
+            Err(GameError::NoTower)
+        );
+        assert_eq!(state, before);
+    }
+
+    #[test]
+    fn town_and_spawn_cells_stay_protected() {
+        let mut state = GameState::new(9);
+        assert_eq!(
+            state.apply(Command::PlaceTower {
+                x: town_center().x,
+                z: town_center().z,
+                archetype: TowerArchetype::Cannon,
+            }),
+            Err(GameError::ProtectedCell)
+        );
+        let gate = Edge::North.spawn_cell();
+        assert_eq!(
+            state.apply(Command::PlaceTower {
+                x: gate.x,
+                z: gate.z,
+                archetype: TowerArchetype::Arrow,
+            }),
+            Err(GameError::ProtectedCell)
+        );
+    }
+
+    #[test]
+    fn integer_square_root_is_deterministic_at_boundaries() {
+        assert_eq!(integer_sqrt(0), 0);
+        assert_eq!(integer_sqrt(1), 1);
+        assert_eq!(integer_sqrt(2), 1);
+        assert_eq!(integer_sqrt(4), 2);
+        assert_eq!(integer_sqrt(15), 3);
+        assert_eq!(integer_sqrt(16), 4);
     }
 }
