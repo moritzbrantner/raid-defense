@@ -4,10 +4,7 @@ use raid_defense_core::{
 
 const SEED: u64 = 0x5eed;
 
-fn first_accepted_cell(
-    state: &GameState,
-    command: impl Fn(Cell) -> Command,
-) -> Cell {
+fn first_accepted_cell(state: &GameState, command: impl Fn(Cell) -> Command) -> Cell {
     let snapshot = state.snapshot();
     for z in 1..snapshot.grid_height - 1 {
         for x in 1..snapshot.grid_width - 1 {
@@ -46,9 +43,7 @@ fn opening_trace() -> Vec<Command> {
         z: tower_cell.z,
         archetype: TowerArchetype::Arrow,
     };
-    state
-        .apply(tower)
-        .expect("tower construction should start");
+    state.apply(tower).expect("tower construction should start");
     commands.push(tower);
 
     for _ in 0..200 {
@@ -151,7 +146,11 @@ fn tower_material_is_hauled_before_the_tower_becomes_active() {
 
     assert_eq!(state.tower_count(), 0);
     assert_eq!(state.construction_site_count(), 1);
-    assert_eq!(state.wood(), wood_before, "placement does not teleport material");
+    assert_eq!(
+        state.wood(),
+        wood_before,
+        "placement does not teleport material"
+    );
 
     for _ in 0..160 {
         state
@@ -164,7 +163,10 @@ fn tower_material_is_hauled_before_the_tower_becomes_active() {
 
     assert_eq!(state.tower_count(), 1);
     assert_eq!(state.construction_site_count(), 0);
-    assert!(state.wood() < wood_before, "workers consumed stored material");
+    assert!(
+        state.wood() < wood_before,
+        "workers consumed stored material"
+    );
 }
 
 #[test]
