@@ -466,7 +466,8 @@ mod tests {
         let mut stolen = 0_u16;
         for _ in 0..40 {
             let response = dispatch_json(&mut state, r#"{"type":"advance_tick"}"#);
-            let value: Value = serde_json::from_str(&response).expect("tick response should be JSON");
+            let value: Value =
+                serde_json::from_str(&response).expect("tick response should be JSON");
             stolen = stolen.saturating_add(
                 value["event"]["wood_stolen"]
                     .as_u64()
