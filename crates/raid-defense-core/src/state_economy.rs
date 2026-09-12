@@ -1,7 +1,11 @@
 use super::*;
 
 impl GameState {
-    fn place_tower(&mut self, cell: Cell, archetype: TowerArchetype) -> Result<Event, GameError> {
+    pub(super) fn place_tower(
+        &mut self,
+        cell: Cell,
+        archetype: TowerArchetype,
+    ) -> Result<Event, GameError> {
         self.validate_build_cell(cell)?;
         let cost = self.rules.tower(archetype).build_cost;
         self.require_wood(cost)?;
@@ -47,7 +51,7 @@ impl GameState {
         })
     }
 
-    fn place_sawmill(&mut self, cell: Cell) -> Result<Event, GameError> {
+    pub(super) fn place_sawmill(&mut self, cell: Cell) -> Result<Event, GameError> {
         self.validate_build_cell(cell)?;
         if !self.has_harvestable_forest_near(cell) {
             return Err(GameError::NoForestInRange);
@@ -99,7 +103,7 @@ impl GameState {
         })
     }
 
-    fn place_storage_house(&mut self, cell: Cell) -> Result<Event, GameError> {
+    pub(super) fn place_storage_house(&mut self, cell: Cell) -> Result<Event, GameError> {
         self.validate_build_cell(cell)?;
         let building_rules = self.rules.buildings.storage_house;
         let cost = building_rules.wood_cost;
@@ -140,7 +144,7 @@ impl GameState {
         })
     }
 
-    fn place_house(&mut self, cell: Cell) -> Result<Event, GameError> {
+    pub(super) fn place_house(&mut self, cell: Cell) -> Result<Event, GameError> {
         if !self.houses_unlocked() {
             return Err(GameError::HouseLocked);
         }
@@ -187,7 +191,7 @@ impl GameState {
         })
     }
 
-    fn upgrade_tower(&mut self, cell: Cell) -> Result<Event, GameError> {
+    pub(super) fn upgrade_tower(&mut self, cell: Cell) -> Result<Event, GameError> {
         if self.town_health() == 0 {
             return Err(GameError::GameOver);
         }
@@ -230,7 +234,7 @@ impl GameState {
         })
     }
 
-    fn validate_build_cell(&self, cell: Cell) -> Result<(), GameError> {
+    pub(super) fn validate_build_cell(&self, cell: Cell) -> Result<(), GameError> {
         if self.town_health() == 0 {
             return Err(GameError::GameOver);
         }
@@ -246,7 +250,7 @@ impl GameState {
         Ok(())
     }
 
-    fn validate_blocking_build(
+    pub(super) fn validate_blocking_build(
         &self,
         cell: Cell,
         hypothetical_sawmill: Option<Cell>,
@@ -260,7 +264,7 @@ impl GameState {
         Ok(())
     }
 
-    fn require_wood(&self, amount: u32) -> Result<(), GameError> {
+    pub(super) fn require_wood(&self, amount: u32) -> Result<(), GameError> {
         if self.wood() < amount {
             Err(GameError::InsufficientWood)
         } else {
@@ -268,11 +272,11 @@ impl GameState {
         }
     }
 
-    fn spend_wood(&mut self, amount: u32) {
+    pub(super) fn spend_wood(&mut self, amount: u32) {
         self.spend_settlement_wood(amount);
     }
 
-    fn start_wave(&mut self) -> Result<Event, GameError> {
+    pub(super) fn start_wave(&mut self) -> Result<Event, GameError> {
         if self.town_health() == 0 {
             return Err(GameError::GameOver);
         }
@@ -294,7 +298,7 @@ impl GameState {
         })
     }
 
-    fn advance_tick(&mut self) -> Event {
+    pub(super) fn advance_tick(&mut self) -> Event {
         self.tick = self.tick.saturating_add(1);
         let had_raiders = self.raider_count() > 0;
         let economy_paused = had_raiders && self.rules.cycle.pause_economy_during_raids;
