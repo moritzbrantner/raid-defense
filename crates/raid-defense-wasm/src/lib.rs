@@ -1,10 +1,13 @@
 #![forbid(unsafe_code)]
 
-use raid_defense_core::{Command, EntityKind, Event, GameError, GameState, TOWER_COST};
+use raid_defense_core::{
+    ARROW_TOWER_COST, CANNON_TOWER_COST, Command, EntityKind, Event, GameError, GameState,
+    MAX_TOWER_LEVEL, TowerArchetype,
+};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-const CONTRACT_VERSION: u8 = 2;
+const CONTRACT_VERSION: u8 = 3;
 
 #[wasm_bindgen]
 pub struct RaidDefenseGame {
@@ -33,10 +36,34 @@ impl RaidDefenseGame {
     }
 }
 
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum TowerArchetypeDto {
+    Arrow,
+    Cannon,
+}
+
+impl From<TowerArchetypeDto> for TowerArchetype {
+    fn from(value: TowerArchetypeDto) -> Self {
+        match value {
+            TowerArchetypeDto::Arrow => Self::Arrow,
+            TowerArchetypeDto::Cannon => Self::Cannon,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum CommandDto {
-    PlaceTower { x: i16, z: i16 },
+    PlaceTower {
+        x: i16,
+        z: i16,
+        archetype: TowerArchetypeDto,
+    },
+    UpgradeTower {
+        x: i16,
+        z: i16,
+    },
     StartWave,
     AdvanceTick,
 }
@@ -44,7 +71,12 @@ enum CommandDto {
 impl From<CommandDto> for Command {
     fn from(value: CommandDto) -> Self {
         match value {
-            CommandDto::PlaceTower { x, z } => Self::PlaceTower { x, z },
+            CommandDto::PlaceTower { x, z, archetype } => Self::PlaceTower {
+                x,
+                z,
+                archetype: archetype.into(),
+            },
+            CommandDto::UpgradeTower { x, z } => Self::UpgradeTower { x, z },
             CommandDto::StartWave => Self::StartWave,
             CommandDto::AdvanceTick => Self::AdvanceTick,
         }
@@ -71,6 +103,14 @@ enum EventDto {
     TowerBuilt {
         entity: u32,
         cell: CellDto,
+        archetype: &'static str,
+        level: u8,
+    },
+    TowerUpgraded {
+        entity: u32,
+        archetype: &'static str,
+        level: u8,
+        cost: u32,
     },
     WaveStarted {
         wave: u32,
@@ -79,6 +119,7 @@ enum EventDto {
     TickAdvanced {
         tick: u64,
         shots: u16,
+        impacts: u16,
         kills: u16,
         town_damage: u16,
     },
@@ -87,19 +128,39 @@ enum EventDto {
 impl From<Event> for EventDto {
     fn from(value: Event) -> Self {
         match value {
-            Event::TowerBuilt { entity, cell } => Self::TowerBuilt {
+            Event::TowerBuilt {
+                entity,
+                cell,
+                archetype,
+                level,
+            } => Self::TowerBuilt {
                 entity,
                 cell: CellDto::from(cell),
+                archetype: tower_archetype_label(archetype),
+                level,
+            },
+            Event::TowerUpgraded {
+                entity,
+                archetype,
+                level,
+                cost,
+            } => Self::TowerUpgraded {
+                entity,
+                archetype: tower_archetype_label(archetype),
+                level,
+                cost,
             },
             Event::WaveStarted { wave, raiders } => Self::WaveStarted { wave, raiders },
             Event::TickAdvanced {
                 tick,
                 shots,
+                impacts,
                 kills,
                 town_damage,
             } => Self::TickAdvanced {
                 tick,
                 shots,
+                impacts,
                 kills,
                 town_damage,
             },
@@ -133,7 +194,9 @@ struct SnapshotDto {
     town_max_health: u16,
     grid_width: i16,
     grid_height: i16,
-    tower_cost: u32,
+    arrow_tower_cost: u32,
+    cannon_tower_cost: u32,
+    max_tower_level: u8,
     checksum: String,
     entities: Vec<EntityDto>,
 }
@@ -151,7 +214,9 @@ impl From<&GameState> for SnapshotDto {
             town_max_health: snapshot.town_max_health,
             grid_width: snapshot.grid_width,
             grid_height: snapshot.grid_height,
-            tower_cost: TOWER_COST,
+            arrow_tower_cost: ARROW_TOWER_COST,
+            cannon_tower_cost: CANNON_TOWER_COST,
+            max_tower_level: MAX_TOWER_LEVEL,
             checksum: state.checksum().to_string(),
             entities: snapshot
                 .entities
@@ -162,6 +227,7 @@ impl From<&GameState> for SnapshotDto {
                         EntityKind::Town => "town",
                         EntityKind::Tower => "tower",
                         EntityKind::Raider => "raider",
+                        EntityKind::Projectile => "projectile",
                     },
                     x_milli: entity.x_milli,
                     z_milli: entity.z_milli,
@@ -170,6 +236,10 @@ impl From<&GameState> for SnapshotDto {
                     max_health: entity.max_health,
                     attack_damage: entity.attack_damage,
                     attack_range_milli: entity.attack_range_milli,
+                    tower_archetype: entity.tower_archetype.map(tower_archetype_label),
+                    tower_level: entity.tower_level,
+                    upgrade_cost: entity.upgrade_cost,
+                    projectile_target: entity.projectile_target,
                 })
                 .collect(),
         }
@@ -187,6 +257,10 @@ struct EntityDto {
     max_health: u16,
     attack_damage: u16,
     attack_range_milli: i32,
+    tower_archetype: Option<&'static str>,
+    tower_level: u8,
+    upgrade_cost: Option<u32>,
+    projectile_target: Option<u32>,
 }
 
 fn dispatch_json(state: &mut GameState, command_json: &str) -> String {
@@ -225,6 +299,13 @@ fn dispatch_json(state: &mut GameState, command_json: &str) -> String {
     }
 }
 
+const fn tower_archetype_label(archetype: TowerArchetype) -> &'static str {
+    match archetype {
+        TowerArchetype::Arrow => "arrow",
+        TowerArchetype::Cannon => "cannon",
+    }
+}
+
 const fn error_code(error: GameError) -> &'static str {
     match error {
         GameError::OutOfBounds => "out_of_bounds",
@@ -232,6 +313,8 @@ const fn error_code(error: GameError) -> &'static str {
         GameError::ProtectedCell => "protected_cell",
         GameError::PathBlocked => "path_blocked",
         GameError::InsufficientGold => "insufficient_gold",
+        GameError::NoTower => "no_tower",
+        GameError::MaxTowerLevel => "max_tower_level",
         GameError::RaidersStillActive => "raiders_still_active",
         GameError::GameOver => "game_over",
     }
@@ -270,11 +353,18 @@ mod tests {
     #[test]
     fn adapter_checksum_matches_native_core_after_same_command() {
         let mut adapted = GameState::new(7);
-        let response = dispatch_json(&mut adapted, r#"{"type":"place_tower","x":2,"z":2}"#);
+        let response = dispatch_json(
+            &mut adapted,
+            r#"{"type":"place_tower","x":2,"z":2,"archetype":"arrow"}"#,
+        );
 
         let mut native = GameState::new(7);
         native
-            .apply(Command::PlaceTower { x: 2, z: 2 })
+            .apply(Command::PlaceTower {
+                x: 2,
+                z: 2,
+                archetype: TowerArchetype::Arrow,
+            })
             .expect("native command should succeed");
 
         assert_eq!(
@@ -285,16 +375,61 @@ mod tests {
     }
 
     #[test]
+    fn upgrade_contract_maps_to_native_command() {
+        let mut state = GameState::new(7);
+        let built = dispatch_json(
+            &mut state,
+            r#"{"type":"place_tower","x":2,"z":2,"archetype":"arrow"}"#,
+        );
+        let built_value: Value = serde_json::from_str(&built).expect("build response should be JSON");
+        assert_eq!(built_value["ok"], true);
+
+        let upgraded = dispatch_json(&mut state, r#"{"type":"upgrade_tower","x":2,"z":2}"#);
+        let upgraded_value: Value =
+            serde_json::from_str(&upgraded).expect("upgrade response should be JSON");
+        assert_eq!(upgraded_value["ok"], true);
+        assert_eq!(upgraded_value["event"]["type"], "tower_upgraded");
+        assert_eq!(upgraded_value["event"]["level"], 2);
+    }
+
+    #[test]
     fn rejected_rule_error_uses_stable_code_and_preserves_checksum() {
         let mut state = GameState::new(9);
         let before = state.checksum();
 
-        let response = dispatch_json(&mut state, r#"{"type":"place_tower","x":8,"z":6}"#);
+        let response = dispatch_json(
+            &mut state,
+            r#"{"type":"place_tower","x":8,"z":6,"archetype":"cannon"}"#,
+        );
         let value: Value = serde_json::from_str(&response).expect("response should be JSON");
 
         assert_eq!(value["ok"], false);
         assert_eq!(value["error"]["code"], "protected_cell");
         assert_eq!(checksum_from_response(&response), before.to_string());
         assert_eq!(state.checksum(), before);
+    }
+
+    #[test]
+    fn snapshot_exposes_projectile_entities_after_a_shot() {
+        let mut state = GameState::new(11);
+        state
+            .apply(Command::PlaceTower {
+                x: 7,
+                z: 2,
+                archetype: TowerArchetype::Arrow,
+            })
+            .expect("tower should build");
+        state.apply(Command::StartWave).expect("wave should start");
+        state
+            .apply(Command::AdvanceTick)
+            .expect("tick should create projectile");
+
+        let snapshot = SnapshotDto::from(&state);
+        assert!(
+            snapshot
+                .entities
+                .iter()
+                .any(|entity| entity.kind == "projectile" && entity.projectile_target.is_some())
+        );
     }
 }
