@@ -13,8 +13,11 @@ pub struct GameRules {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RulesError {
     StartingPopulationExceedsCapacity,
+    StartingWoodExceedsCapacity,
+    HousePopulationExceedsCapacity,
     ZeroSawmillInterval,
     InvalidTowerLevelCount,
+    NegativeTowerRange,
     ZeroRaidersPerWave,
     ZeroRaidDamageInterval,
     ZeroDayLength,
@@ -25,11 +28,22 @@ impl GameRules {
         if self.population.starting_people > self.population.base_capacity {
             return Err(RulesError::StartingPopulationExceedsCapacity);
         }
+        if self.economy.starting_wood > self.economy.town_wood_capacity {
+            return Err(RulesError::StartingWoodExceedsCapacity);
+        }
+        if self.buildings.house.people_added > self.buildings.house.population_capacity {
+            return Err(RulesError::HousePopulationExceedsCapacity);
+        }
         if self.economy.sawmill_interval_ticks == 0 {
             return Err(RulesError::ZeroSawmillInterval);
         }
         if self.towers.max_level == 0 || self.towers.max_level > 3 {
             return Err(RulesError::InvalidTowerLevelCount);
+        }
+        if has_negative_active_range(self.towers.arrow, self.towers.max_level)
+            || has_negative_active_range(self.towers.cannon, self.towers.max_level)
+        {
+            return Err(RulesError::NegativeTowerRange);
         }
         if self.raids.raiders_per_wave == 0 {
             return Err(RulesError::ZeroRaidersPerWave);
@@ -119,6 +133,7 @@ impl GameRules {
         feed_u16(&mut hash, self.raids.health_per_wave);
         feed_u16(&mut hash, self.raids.base_damage);
         feed_u64(&mut hash, u64::from(self.raids.damage_increase_every_waves));
+        feed_u16(&mut hash, self.raids.damage_increase_amount);
         feed_u16(&mut hash, self.raids.speed_milli);
         feed_u64(&mut hash, u64::from(self.raids.base_wood_steal));
         feed_u64(&mut hash, u64::from(self.raids.wood_steal_per_wave));
@@ -218,6 +233,7 @@ pub struct RaidRules {
     pub health_per_wave: u16,
     pub base_damage: u16,
     pub damage_increase_every_waves: u32,
+    pub damage_increase_amount: u16,
     pub speed_milli: u16,
     pub base_wood_steal: u32,
     pub wood_steal_per_wave: u32,
@@ -228,6 +244,17 @@ pub struct CycleRules {
     pub day_length_ticks: u16,
     pub automatic_raids: bool,
     pub pause_economy_during_raids: bool,
+}
+
+const fn has_negative_active_range(tower: TowerArchetypeRules, max_level: u8) -> bool {
+    let mut index = 0_usize;
+    while index < max_level as usize {
+        if tower.levels[index].range_milli < 0 {
+            return true;
+        }
+        index += 1;
+    }
+    false
 }
 
 fn feed_tower(hash: &mut u64, tower: TowerArchetypeRules) {
@@ -272,4 +299,45 @@ fn feed_u16(hash: &mut u64, value: u16) {
 fn feed_byte(hash: &mut u64, byte: u8) {
     *hash ^= u64::from(byte);
     *hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::STANDARD_RULES;
+
+    #[test]
+    fn rejects_starting_wood_above_town_capacity() {
+        let mut rules = STANDARD_RULES;
+        rules.economy.starting_wood = rules.economy.town_wood_capacity + 1;
+        assert_eq!(
+            rules.validate(),
+            Err(RulesError::StartingWoodExceedsCapacity)
+        );
+    }
+
+    #[test]
+    fn rejects_house_population_growth_above_capacity_growth() {
+        let mut rules = STANDARD_RULES;
+        rules.buildings.house.people_added = rules.buildings.house.population_capacity + 1;
+        assert_eq!(
+            rules.validate(),
+            Err(RulesError::HousePopulationExceedsCapacity)
+        );
+    }
+
+    #[test]
+    fn rejects_negative_active_tower_range() {
+        let mut rules = STANDARD_RULES;
+        rules.towers.arrow.levels[0].range_milli = -1;
+        assert_eq!(rules.validate(), Err(RulesError::NegativeTowerRange));
+    }
+
+    #[test]
+    fn damage_increment_participates_in_rule_identity() {
+        let standard = STANDARD_RULES.fingerprint();
+        let mut changed = STANDARD_RULES;
+        changed.raids.damage_increase_amount += 1;
+        assert_ne!(standard, changed.fingerprint());
+    }
 }
