@@ -38,10 +38,11 @@ jobs:
 
           path = Path("tools/apply_game_rules_refactor.py")
           text = path.read_text()
-          old = '''if core.count("                    speed_milli: PERSON_SPEED_MILLI,\\n") != 2:
+
+          old_person = '''if core.count("                    speed_milli: PERSON_SPEED_MILLI,\\n") != 2:
               raise SystemExit(f"person speed rules: expected 2 matches, found {core.count('                    speed_milli: PERSON_SPEED_MILLI,\\\\n')}")
           core = core.replace("                    speed_milli: PERSON_SPEED_MILLI,\\n", "                    speed_milli: self.rules.population.speed_milli,\\n", 2)'''
-          new = '''person_speed_pattern = "                    speed_milli: PERSON_SPEED_MILLI,\\n"
+          new_person = '''person_speed_pattern = "                    speed_milli: PERSON_SPEED_MILLI,\\n"
           person_speed_count = core.count(person_speed_pattern)
           if person_speed_count != 2:
               raise SystemExit(
@@ -52,9 +53,24 @@ jobs:
               "                    speed_milli: self.rules.population.speed_milli,\\n",
               2,
           )'''
-          if old not in text:
+          if old_person not in text:
               raise SystemExit("expected person-speed migration block was not found")
-          path.write_text(text.replace(old, new, 1))
+          text = text.replace(old_person, new_person, 1)
+
+          old_raid = '''core = replace_once(core, "                speed_milli: RAIDER_SPEED_MILLI,\\n", "                speed_milli: self.rules.raids.speed_milli,\\n", "raid speed")'''
+          new_raid = '''raid_speed_pattern = "                speed_milli: RAIDER_SPEED_MILLI,\\n"
+          if core.count(raid_speed_pattern) < 1:
+              raise SystemExit("raid speed: production constructor was not found")
+          core = core.replace(
+              raid_speed_pattern,
+              "                speed_milli: self.rules.raids.speed_milli,\\n",
+              1,
+          )'''
+          if old_raid not in text:
+              raise SystemExit("expected raid-speed migration block was not found")
+          text = text.replace(old_raid, new_raid, 1)
+
+          path.write_text(text)
           PY
           python3 -m py_compile tools/apply_game_rules_refactor.py
 
