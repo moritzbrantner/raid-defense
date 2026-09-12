@@ -1,0 +1,54 @@
+name: Fix game-rules adapter tests
+
+on:
+  push:
+    branches:
+      - refactor/game-rules
+    paths:
+      - .github/workflows/fix-game-rules-adapter-tests.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          ref: refactor/game-rules
+
+      - name: Route adapter assertions through active rules
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/raid-defense-wasm/src/lib.rs")
+          text = path.read_text()
+          replacements = {
+              "for _ in 0..SAWMILL_INTERVAL_TICKS {":
+                  "for _ in 0..state.rules().economy.sawmill_interval_ticks {",
+              "entity.wood_capacity == SAWMILL_LOCAL_WOOD_CAPACITY":
+                  "entity.wood_capacity == state.rules().economy.sawmill_local_wood_capacity",
+              "entity.cargo_capacity == PERSON_CARRY_CAPACITY":
+                  "entity.cargo_capacity == state.rules().population.carry_capacity",
+          }
+          for old, new in replacements.items():
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected exactly one adapter test occurrence of {old!r}")
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+
+      - name: Format and commit
+        run: |
+          cargo fmt --all
+          rm .github/workflows/fix-game-rules-adapter-tests.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Use active rules in adapter tests"
+          git push origin HEAD:refactor/game-rules
