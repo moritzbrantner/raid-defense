@@ -4,7 +4,8 @@ async function openGame(page: import("@playwright/test").Page) {
   await page.goto("/");
   await expect(page.getByTestId("raid-defense-game")).toBeVisible();
   await expect(page.getByTestId("world-3d")).toBeVisible();
-  await expect(page.getByTestId("gold-value")).toHaveText("120");
+  await expect(page.getByTestId("wood-value")).toHaveText("120");
+  await expect(page.getByTestId("sawmill-count")).toHaveText("0");
 }
 
 async function selectCell(page: import("@playwright/test").Page, x: number, z: number) {
@@ -12,7 +13,23 @@ async function selectCell(page: import("@playwright/test").Page, x: number, z: n
   await page.getByTestId("cell-z").fill(String(z));
 }
 
-test("builds distinct arrow and cannon towers on the authoritative grid", async ({ page }) => {
+test("builds a sawmill and deposits produced wood in the Town Hall", async ({ page }) => {
+  await openGame(page);
+
+  await selectCell(page, 2, 2);
+  await page.getByTestId("build-sawmill").click();
+
+  await expect(page.getByTestId("event-feedback")).toContainText("Sawmill built at 2, 2");
+  await expect(page.getByTestId("sawmill-count")).toHaveText("1");
+  await expect(page.getByTestId("wood-value")).toHaveText("80");
+  await expect(page.getByTestId("selected-building")).toContainText("Sawmill");
+
+  await expect
+    .poll(async () => Number(await page.getByTestId("wood-value").textContent()))
+    .toBeGreaterThan(80);
+});
+
+test("spends Town Hall wood on distinct tower archetypes", async ({ page }) => {
   await openGame(page);
 
   const initialChecksum = await page.getByTestId("checksum").textContent();
@@ -24,26 +41,38 @@ test("builds distinct arrow and cannon towers on the authoritative grid", async 
   await page.getByTestId("build-cannon-tower").click();
   await expect(page.getByTestId("event-feedback")).toContainText("Cannon tower built at 3, 2");
 
-  await expect(page.getByTestId("gold-value")).toHaveText("50");
+  await expect(page.getByTestId("wood-value")).toHaveText("50");
   await expect(page.getByTestId("tower-count")).toHaveText("2");
   await expect(page.getByTestId("checksum")).not.toHaveText(initialChecksum ?? "");
 });
 
-test("upgrades the selected tower through the Rust command boundary", async ({ page }) => {
+test("upgrades the selected tower by spending wood", async ({ page }) => {
   await openGame(page);
 
   await selectCell(page, 2, 2);
   await page.getByTestId("build-arrow-tower").click();
-  await expect(page.getByTestId("selected-tower")).toContainText("Arrow tower · L1");
+  await expect(page.getByTestId("selected-building")).toContainText("Arrow tower · L1");
 
   await page.getByTestId("upgrade-tower").click();
 
-  await expect(page.getByTestId("event-feedback")).toContainText("upgraded to level 2 for 20g");
-  await expect(page.getByTestId("selected-tower")).toContainText("Arrow tower · L2");
-  await expect(page.getByTestId("gold-value")).toHaveText("75");
+  await expect(page.getByTestId("event-feedback")).toContainText("upgraded to level 2 for 20 wood");
+  await expect(page.getByTestId("selected-building")).toContainText("Arrow tower · L2");
+  await expect(page.getByTestId("wood-value")).toHaveText("75");
 });
 
-test("runs a live wave with visible authoritative projectile entities", async ({ page }) => {
+test("raiders steal stored wood when they reach the Town Hall", async ({ page }) => {
+  await openGame(page);
+
+  await page.getByTestId("start-wave").click();
+  await expect(page.getByTestId("wave-value")).toHaveText("1");
+
+  await expect
+    .poll(async () => Number(await page.getByTestId("wood-value").textContent()))
+    .toBeLessThan(120);
+  await expect(page.getByTestId("event-feedback")).toContainText("wood stolen");
+});
+
+test("runs a defended raid with authoritative projectile entities", async ({ page }) => {
   await openGame(page);
 
   await selectCell(page, 7, 2);
@@ -59,19 +88,19 @@ test("runs a live wave with visible authoritative projectile entities", async ({
     .toBeGreaterThan(0);
 });
 
-test("rejects building on the protected town without mutating state", async ({ page }) => {
+test("rejects building on the protected Town Hall without mutating state", async ({ page }) => {
   await openGame(page);
 
   await selectCell(page, 8, 6);
   const checksumBefore = await page.getByTestId("checksum").textContent();
-  const goldBefore = await page.getByTestId("gold-value").textContent();
+  const woodBefore = await page.getByTestId("wood-value").textContent();
 
-  await page.getByTestId("build-cannon-tower").click();
+  await page.getByTestId("build-sawmill").click();
 
   await expect(page.getByTestId("event-feedback")).toContainText(
-    "reserved for the town or an edge spawn gate",
+    "reserved for the Town Hall or an edge spawn gate",
   );
   await expect(page.getByTestId("checksum")).toHaveText(checksumBefore ?? "");
-  await expect(page.getByTestId("gold-value")).toHaveText(goldBefore ?? "");
-  await expect(page.getByTestId("tower-count")).toHaveText("0");
+  await expect(page.getByTestId("wood-value")).toHaveText(woodBefore ?? "");
+  await expect(page.getByTestId("sawmill-count")).toHaveText("0");
 });
