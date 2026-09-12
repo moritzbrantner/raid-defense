@@ -650,8 +650,8 @@ impl GameState {
             .get(entity_key(entity))
             .copied()
             .expect("tower buildings always have a tower component");
-        let cost = tower_upgrade_cost(tower.archetype, tower.level)
-            .ok_or(GameError::MaxTowerLevel)?;
+        let cost =
+            tower_upgrade_cost(tower.archetype, tower.level).ok_or(GameError::MaxTowerLevel)?;
         self.require_wood(cost)?;
 
         let next_level = tower.level + 1;
@@ -796,8 +796,8 @@ impl GameState {
             match producer.resource {
                 ResourceKind::Wood => {
                     let stored = self.store_wood(u32::from(producer.amount));
-                    produced_total = produced_total
-                        .saturating_add(u16::try_from(stored).unwrap_or(u16::MAX));
+                    produced_total =
+                        produced_total.saturating_add(u16::try_from(stored).unwrap_or(u16::MAX));
                 }
             }
         }
@@ -972,8 +972,8 @@ impl GameState {
                 movement.from = movement.to;
                 if is_town_cell(movement.from) {
                     let stolen = self.steal_wood(self.raider_wood_steal_amount());
-                    wood_stolen = wood_stolen
-                        .saturating_add(u16::try_from(stolen).unwrap_or(u16::MAX));
+                    wood_stolen =
+                        wood_stolen.saturating_add(u16::try_from(stolen).unwrap_or(u16::MAX));
                     if stolen == 0 {
                         let damage = self
                             .attacks
@@ -1434,7 +1434,13 @@ fn integer_sqrt(value: u64) -> u64 {
 }
 
 fn saturating_i64_to_i32(value: i64) -> i32 {
-    i32::try_from(value).unwrap_or_else(|_| if value.is_negative() { i32::MIN } else { i32::MAX })
+    i32::try_from(value).unwrap_or_else(|_| {
+        if value.is_negative() {
+            i32::MIN
+        } else {
+            i32::MAX
+        }
+    })
 }
 
 const fn tower_archetype_code(archetype: TowerArchetype) -> u8 {
@@ -1537,7 +1543,9 @@ mod tests {
         assert_eq!(state.sawmill_count(), 1);
 
         for _ in 0..SAWMILL_INTERVAL_TICKS {
-            state.apply(Command::AdvanceTick).expect("tick should advance");
+            state
+                .apply(Command::AdvanceTick)
+                .expect("tick should advance");
         }
 
         assert_eq!(
@@ -1683,7 +1691,9 @@ mod tests {
         assert!(state.projectile_count() > 0);
 
         for _ in 0..60 {
-            state.apply(Command::AdvanceTick).expect("tick should advance");
+            state
+                .apply(Command::AdvanceTick)
+                .expect("tick should advance");
             if state.raider_count() == 0 {
                 break;
             }
