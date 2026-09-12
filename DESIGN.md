@@ -8,11 +8,11 @@ The key gameplay property is intentional path shaping: buildings block cells, ra
 
 ## Authority boundary
 
-`raid-defense-core` is the sole authority for ECS state and game outcomes. It owns entity lifecycle, components, grid occupancy, pathfinding, wave spawning, movement, targeting, damage, health, rewards, command validation, replay, and checksums.
+`raid-defense-core` is the sole authority for ECS state and game outcomes. It owns entity lifecycle, components, grid occupancy, pathfinding, wave spawning, movement, targeting, projectile lifecycle, upgrades, damage, health, rewards, command validation, replay, and checksums.
 
 `raid-defense-wasm` is a versioned serialization adapter only. It maps JSON commands/events/snapshots without recomputing rules.
 
-The browser owns input, camera, interpolation/presentation, and 3D rendering. It may request deterministic ticks, but it never decides where a raider can move, whether a tower may be placed, what a tower targets, or how much damage occurs.
+The browser owns input, camera, interpolation/presentation, and 3D rendering. It may request deterministic ticks, but it never decides where a raider or projectile can move, whether a tower may be placed or upgraded, what a tower targets, or how much damage occurs.
 
 ## ECS storage
 
@@ -22,22 +22,31 @@ Current components:
 
 - `Transform`: fixed-point X/Z position on the gameplay plane;
 - `Health`: current and maximum hit points;
-- `Attack`: damage, range, and cooldown;
+- `Attack`: damage, range, cooldown, and projectile launch speed;
 - `Building`: grid occupancy and building kind;
+- `Tower`: tower archetype and upgrade level;
 - `Raider`: raider identity/spawn edge;
-- `Movement`: current/next cell, sub-cell progress, and speed.
+- `Movement`: current/next cell, sub-cell progress, and speed;
+- `Projectile`: target entity, damage payload, speed, and visual/combat archetype.
 
-Systems iterate only the components they need. This boundary is intended to scale to large waves and future projectile/effect populations without central entity structs accumulating unrelated fields.
+Systems iterate only the components they need. This boundary is intended to scale to large waves and future effect/unit populations without central entity structs accumulating unrelated fields.
 
 ## Determinism
 
-Authoritative positions are integer fixed-point values (`CELL_SCALE = 1000`). Paths are found with deterministic breadth-first search and a fixed neighbor order. Target selection is ordered by distance and entity id. Equal seeds plus equal ordered commands therefore replay to equal component state and equal checksums.
+Authoritative positions are integer fixed-point values (`CELL_SCALE = 1000`). Paths are found with deterministic breadth-first search and a fixed neighbor order. Target selection is ordered by distance and entity id. Projectiles pursue targets with deterministic integer movement and integer square-root distance normalization. Equal seeds plus equal ordered commands therefore replay to equal component state and equal checksums.
 
-Commands validate fully before mutation. In particular, tower placement verifies bounds, protected cells, occupancy, gold, and reachability from all four gates plus every active raider before spending resources or spawning an entity.
+Commands validate fully before mutation. Tower placement verifies bounds, protected cells, occupancy, gold, and reachability from all four gates plus every active raider before spending resources or spawning an entity. Tower upgrades validate the selected tower, level cap, and price before changing stats or gold.
+
+Entity lifecycle is closed over dependent state: when a raider leaves the world, projectiles targeting that entity are removed at the same authoritative boundary rather than being left as orphaned entities.
 
 ## Current vertical slice
 
-The first maul slice uses a 17×13 grid with a protected 3×3 town and four edge gates. A wave currently contains one raider from each edge. Guard towers block cells, attack nearby raiders, and award gold on kills. Raiders move toward the town and damage it when they arrive.
+The current maul slice uses a 17×13 grid with a protected 3×3 town and four edge gates. A wave contains one raider from each edge. Players can build:
+
+- Arrow towers: cheaper, faster-firing, shorter-ranged projectiles;
+- Cannon towers: more expensive, slower-firing, longer-ranged and harder-hitting projectiles.
+
+Both archetypes have three upgrade levels. Towers block grid cells, acquire deterministic targets, create real projectile ECS entities, and only deal damage when those projectiles impact moving raiders. Kills award gold; raiders that reach the town damage it and are despawned together with any projectiles still targeting them.
 
 The models are deliberately primitive geometry. The rendering contract is already 3D, so later asset work can replace meshes without changing the authoritative simulation representation.
 
@@ -45,10 +54,9 @@ The models are deliberately primitive geometry. The rendering contract is alread
 
 The next gameplay depth should stay vertical:
 
-1. tower archetypes and upgrade paths;
-2. projectile entities and impact systems for non-instant attacks;
-3. larger timed waves, spawn schedules, and distinct raider archetypes;
-4. movement traits such as ground/flying and slow/status components;
-5. tower sale/rebuild flows and path-preview feedback;
-6. spatial-query acceleration for targeting when entity counts justify it;
-7. richer 3D assets, animation, effects, and terrain while preserving simulation authority in Rust.
+1. larger timed waves, spawn schedules, and distinct raider archetypes;
+2. movement traits such as ground/flying plus slow/status components;
+3. projectile variants such as splash, piercing, or status payloads where the archetype needs them;
+4. tower sale/rebuild flows and authoritative/advisory path-preview feedback;
+5. spatial-query acceleration for targeting once measured entity counts justify it;
+6. richer 3D assets, animation, effects, terrain, and impact feedback while preserving simulation authority in Rust.

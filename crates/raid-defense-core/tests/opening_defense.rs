@@ -1,12 +1,21 @@
-use raid_defense_core::{Command, GameError, GameState, replay};
+use raid_defense_core::{Command, GameError, GameState, TowerArchetype, replay};
 
 fn opening_trace() -> Vec<Command> {
     let mut commands = vec![
-        Command::PlaceTower { x: 7, z: 2 },
-        Command::PlaceTower { x: 9, z: 2 },
+        Command::PlaceTower {
+            x: 7,
+            z: 2,
+            archetype: TowerArchetype::Arrow,
+        },
+        Command::PlaceTower {
+            x: 9,
+            z: 2,
+            archetype: TowerArchetype::Cannon,
+        },
+        Command::UpgradeTower { x: 7, z: 2 },
         Command::StartWave,
     ];
-    commands.extend(std::iter::repeat_n(Command::AdvanceTick, 24));
+    commands.extend(std::iter::repeat_n(Command::AdvanceTick, 28));
     commands
 }
 
@@ -27,8 +36,52 @@ fn invalid_grid_build_is_transactional_inside_a_trace() {
     let mut state = GameState::new(0x5eed);
     let before = state.clone();
 
-    let rejected = state.apply(Command::PlaceTower { x: -1, z: 2 });
+    let rejected = state.apply(Command::PlaceTower {
+        x: -1,
+        z: 2,
+        archetype: TowerArchetype::Arrow,
+    });
 
     assert_eq!(rejected, Err(GameError::OutOfBounds));
     assert_eq!(state, before);
+}
+
+#[test]
+fn invalid_upgrade_is_transactional_inside_a_trace() {
+    let mut state = GameState::new(0x5eed);
+    let before = state.clone();
+
+    let rejected = state.apply(Command::UpgradeTower { x: 2, z: 2 });
+
+    assert_eq!(rejected, Err(GameError::NoTower));
+    assert_eq!(state, before);
+}
+
+#[test]
+fn ending_a_wave_does_not_leave_orphaned_projectiles() {
+    let mut state = GameState::new(0x5eed);
+    state
+        .apply(Command::PlaceTower {
+            x: 6,
+            z: 4,
+            archetype: TowerArchetype::Arrow,
+        })
+        .expect("tower should build");
+    state.apply(Command::StartWave).expect("wave should start");
+
+    for _ in 0..100 {
+        state
+            .apply(Command::AdvanceTick)
+            .expect("wave tick should advance");
+        if state.raider_count() == 0 {
+            break;
+        }
+    }
+
+    assert_eq!(state.raider_count(), 0, "wave should eventually end");
+    assert_eq!(
+        state.projectile_count(),
+        0,
+        "despawned raiders must not retain targeting projectiles"
+    );
 }

@@ -8,10 +8,15 @@ import type {
   RaidDefenseCommand,
   RaidDefenseEvent,
   SnapshotView,
+  TowerArchetype,
 } from "./simulationTypes";
 
 const DEFAULT_SEED = 0x5eed;
 const TICK_INTERVAL_MS = 100;
+
+function towerName(archetype: TowerArchetype) {
+  return archetype === "arrow" ? "Arrow tower" : "Cannon tower";
+}
 
 function describeEvent(event: RaidDefenseEvent | null) {
   if (!event) {
@@ -20,12 +25,15 @@ function describeEvent(event: RaidDefenseEvent | null) {
 
   switch (event.type) {
     case "tower_built":
-      return `Guard tower built at ${event.cell.x}, ${event.cell.z}.`;
+      return `${towerName(event.archetype)} built at ${event.cell.x}, ${event.cell.z}.`;
+    case "tower_upgraded":
+      return `${towerName(event.archetype)} upgraded to level ${event.level} for ${event.cost}g.`;
     case "wave_started":
       return `Wave ${event.wave} started from all four edges with ${event.raiders} raiders.`;
     case "tick_advanced": {
       const consequences = [
         event.shots > 0 ? `${event.shots} shot${event.shots === 1 ? "" : "s"}` : null,
+        event.impacts > 0 ? `${event.impacts} impact${event.impacts === 1 ? "" : "s"}` : null,
         event.kills > 0 ? `${event.kills} kill${event.kills === 1 ? "" : "s"}` : null,
         event.town_damage > 0 ? `${event.town_damage} town damage` : null,
       ].filter(Boolean);
@@ -42,7 +50,9 @@ function describeError(code: string) {
     cell_occupied: "That cell is occupied by a building or a moving raider.",
     protected_cell: "That cell is reserved for the town or an edge spawn gate.",
     path_blocked: "That tower would seal a route from an edge to the town.",
-    insufficient_gold: "You do not have enough gold for that tower.",
+    insufficient_gold: "You do not have enough gold for that action.",
+    no_tower: "There is no tower on the selected cell to upgrade.",
+    max_tower_level: "That tower is already at the maximum level.",
     raiders_still_active: "Finish the current wave before starting another one.",
     game_over: "The town has fallen.",
     invalid_command_json: "The browser produced an invalid command envelope.",
@@ -141,9 +151,30 @@ function TownModel({ entity, snapshot }: { entity: EntityView; snapshot: Snapsho
 function TowerModel({ entity, snapshot }: { entity: EntityView; snapshot: SnapshotView }) {
   const x = worldX(entity.x_milli / 1000, snapshot.grid_width);
   const z = worldZ(entity.z_milli / 1000, snapshot.grid_height);
+  const archetype = entity.tower_archetype ?? "arrow";
+  const levelScale = 1 + Math.max(0, entity.tower_level - 1) * 0.1;
+
+  if (archetype === "cannon") {
+    return (
+      <group position={[x, 0, z]} scale={levelScale}>
+        <mesh position={[0, 0.22, 0]} castShadow receiveShadow>
+          <cylinderGeometry args={[0.44, 0.5, 0.44, 8]} />
+          <meshStandardMaterial color="#6d665e" roughness={0.9} />
+        </mesh>
+        <mesh position={[0, 0.72, 0]} castShadow>
+          <boxGeometry args={[0.64, 0.58, 0.64]} />
+          <meshStandardMaterial color="#8b806f" roughness={0.82} />
+        </mesh>
+        <mesh position={[0, 1.02, -0.3]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.11, 0.15, 0.72, 10]} />
+          <meshStandardMaterial color="#3d4140" metalness={0.35} roughness={0.58} />
+        </mesh>
+      </group>
+    );
+  }
 
   return (
-    <group position={[x, 0, z]}>
+    <group position={[x, 0, z]} scale={levelScale}>
       <mesh position={[0, 0.22, 0]} castShadow receiveShadow>
         <cylinderGeometry args={[0.38, 0.46, 0.44, 8]} />
         <meshStandardMaterial color="#81705b" roughness={0.88} />
@@ -184,6 +215,24 @@ function RaiderModel({ entity, snapshot }: { entity: EntityView; snapshot: Snaps
         <meshBasicMaterial color="#a9b75e" />
       </mesh>
     </group>
+  );
+}
+
+function ProjectileModel({ entity, snapshot }: { entity: EntityView; snapshot: SnapshotView }) {
+  const x = worldX(entity.x_milli / 1000, snapshot.grid_width);
+  const z = worldZ(entity.z_milli / 1000, snapshot.grid_height);
+  const cannon = entity.tower_archetype === "cannon";
+
+  return (
+    <mesh position={[x, cannon ? 0.72 : 0.9, z]} castShadow>
+      <sphereGeometry args={[cannon ? 0.14 : 0.07, 10, 8]} />
+      <meshStandardMaterial
+        color={cannon ? "#d58a49" : "#d8c485"}
+        emissive={cannon ? "#5a2811" : "#4c4125"}
+        emissiveIntensity={0.6}
+        roughness={0.45}
+      />
+    </mesh>
   );
 }
 
@@ -278,6 +327,8 @@ function GameWorld({ snapshot, selectedCell, onSelectCell }: WorldProps) {
             return <TowerModel key={entity.id} entity={entity} snapshot={snapshot} />;
           case "raider":
             return <RaiderModel key={entity.id} entity={entity} snapshot={snapshot} />;
+          case "projectile":
+            return <ProjectileModel key={entity.id} entity={entity} snapshot={snapshot} />;
         }
       })}
 
@@ -310,7 +361,7 @@ function App() {
         const initial = simulation.snapshot();
         setClient(simulation);
         setSnapshot(initial);
-        setFeedback("Build a maze of towers, keep every edge connected, then start the wave.");
+        setFeedback("Choose a tower, shape the routes, upgrade key cells, then start the wave.");
       })
       .catch((error: unknown) => {
         if (!cancelled) {
@@ -352,7 +403,10 @@ function App() {
       }
       if (
         response.event?.type === "tick_advanced" &&
-        (response.event.kills > 0 || response.event.town_damage > 0)
+        (response.event.shots > 0 ||
+          response.event.impacts > 0 ||
+          response.event.kills > 0 ||
+          response.event.town_damage > 0)
       ) {
         setFeedback(describeEvent(response.event));
       }
@@ -370,12 +424,22 @@ function App() {
     );
   }
 
-  const towerCount = snapshot.entities.filter((entity) => entity.kind === "tower").length;
+  const towers = snapshot.entities.filter((entity) => entity.kind === "tower");
+  const towerCount = towers.length;
+  const projectileCount = snapshot.entities.filter((entity) => entity.kind === "projectile").length;
+  const selectedTower = towers.find(
+    (entity) => entity.cell.x === selectedCell.x && entity.cell.z === selectedCell.z,
+  );
   const townPercent = Math.max(
     0,
     Math.min(100, (snapshot.town_health / snapshot.town_max_health) * 100),
   );
   const canStartWave = raiderCount === 0 && snapshot.town_health > 0;
+  const canUpgrade =
+    selectedTower !== undefined &&
+    selectedTower.upgrade_cost !== null &&
+    snapshot.gold >= selectedTower.upgrade_cost &&
+    snapshot.town_health > 0;
 
   return (
     <main className="game-shell" data-testid="raid-defense-game">
@@ -401,6 +465,10 @@ function App() {
           <div>
             <dt>Towers</dt>
             <dd data-testid="tower-count">{towerCount}</dd>
+          </div>
+          <div>
+            <dt>Shots</dt>
+            <dd data-testid="projectile-count">{projectileCount}</dd>
           </div>
           <div>
             <dt>Tick</dt>
@@ -463,19 +531,60 @@ function App() {
               }
             />
           </label>
+          <span className="selected-tower" data-testid="selected-tower">
+            {selectedTower?.tower_archetype
+              ? `${towerName(selectedTower.tower_archetype)} · L${selectedTower.tower_level} · ${selectedTower.attack_damage} dmg`
+              : "Empty build cell"}
+          </span>
         </div>
 
-        <button
-          className="build-button"
-          type="button"
-          disabled={snapshot.town_health === 0}
-          onClick={() =>
-            issue({ type: "place_tower", x: selectedCell.x, z: selectedCell.z })
-          }
-          data-testid="build-tower"
-        >
-          Build guard tower · {snapshot.tower_cost}g
-        </button>
+        <div className="tower-actions">
+          <button
+            className="build-button"
+            type="button"
+            disabled={snapshot.town_health === 0 || snapshot.gold < snapshot.arrow_tower_cost}
+            onClick={() =>
+              issue({
+                type: "place_tower",
+                x: selectedCell.x,
+                z: selectedCell.z,
+                archetype: "arrow",
+              })
+            }
+            data-testid="build-arrow-tower"
+          >
+            Arrow · {snapshot.arrow_tower_cost}g
+          </button>
+          <button
+            className="build-button"
+            type="button"
+            disabled={snapshot.town_health === 0 || snapshot.gold < snapshot.cannon_tower_cost}
+            onClick={() =>
+              issue({
+                type: "place_tower",
+                x: selectedCell.x,
+                z: selectedCell.z,
+                archetype: "cannon",
+              })
+            }
+            data-testid="build-cannon-tower"
+          >
+            Cannon · {snapshot.cannon_tower_cost}g
+          </button>
+          <button
+            className="build-button upgrade-button"
+            type="button"
+            disabled={!canUpgrade}
+            onClick={() =>
+              issue({ type: "upgrade_tower", x: selectedCell.x, z: selectedCell.z })
+            }
+            data-testid="upgrade-tower"
+          >
+            {selectedTower?.upgrade_cost === null
+              ? "Max level"
+              : `Upgrade${selectedTower?.upgrade_cost ? ` · ${selectedTower.upgrade_cost}g` : ""}`}
+          </button>
+        </div>
 
         <p className="feedback-line" role="status" aria-live="polite" data-testid="event-feedback">
           {feedback}
