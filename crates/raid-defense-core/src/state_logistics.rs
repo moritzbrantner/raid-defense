@@ -34,8 +34,8 @@ impl GameState {
             if let Some(storage) = self.storage.get_mut(entity_key(entity)) {
                 storage.wood = storage.wood.saturating_add(harvested);
             }
-            produced_total = produced_total
-                .saturating_add(u16::try_from(harvested).unwrap_or(u16::MAX));
+            produced_total =
+                produced_total.saturating_add(u16::try_from(harvested).unwrap_or(u16::MAX));
         }
 
         produced_total
@@ -265,7 +265,9 @@ impl GameState {
                 .map_or(town_center(), cell_for_transform);
 
             if let Some(site) = self.best_construction_for_person(&reserved_construction)
-                && self.nearest_storage_with_wood_for_site(site, start).is_some()
+                && self
+                    .nearest_storage_with_wood_for_site(site, start)
+                    .is_some()
             {
                 person.state = PersonState::ToConstructionStorage;
                 person.target_entity = Some(site);
@@ -370,18 +372,16 @@ impl GameState {
         let goals = match person.state {
             PersonState::IdleAtTownHall => return,
             PersonState::ToTownHall => town_goal_cells(),
-            PersonState::ToSawmill => person.target_entity.map_or_else(Vec::new, |target| {
-                self.sawmill_pickup_cells(target, None)
-            }),
-            PersonState::ToStorage => person.target_entity.map_or_else(Vec::new, |target| {
-                self.storage_goal_cells(target, None)
-            }),
+            PersonState::ToSawmill => person
+                .target_entity
+                .map_or_else(Vec::new, |target| self.sawmill_pickup_cells(target, None)),
+            PersonState::ToStorage => person
+                .target_entity
+                .map_or_else(Vec::new, |target| self.storage_goal_cells(target, None)),
             PersonState::ToConstructionStorage => {
                 person.target_entity.map_or_else(Vec::new, |site| {
                     self.nearest_storage_with_wood_for_site(site, start)
-                        .map_or_else(Vec::new, |storage| {
-                            self.storage_goal_cells(storage, None)
-                        })
+                        .map_or_else(Vec::new, |storage| self.storage_goal_cells(storage, None))
                 })
             }
             PersonState::ToConstructionSite => person
