@@ -1,10 +1,12 @@
 import type {
-  RuntimeRaidDefenseCommandResponse,
-  RuntimeRaidDefenseView,
-  RuntimeScenarioConfig,
+  DispatchResponse,
+  RaidDefenseCommand,
+  SnapshotView,
 } from "./simulationTypes";
 
 type WasmModule = typeof import("./generated/raid-defense-wasm/raid_defense_wasm.js");
+
+type JsonObject = Record<string, unknown>;
 
 let wasmModulePromise: Promise<WasmModule> | null = null;
 
@@ -21,57 +23,70 @@ async function loadWasmModule() {
   return wasmModulePromise;
 }
 
-function parseView(viewJson: string) {
-  return JSON.parse(viewJson) as RuntimeRaidDefenseView;
+function isObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function parseResponse(responseJson: string) {
-  return JSON.parse(responseJson) as RuntimeRaidDefenseCommandResponse;
+function parseObject(json: string, label: string) {
+  const value: unknown = JSON.parse(json);
+  if (!isObject(value)) {
+    throw new Error(`${label} must be a JSON object`);
+  }
+  return value;
+}
+
+function parseSnapshotValue(value: unknown): SnapshotView {
+  if (!isObject(value)) {
+    throw new Error("snapshot must be an object");
+  }
+  if (value.contract_version !== 1) {
+    throw new Error(`unsupported contract version: ${String(value.contract_version)}`);
+  }
+  if (!Array.isArray(value.provinces)) {
+    throw new Error("snapshot provinces must be an array");
+  }
+  if (typeof value.checksum !== "string") {
+    throw new Error("snapshot checksum must be a string");
+  }
+
+  return value as SnapshotView;
+}
+
+function parseSnapshot(json: string) {
+  return parseSnapshotValue(parseObject(json, "snapshot"));
+}
+
+function parseResponse(json: string): DispatchResponse {
+  const value = parseObject(json, "dispatch response");
+  if (value.contract_version !== 1 || typeof value.ok !== "boolean") {
+    throw new Error("dispatch response has an invalid contract envelope");
+  }
+
+  const snapshot = parseSnapshotValue(value.snapshot);
+  return { ...(value as Omit<DispatchResponse, "snapshot">), snapshot };
 }
 
 export class RaidDefenseSimulationClient {
-  readonly seed: bigint;
-  readonly engine: InstanceType<WasmModule["WasmRaidDefense"]>;
+  private readonly engine: InstanceType<WasmModule["RaidDefenseGame"]>;
 
-  private constructor(engine: InstanceType<WasmModule["WasmRaidDefense"]>, seed: bigint) {
+  private constructor(engine: InstanceType<WasmModule["RaidDefenseGame"]>) {
     this.engine = engine;
-    this.seed = seed;
   }
 
-  static async create(seed: bigint | number | string) {
+  static async create(seed: number) {
     const module = await loadWasmModule();
-    const normalizedSeed = BigInt(seed);
-    return new RaidDefenseSimulationClient(
-      module.WasmRaidDefense.newWithSeed(normalizedSeed),
-      normalizedSeed,
-    );
+    return new RaidDefenseSimulationClient(new module.RaidDefenseGame(seed));
   }
 
-  view() {
-    return parseView(this.engine.view_json());
+  snapshot() {
+    return parseSnapshot(this.engine.snapshot());
   }
 
-  apply(command: unknown) {
-    return parseResponse(this.engine.apply_json(JSON.stringify(command)));
+  dispatch(command: RaidDefenseCommand) {
+    return parseResponse(this.engine.dispatch(JSON.stringify(command)));
   }
 
-  advance(deltaSeconds: bigint | number) {
-    return parseResponse(this.engine.advance(BigInt(deltaSeconds)));
-  }
-
-  grantResource(resource: string, amount: bigint | number) {
-    return parseResponse(this.engine.grantResource(resource, BigInt(amount)));
-  }
-
-  saveSnapshot() {
-    return this.engine.save_snapshot_json();
-  }
-
-  loadSnapshot(snapshotJson: string) {
-    return parseResponse(this.engine.load_snapshot_json(snapshotJson));
-  }
-
-  applyScenarioConfig(config: RuntimeScenarioConfig) {
-    return parseResponse(this.engine.applyScenarioConfig(JSON.stringify(config)));
+  checksum() {
+    return this.engine.checksum();
   }
 }

@@ -1,38 +1,14 @@
-[package]
-name = "raid_defense_game"
-version = "0.1.0"
-description = "Raid Defense strategy slice built on the shared farm game engine."
-edition = "2024"
-rust-version = "1.85"
-publish = false
-
 [workspace]
-members = [".", "tools/contract_codegen"]
+members = ["crates/raid-defense-core", "crates/raid-defense-wasm"]
 resolver = "2"
 
 [workspace.package]
+version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.98"
+publish = false
 
 [workspace.dependencies]
-schemars = "0.8"
-serde = "1"
-serde_json = "1"
-ts-rs = "10"
-wasm-bindgen = "0.2"
-
-[lib]
-crate-type = ["rlib", "cdylib"]
-
-[dependencies]
-farm_engine = { git = "https://github.com/moritzbrantner/farm-game-engine", rev = "956681e079ef0ffbc6d5393ddd01b65264e3a387", features = ["serde"] }
-serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
-schemars = { workspace = true, optional = true }
-ts-rs = { workspace = true, optional = true }
-wasm-bindgen = { workspace = true, optional = true }
-
-[features]
-default = []
-contracts = ["farm_engine/contracts", "dep:schemars", "dep:ts-rs"]
-wasm = ["dep:wasm-bindgen"]
+serde = "=1.0.229"
+serde_json = "=1.0.151"
+wasm-bindgen = "=0.2.128"
