@@ -394,7 +394,7 @@ impl From<raid_defense_core::EntitySnapshot> for EntityDto {
             z_milli: entity.z_milli,
             cell: CellDto::from(entity.cell),
             health: entity.health,
-            max_health: entity.max_health,
+            max_health: entity.maximum,
             attack_damage: entity.attack_damage,
             attack_range_milli: entity.attack_range_milli,
             tower_archetype: entity.tower_archetype.map(tower_archetype_label),
@@ -542,7 +542,12 @@ mod tests {
         assert_eq!(snapshot.grid_width, 21);
         assert_eq!(snapshot.grid_height, 21);
         assert_eq!(snapshot.people, 2);
-        assert!(snapshot.entities.iter().any(|entity| entity.kind == "forest"));
+        assert!(
+            snapshot
+                .entities
+                .iter()
+                .any(|entity| entity.kind == "forest")
+        );
     }
 
     #[test]
@@ -551,7 +556,10 @@ mod tests {
         let cell = accepted_sawmill_cell(&adapted);
         let response = dispatch_json(
             &mut adapted,
-            &format!(r#"{{"type":"place_sawmill","x":{},"z":{}}}"#, cell.x, cell.z),
+            &format!(
+                r#"{{"type":"place_sawmill","x":{},"z":{}}}"#,
+                cell.x, cell.z
+            ),
         );
         let mut native = GameState::new(7);
         native
@@ -560,24 +568,26 @@ mod tests {
                 z: cell.z,
             })
             .expect("native command should succeed");
-        assert_eq!(checksum_from_response(&response), native.checksum().to_string());
+        assert_eq!(
+            checksum_from_response(&response),
+            native.checksum().to_string()
+        );
         assert_eq!(adapted, native);
     }
 
     #[test]
     fn storage_house_command_is_exposed() {
         let mut state = GameState::new(17);
-        let response = dispatch_json(
-            &mut state,
-            r#"{"type":"place_storage_house","x":2,"z":2}"#,
-        );
+        let response = dispatch_json(&mut state, r#"{"type":"place_storage_house","x":2,"z":2}"#);
         let value: Value = serde_json::from_str(&response).expect("response should be JSON");
         if value["ok"] == true {
-            assert!(value["snapshot"]["entities"]
-                .as_array()
-                .expect("entities")
-                .iter()
-                .any(|entity| entity["kind"] == "storage_house"));
+            assert!(
+                value["snapshot"]["entities"]
+                    .as_array()
+                    .expect("entities")
+                    .iter()
+                    .any(|entity| entity["kind"] == "storage_house")
+            );
         }
     }
 
