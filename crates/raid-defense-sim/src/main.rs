@@ -1,7 +1,7 @@
 use std::{env, fmt, process};
 
 use raid_defense_core::{
-    Cell, Command, EntityKind, Event, GameState, TowerArchetype, GRID_HEIGHT, GRID_WIDTH,
+    Cell, Command, EntityKind, Event, GRID_HEIGHT, GRID_WIDTH, GameState, TowerArchetype,
 };
 
 const DEFAULT_SEED: u64 = 1;
@@ -485,12 +485,7 @@ fn try_place_tower(state: &GameState) -> Option<Command> {
     let mut cells = all_cells();
     cells.sort_by_key(|cell| {
         let center_distance = distance_to_center(*cell);
-        (
-            center_distance.abs_diff(2),
-            center_distance,
-            cell.z,
-            cell.x,
-        )
+        (center_distance.abs_diff(2), center_distance, cell.z, cell.x)
     });
     first_valid_placement(state, cells, |cell| Command::PlaceTower {
         x: cell.x,
@@ -524,11 +519,7 @@ fn try_upgrade_tower(state: &GameState) -> Option<Command> {
     None
 }
 
-fn first_valid_placement<F>(
-    state: &GameState,
-    cells: Vec<Cell>,
-    command_for: F,
-) -> Option<Command>
+fn first_valid_placement<F>(state: &GameState, cells: Vec<Cell>, command_for: F) -> Option<Command>
 where
     F: Fn(Cell) -> Command,
 {
