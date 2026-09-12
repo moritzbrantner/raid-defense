@@ -10,7 +10,40 @@ pub struct GameRules {
     pub cycle: CycleRules,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RulesError {
+    StartingPopulationExceedsCapacity,
+    ZeroSawmillInterval,
+    InvalidTowerLevelCount,
+    ZeroRaidersPerWave,
+    ZeroRaidDamageInterval,
+    ZeroDayLength,
+}
+
 impl GameRules {
+    #[must_use]
+    pub const fn validate(self) -> Result<(), RulesError> {
+        if self.population.starting_people > self.population.base_capacity {
+            return Err(RulesError::StartingPopulationExceedsCapacity);
+        }
+        if self.economy.sawmill_interval_ticks == 0 {
+            return Err(RulesError::ZeroSawmillInterval);
+        }
+        if self.towers.max_level == 0 || self.towers.max_level > 3 {
+            return Err(RulesError::InvalidTowerLevelCount);
+        }
+        if self.raids.raiders_per_wave == 0 {
+            return Err(RulesError::ZeroRaidersPerWave);
+        }
+        if self.raids.damage_increase_every_waves == 0 {
+            return Err(RulesError::ZeroRaidDamageInterval);
+        }
+        if self.cycle.automatic_raids && self.cycle.day_length_ticks == 0 {
+            return Err(RulesError::ZeroDayLength);
+        }
+        Ok(())
+    }
+
     #[must_use]
     pub const fn tower(self, archetype: TowerArchetype) -> TowerArchetypeRules {
         match archetype {
