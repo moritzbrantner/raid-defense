@@ -381,7 +381,8 @@ mod tests {
             &mut state,
             r#"{"type":"place_tower","x":2,"z":2,"archetype":"arrow"}"#,
         );
-        let built_value: Value = serde_json::from_str(&built).expect("build response should be JSON");
+        let built_value: Value =
+            serde_json::from_str(&built).expect("build response should be JSON");
         assert_eq!(built_value["ok"], true);
 
         let upgraded = dispatch_json(&mut state, r#"{"type":"upgrade_tower","x":2,"z":2}"#);
