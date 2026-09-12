@@ -39,7 +39,7 @@ function parseSnapshotValue(value: unknown): SnapshotView {
   if (!isObject(value)) {
     throw new Error("snapshot must be an object");
   }
-  if (value.contract_version !== 5) {
+  if (value.contract_version !== 6) {
     throw new Error(`unsupported contract version: ${String(value.contract_version)}`);
   }
   if (!Array.isArray(value.entities)) {
@@ -60,6 +60,9 @@ function parseSnapshotValue(value: unknown): SnapshotView {
   if (typeof value.houses_unlocked !== "boolean") {
     throw new Error("snapshot house unlock state must be boolean");
   }
+  if (typeof value.day_ticks_remaining !== "number" || typeof value.is_night !== "boolean") {
+    throw new Error("snapshot day/night state must be authoritative and typed");
+  }
 
   return value as SnapshotView;
 }
@@ -70,7 +73,7 @@ function parseSnapshot(json: string) {
 
 function parseResponse(json: string): DispatchResponse {
   const value = parseObject(json, "dispatch response");
-  if (value.contract_version !== 5 || typeof value.ok !== "boolean") {
+  if (value.contract_version !== 6 || typeof value.ok !== "boolean") {
     throw new Error("dispatch response has an invalid contract envelope");
   }
 
