@@ -13,9 +13,9 @@ The playable slice is intentionally small but architectural rather than mocked:
 - maul-style route shaping without allowing complete path sealing;
 - Sawmills that create wood into bounded local buffers;
 - **real people/carrier ECS entities** that travel from the Town Hall to Sawmills, pick up wood, and carry it back before it becomes spendable;
-- two starting people and population capacity for two;
-- Houses that unlock after 10 completed waves, cost wood, add two capacity, and introduce two additional people;
+- population capacity and progression-gated Houses;
 - separate tracking of started waves and completed waves so progression cannot unlock early;
+- deterministic daytime preparation followed by automatic night raids;
 - fixed-point movement for raiders and workers plus deterministic projectile movement;
 - raiders that steal stored Town Hall wood before damaging the Town Hall;
 - a React Three Fiber client that renders buildings, people, cargo, raiders, and projectiles from the authoritative Rust/WASM snapshot;
@@ -29,7 +29,9 @@ rust-kernels / collection-kernels
                  |
                  v
 crates/raid-defense-core
-        authoritative ECS + game systems
+        rules.rs          typed rule schema + validation
+        default_rules.rs  standard balance profile
+        lib.rs            authoritative ECS + systems
                  |
                  v
 crates/raid-defense-wasm
@@ -40,7 +42,21 @@ visualization/
         3D rendering + player input only
 ```
 
-`raid-defense-core` is the sole game authority. The browser never recomputes production, carrier assignments, cargo transfers, housing unlocks, path legality, combat, or theft.
+`raid-defense-core` is the sole game authority. The browser never recomputes production, carrier assignments, cargo transfers, housing unlocks, day/night transitions, path legality, combat, or theft.
+
+### Rules are explicit simulation input
+
+Ordinary gameplay tuning is centralized in `STANDARD_RULES` rather than scattered through systems. The typed `GameRules` profile covers economy, population/logistics, buildings, towers, raids, progression, and day/night cadence.
+
+Every `GameState` owns one immutable rules profile. Systems consume that profile directly, and the active profile is fingerprinted into deterministic checksums. This means costs, health, production rates, carrier capacity, House unlock timing, tower stats, raid scaling, or day length can be adjusted without rewriting the corresponding ECS systems.
+
+Structural simulation contracts remain separate: grid dimensions, fixed-point representation, deterministic path-neighbor order, and stable tie-breaking are engine invariants rather than ordinary balance knobs.
+
+For normal balance changes, edit `default_rules.rs` and the relevant acceptance expectations; do not modify an ECS system merely to change a cost, rate, threshold, health value, or scaling curve.
+
+Custom profiles are validated before simulation starts, including cross-field invariants such as starting storage not exceeding capacity, House population growth not exceeding its capacity growth, non-negative active tower ranges, and non-zero cadence divisors. Invalid profiles fail closed instead of being silently clamped into another game.
+
+`GameState::new(seed)` creates the standard game. Validated custom rule profiles are available for tests and future game modes. External JSON/TOML rule loading is intentionally not part of the core yet; the typed profile gives one authoritative configuration surface without adding format/versioning complexity before it is needed.
 
 ## ECS direction
 
@@ -48,7 +64,7 @@ The current component boundary includes:
 
 - `Transform` — authoritative fixed-point world position;
 - `Health` — Town Hall, buildings, people, and raiders;
-- `Attack` — tower/raider combat values;
+- `Attack` — instantiated tower/raider combat values;
 - `Building` — grid occupancy and building kind;
 - `Tower` — tower archetype and level;
 - `ResourceStorage` — spendable Town Hall wood and local Sawmill buffers;
@@ -59,7 +75,7 @@ The current component boundary includes:
 - `Movement` — deterministic cell-to-cell unit motion;
 - `Projectile` — authoritative in-flight attacks.
 
-Future resources, worker roles, effects, units, status effects, movement traits, destructible objects, and additional tower/raider families should be added as components/systems rather than growing entity-specific inheritance trees.
+Future resources, worker roles, effects, units, status effects, movement traits, destructible objects, and additional tower/raider families should be added as components/systems rather than growing entity-specific inheritance trees. Tunable behavior should be added through the rules schema rather than new system-local constants.
 
 ## Validation
 
