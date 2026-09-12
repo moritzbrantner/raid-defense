@@ -120,4 +120,16 @@ text = replace_once(
     "test(\"cycle timer counts down through daytime and shows nighttime\", async ({ page }) => {\n  await openGame(page);\n\n  const initialTimer = await page.getByTestId(\"cycle-timer\").textContent();\n  await expect\n    .poll(async () => page.getByTestId(\"cycle-timer\").textContent(), { timeout: 3_000 })\n    .not.toBe(initialTimer);\n\n  await page.getByTestId(\"start-wave\").click();\n  await expect(page.getByTestId(\"cycle-timer\")).toHaveText(\"Night · Wave 1\");\n});\n\ntest(\"sawmill wood waits for real people to carry it back to the Town Hall\", async ({ page }) => {\n",
     "cycle timer browser test",
 )
+text = replace_once(
+    text,
+    "  const checksumBefore = await page.getByTestId(\"checksum\").textContent();\n  const woodBefore = await page.getByTestId(\"wood-value\").textContent();\n",
+    "  const woodBefore = await page.getByTestId(\"wood-value\").textContent();\n",
+    "continuous-time rejection setup",
+)
+text = replace_once(
+    text,
+    "  await expect(page.getByTestId(\"checksum\")).toHaveText(checksumBefore ?? \"\");\n  await expect(page.getByTestId(\"wood-value\")).toHaveText(woodBefore ?? \"\");\n",
+    "  await expect(page.getByTestId(\"wood-value\")).toHaveText(woodBefore ?? \"\");\n",
+    "continuous-time rejection assertion",
+)
 path.write_text(text)
