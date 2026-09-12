@@ -1,46 +1,47 @@
-# Raid Defense rebuild roadmap
+# Raid Defense roadmap
 
-The rebuild is intentionally vertical: each milestone must leave behind a deterministic, testable slice rather than a broad scaffold with placeholder behavior.
+The rebuild is vertical: each milestone leaves behind a deterministic playable slice with hosted evidence rather than a broad scaffold with placeholder behavior.
 
 ## A. Foundation and authoritative core
 
-- [x] Create an isolated v2 Rust workspace rather than extending the legacy farm-game-engine slice.
+- [x] Replace the farm-game-engine slice with an independent Rust workspace.
 - [x] Establish seeded authoritative state, command validation, replay, and checksums.
 - [x] Implement the first defense loop: forts, garrisons, frontier claims, raids, and resolution.
 - [x] Add repository metadata, pinned Rust/Bun CI, Renovate, Pages, and layered hosted validation.
-- [ ] Integrate the slice only after exact-head hosted evidence is green.
+- [x] Prove the replacement through exact-head fast -> integration -> workflow -> e2e evidence.
 
 ## B. Stable contract and WASM boundary
 
-- Add a thin `raid-defense-wasm` adapter over `raid-defense-core`.
-- Define versioned command, snapshot, event, and replay DTOs.
-- Generate TypeScript declarations from the authoritative contract instead of maintaining parallel handwritten types.
-- Prove native/WASM parity with the same command traces and checksums.
-- Keep serialization failures fail-closed and separate from game-rule errors.
+- [x] Add a thin `raid-defense-wasm` adapter over `raid-defense-core`.
+- [x] Version command, snapshot, event, and error envelopes.
+- [x] Prove a native/WASM checksum parity path and fail-closed malformed-command handling.
+- [ ] Generate browser DTO types from the authoritative contract instead of maintaining parallel handwritten view types.
+- [ ] Expand parity coverage to representative multi-command traces.
 
 ## C. Replacement browser client
 
-- Build a small browser shell against the v2 contract rather than porting the current 89k-line application component.
-- Make map selection, province inspection, fort construction, recruitment, advancing time, and raid feedback playable end to end.
-- Keep game state in the Rust core; React owns interaction state and presentation only.
-- Prefer world-space feedback over dashboard-style KPI cards.
-- Add focused Playwright flows and promote the replacement through Pages.
+- [x] Replace the monolithic legacy application with a small browser shell against the new contract.
+- [x] Make map selection, province inspection, fort construction, recruitment, advancing time, claims, and raid feedback playable end to end.
+- [x] Keep game state in the Rust core; React owns interaction state and presentation only.
+- [x] Add focused Playwright flows for successful commands, raid appearance, and rejected-command immutability.
+- [ ] Promote the replacement through GitHub Pages after merge.
 
 ## D. Logistics and defense depth
 
-- Model supply reach, reinforcement travel, fort capacity, and frontier exposure as deterministic systems.
-- Make province topology and infrastructure change where raids can emerge and how quickly they can be answered.
-- Add distinct raider compositions and objectives without turning combat resolution into browser-owned logic.
-- Preserve bounded, inspectable algorithms and deterministic replay.
+- [ ] Model supply reach, reinforcement travel, fort capacity, and frontier exposure as deterministic systems.
+- [ ] Make province topology and infrastructure change where raids can emerge and how quickly they can be answered.
+- [ ] Add distinct raider compositions and objectives without moving combat resolution into the browser.
+- [ ] Preserve bounded, inspectable algorithms and deterministic replay.
 
 ## E. Governance after survival
 
-- Reintroduce control, loyalty, prosperity, taxation, and political pressure only after the defense loop is strong.
-- Make governance consequences feed back into manpower, supply, intelligence, and raid pressure.
-- Reintroduce progression and objectives through v2-owned rules rather than copying legacy state shapes.
+- [ ] Add control, loyalty, prosperity, taxation, and political pressure only after the defense loop is strong.
+- [ ] Feed governance consequences back into manpower, supply, intelligence, and raid pressure.
+- [ ] Add progression and objectives through core-owned rules rather than browser state.
 
-## F. Legacy removal
+## F. Repository hardening
 
-- Switch the browser and Pages surface to v2.
-- Remove the old root game crate, generated legacy contracts, and `visualization/` only after equivalent required behavior has migrated.
-- Remove compatibility validation at the same time; never keep stale duplicate authorities.
+- [ ] Generate and commit the canonical Rust lockfile for fully locked hosted Cargo commands.
+- [ ] Prune browser dependencies no longer needed by the replacement client and refresh the Bun lock deterministically.
+- [ ] Add repository-foundation/convergence checks from coding-tooling as the shared contract stabilizes.
+- [ ] Reassess wasm-pack pinning and installation strategy without weakening reproducibility.

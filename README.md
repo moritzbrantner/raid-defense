@@ -1,52 +1,54 @@
 # Raid Defense
 
-A deterministic frontier-defense strategy game. The project is being rebuilt around a Rust-authoritative simulation core with thin WASM/browser adapters and hosted evidence for every integration layer.
+A deterministic frontier-defense strategy game with a Rust-authoritative simulation core, a thin WASM contract boundary, and a browser client that presents rather than reimplements the rules.
 
-## Rebuild status
+## Current playable slice
 
-The existing root crate and `visualization/` remain available while the replacement is built. New game logic starts in `v2/` and must not depend on the legacy farm-game-engine architecture.
+The rebuilt game currently includes:
 
-The first v2 slice already owns:
-
-- seeded province state;
+- seeded province state across a frontier;
 - fort construction and garrison recruitment;
-- frontier province claims;
+- connected frontier claims;
 - deterministic raid scheduling and resolution;
 - replay from an ordered command stream;
 - an authoritative state checksum;
-- fail-closed command validation with no mutation on rejection.
+- fail-closed command validation with no mutation on rejection;
+- browser controls for selecting provinces, fortifying, recruiting, claiming territory, advancing time, and responding to raid feedback.
 
 ## Architecture
 
 ```text
-v2/crates/raid-defense-core   authoritative rules and deterministic state
-            |
-            v
-future WASM/contract adapter  serialization and browser boundary only
-            |
-            v
-future browser client         input, presentation, audio, rendering
+crates/raid-defense-core   authoritative rules and deterministic state
+          |
+          v
+crates/raid-defense-wasm   versioned serialization/browser boundary only
+          |
+          v
+visualization/             input and presentation
 ```
 
-The browser may derive visual layout, but it must not recompute simulation outcomes that belong to the core.
+The browser may derive visual layout, but it does not recompute simulation outcomes that belong to the core.
 
 ## Validation
 
 Hosted validation promotes changes in this order:
 
-1. `fast` — format, Clippy, and unit tests for the new core.
-2. `integration` — compatibility tests for the existing simulation while migration is active.
-3. `workflow` — build the current browser/WASM workflow.
-4. `e2e` — Playwright browser acceptance.
+1. `fast` — Rust formatting, Clippy with warnings denied, and unit/adapter tests.
+2. `integration` — deterministic opening-defense command trace.
+3. `workflow` — frozen Bun install, browser lint, release WASM generation, strict TypeScript, and Vite build.
+4. `e2e` — Chromium/Playwright acceptance against the real WASM game.
 
-GitHub Pages remains the integrated browser surface during the migration.
+GitHub Pages is the integrated browser surface after merge.
 
 ## Local commands
 
 ```bash
-cargo fmt --manifest-path v2/Cargo.toml --all -- --check
-cargo clippy --manifest-path v2/Cargo.toml --all-targets -- -D warnings
-cargo test --manifest-path v2/Cargo.toml --all-targets
-```
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
+cargo test --all-targets
 
-The legacy browser can still be built from `visualization/` until its v2 replacement lands.
+cd visualization
+bun install --frozen-lockfile
+bun run build
+bun run e2e
+```

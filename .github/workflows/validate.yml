@@ -20,14 +20,14 @@ jobs:
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.98.0 --profile minimal --component rustfmt,clippy
 
-      - name: Format v2 workspace
-        run: cargo fmt --manifest-path v2/Cargo.toml --all -- --check
+      - name: Format Rust workspace
+        run: cargo fmt --all -- --check
 
-      - name: Lint v2 workspace
-        run: cargo clippy --manifest-path v2/Cargo.toml --all-targets -- -D warnings
+      - name: Lint Rust workspace
+        run: cargo clippy --all-targets -- -D warnings
 
-      - name: Test v2 workspace
-        run: cargo test --manifest-path v2/Cargo.toml --all-targets
+      - name: Test Rust workspace
+        run: cargo test --all-targets
 
   integration:
     needs: fast
@@ -41,7 +41,7 @@ jobs:
         run: rustup toolchain install 1.98.0 --profile minimal
 
       - name: Replay opening defense integration trace
-        run: cargo test --manifest-path v2/Cargo.toml -p raid-defense-core --test opening_defense
+        run: cargo test -p raid-defense-core --test opening_defense
 
   workflow:
     needs: integration

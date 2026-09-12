@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:wasm": "wasm-pack build ../v2/crates/raid-defense-wasm --release --target web --out-dir ../../../visualization/src/generated/raid-defense-wasm --out-name raid_defense_wasm",
-    "build:wasm:dev": "wasm-pack build ../v2/crates/raid-defense-wasm --dev --target web --out-dir ../../../visualization/src/generated/raid-defense-wasm --out-name raid_defense_wasm",
+    "build:wasm": "wasm-pack build ../crates/raid-defense-wasm --release --target web --out-dir ../../visualization/src/generated/raid-defense-wasm --out-name raid_defense_wasm",
+    "build:wasm:dev": "wasm-pack build ../crates/raid-defense-wasm --dev --target web --out-dir ../../visualization/src/generated/raid-defense-wasm --out-name raid_defense_wasm",
     "predev": "bun run build:wasm:dev",
     "dev": "vite --host 127.0.0.1 --port 5173",
     "build": "bun run build:wasm && bun run typecheck && vite build",
