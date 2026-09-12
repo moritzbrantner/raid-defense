@@ -1,13 +1,16 @@
 {
   "name": "raid-defense-visualization",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "wasm-pack build .. --dev --target web --out-dir visualization/src/generated/raid-defense-wasm --out-name raid_defense_wasm -- --features wasm",
+    "build:wasm": "wasm-pack build ../v2/crates/raid-defense-wasm --release --target web --out-dir ../../../visualization/src/generated/raid-defense-wasm --out-name raid_defense_wasm",
+    "build:wasm:dev": "wasm-pack build ../v2/crates/raid-defense-wasm --dev --target web --out-dir ../../../visualization/src/generated/raid-defense-wasm --out-name raid_defense_wasm",
+    "predev": "bun run build:wasm:dev",
     "dev": "vite --host 127.0.0.1 --port 5173",
-    "prebuild": "wasm-pack build .. --release --target web --out-dir visualization/src/generated/raid-defense-wasm --out-name raid_defense_wasm -- --features wasm",
-    "build": "vite build",
+    "build": "bun run build:wasm && bun run typecheck && vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "bunx oxlint@1.80.0 src e2e --format=github",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "e2e": "playwright test"
   },
