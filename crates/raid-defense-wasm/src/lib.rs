@@ -1,8 +1,6 @@
 #![forbid(unsafe_code)]
 
-use raid_defense_core::{
-    Command, EntityKind, Event, GameError, GameState, TOWER_COST,
-};
+use raid_defense_core::{Command, EntityKind, Event, GameError, GameState, TOWER_COST};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -70,8 +68,14 @@ struct ErrorDto {
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum EventDto {
-    TowerBuilt { entity: u32, cell: CellDto },
-    WaveStarted { wave: u32, raiders: u16 },
+    TowerBuilt {
+        entity: u32,
+        cell: CellDto,
+    },
+    WaveStarted {
+        wave: u32,
+        raiders: u16,
+    },
     TickAdvanced {
         tick: u64,
         shots: u16,
@@ -266,10 +270,7 @@ mod tests {
     #[test]
     fn adapter_checksum_matches_native_core_after_same_command() {
         let mut adapted = GameState::new(7);
-        let response = dispatch_json(
-            &mut adapted,
-            r#"{"type":"place_tower","x":2,"z":2}"#,
-        );
+        let response = dispatch_json(&mut adapted, r#"{"type":"place_tower","x":2,"z":2}"#);
 
         let mut native = GameState::new(7);
         native
@@ -288,10 +289,7 @@ mod tests {
         let mut state = GameState::new(9);
         let before = state.checksum();
 
-        let response = dispatch_json(
-            &mut state,
-            r#"{"type":"place_tower","x":8,"z":6}"#,
-        );
+        let response = dispatch_json(&mut state, r#"{"type":"place_tower","x":8,"z":6}"#);
         let value: Value = serde_json::from_str(&response).expect("response should be JSON");
 
         assert_eq!(value["ok"], false);
