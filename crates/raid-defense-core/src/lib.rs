@@ -468,9 +468,9 @@ impl GameState {
 
     #[must_use]
     pub fn population_capacity(&self) -> u16 {
-        self.housing
-            .iter()
-            .fold(0_u16, |total, (_, housing)| total.saturating_add(housing.capacity))
+        self.housing.iter().fold(0_u16, |total, (_, housing)| {
+            total.saturating_add(housing.capacity)
+        })
     }
 
     #[must_use]
@@ -957,15 +957,13 @@ impl GameState {
             self.despawn_raider(entity);
         }
         let (wood_stolen, town_damage) = self.run_raider_movement_system();
-        let completed_wave = if had_raiders
-            && self.raider_count() == 0
-            && self.completed_waves < self.wave
-        {
-            self.completed_waves = self.wave;
-            Some(self.wave)
-        } else {
-            None
-        };
+        let completed_wave =
+            if had_raiders && self.raider_count() == 0 && self.completed_waves < self.wave {
+                self.completed_waves = self.wave;
+                Some(self.wave)
+            } else {
+                None
+            };
 
         Event::TickAdvanced {
             tick: self.tick,
@@ -1077,18 +1075,17 @@ impl GameState {
                         picked_up_total = picked_up_total.saturating_add(pickup);
                         person.state = PersonState::ToTownHall;
                         person.target_sawmill = None;
-                        if let Some(next) = self.next_path_step_to_any(
-                            movement.from,
-                            &town_goal_cells(),
-                            None,
-                        ) {
+                        if let Some(next) =
+                            self.next_path_step_to_any(movement.from, &town_goal_cells(), None)
+                        {
                             movement.to = next;
                             movement.progress_milli = 0;
                             self.movements.insert(entity_key(entity), movement);
                         } else {
                             self.movements.remove(entity_key(entity));
                         }
-                    } else if let Some(next) = self.next_path_step_to_any(movement.from, &goals, None)
+                    } else if let Some(next) =
+                        self.next_path_step_to_any(movement.from, &goals, None)
                     {
                         movement.to = next;
                         self.movements.insert(entity_key(entity), movement);
@@ -1104,11 +1101,9 @@ impl GameState {
                         delivered_total = delivered_total.saturating_add(delivered_u16);
                         person.state = PersonState::IdleAtTownHall;
                         self.movements.remove(entity_key(entity));
-                    } else if let Some(next) = self.next_path_step_to_any(
-                        movement.from,
-                        &town_goal_cells(),
-                        None,
-                    ) {
+                    } else if let Some(next) =
+                        self.next_path_step_to_any(movement.from, &town_goal_cells(), None)
+                    {
                         movement.to = next;
                         self.movements.insert(entity_key(entity), movement);
                     } else {
@@ -1402,7 +1397,8 @@ impl GameState {
                     continue;
                 }
 
-                let Some(next) = self.next_path_step_to_any(movement.from, &town_goal_cells(), None)
+                let Some(next) =
+                    self.next_path_step_to_any(movement.from, &town_goal_cells(), None)
                 else {
                     movement.to = movement.from;
                     self.movements.insert(entity_key(entity), movement);
@@ -1713,15 +1709,15 @@ impl GameState {
 
     fn routes_remain_open(&self, extra_block: Option<Cell>) -> bool {
         let goals = town_goal_cells();
-        Edge::ALL
-            .into_iter()
-            .all(|edge| self.next_path_step_to_any(edge.spawn_cell(), &goals, extra_block).is_some())
-            && self.raiders.iter().all(|(key, _)| {
-                self.movements.get(key).is_some_and(|movement| {
-                    self.next_path_step_to_any(movement.from, &goals, extra_block)
-                        .is_some()
-                })
+        Edge::ALL.into_iter().all(|edge| {
+            self.next_path_step_to_any(edge.spawn_cell(), &goals, extra_block)
+                .is_some()
+        }) && self.raiders.iter().all(|(key, _)| {
+            self.movements.get(key).is_some_and(|movement| {
+                self.next_path_step_to_any(movement.from, &goals, extra_block)
+                    .is_some()
             })
+        })
     }
 
     fn all_sawmills_accessible(
@@ -1750,18 +1746,15 @@ impl GameState {
 
     fn worker_routes_remain_open(&self, extra_block: Option<Cell>) -> bool {
         self.people.iter().all(|(key, person)| {
-            let start = self
-                .movements
-                .get(key)
-                .map_or_else(
-                    || {
-                        self.transforms
-                            .get(key)
-                            .copied()
-                            .map_or(town_center(), cell_for_transform)
-                    },
-                    |movement| movement.from,
-                );
+            let start = self.movements.get(key).map_or_else(
+                || {
+                    self.transforms
+                        .get(key)
+                        .copied()
+                        .map_or(town_center(), cell_for_transform)
+                },
+                |movement| movement.from,
+            );
             match person.state {
                 PersonState::IdleAtTownHall => true,
                 PersonState::ToTownHall => self
@@ -2157,7 +2150,12 @@ mod tests {
             }
         }
         assert!(state.wood() > STARTING_WOOD - SAWMILL_COST);
-        assert!(state.people.iter().any(|(_, person)| person.cargo_capacity > 0));
+        assert!(
+            state
+                .people
+                .iter()
+                .any(|(_, person)| person.cargo_capacity > 0)
+        );
     }
 
     #[test]
