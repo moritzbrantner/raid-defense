@@ -9,6 +9,18 @@
 - `visualization/` owns browser input, camera, and 3D presentation only. It must not recompute authoritative game outcomes.
 - The gameplay plane is a 2D grid. Rendering may be fully 3D, but visual transforms must derive from authoritative Rust positions.
 
+## Game-rules architecture
+
+- `crates/raid-defense-core/src/rules.rs` defines the typed, authoritative `GameRules` schema, validation, rule queries, and deterministic rules fingerprint. It must not become a second simulation implementation.
+- `crates/raid-defense-core/src/default_rules.rs` is the single source of ordinary standard-profile balance values: costs, health, production, population/logistics capacity, tower level stats, raid scaling, unlock thresholds, and day/night cadence.
+- Every `GameState` owns one immutable `GameRules` value. Simulation systems must read gameplay tuning from `self.rules`; do not introduce new balance literals, duplicated lookup tables, or progression formulas inside systems.
+- `GameState::new` uses `STANDARD_RULES`. Use validated custom rules when testing or intentionally creating another balance profile.
+- Rules are part of deterministic identity. If a rule can affect authoritative outcomes, it must be represented in `GameRules` and in its fingerprint/checksum binding.
+- WASM/browser snapshots expose values from the active state's rules. Do not duplicate default costs or unlock thresholds in adapters or presentation code.
+- Keep structural engine invariants separate from balance rules. Grid dimensions, fixed-point cell representation, stable iteration/tie-breaking, pathfinding neighbor order, and serialization authority are deterministic engine contracts rather than ordinary tuning knobs.
+- Prefer adding a typed rule field over adding a new global constant when designers may plausibly tune the value later. Add a new structural engine constant only when changing it would alter representation/topology rather than balance.
+- Rule profiles must validate fail-closed before a configurable game starts. Do not silently clamp malformed profiles into a different game.
+
 ## Economy and logistics invariants
 
 - The Town Hall is the authoritative settlement store. Do not add browser/global shadow resource counters.
@@ -23,11 +35,18 @@
 
 ## Population and progression invariants
 
-- The Town Hall provides the initial population capacity and the initial people.
+- The Town Hall provides the initial population capacity and initial people according to the active rules profile.
 - Population capacity comes from authoritative `Housing` components.
-- Houses are locked until `HOUSE_UNLOCK_COMPLETED_WAVES` waves have actually completed; merely starting wave 10 must not unlock them.
-- Building a House increases population capacity and introduces the corresponding people in the same authoritative command transaction.
+- House availability is based on **completed** waves through the active rules profile; merely starting a threshold wave must not unlock it early.
+- Building a House increases population capacity and introduces its configured people in the same authoritative command transaction.
 - People/capacity must remain visible in snapshots/checksums because logistics throughput is gameplay state, not presentation.
+
+## Day/night invariants
+
+- Day/night timing and automatic raid cadence are authoritative Rust rules, not browser timers.
+- The standard profile starts a raid after 600 peaceful simulation ticks and resets the day after the active wave completes.
+- The standard profile pauses production and carrier logistics while raiders are active. Alternative validated profiles may change that rule without changing system code.
+- Presentation may display phase/countdown state but must not decide when a wave starts or whether economic systems advance.
 
 ## ECS and reuse
 
@@ -38,11 +57,11 @@
 
 ## Determinism
 
-- Every simulation outcome must be a pure consequence of initial seed, authoritative state, and ordered commands.
+- Every simulation outcome must be a pure consequence of initial seed, immutable rules, authoritative state, and ordered commands.
 - Validate a command completely before mutating state. Rejected commands must leave state unchanged.
 - Prefer integer or fixed-point representations for authoritative movement, logistics, economy, and combat rules.
 - System iteration/order must be deterministic when it can affect outcomes; tie-break with stable entity identifiers where needed.
-- Add replay or checksum coverage whenever a new component/system can affect authoritative state.
+- Add replay or checksum coverage whenever a new component/system or rule can affect authoritative state.
 
 ## Tower-defense invariants
 
