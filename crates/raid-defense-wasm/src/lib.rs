@@ -1,10 +1,7 @@
 #![forbid(unsafe_code)]
 
 use raid_defense_core::{
-    ARROW_TOWER_COST, CANNON_TOWER_COST, Command, EntityKind, Event, GameError, GameState,
-    HOUSE_COST, HOUSE_POPULATION_CAPACITY, HOUSE_UNLOCK_COMPLETED_WAVES, MAX_TOWER_LEVEL,
-    PERSON_CARRY_CAPACITY, PersonState, ResourceKind, SAWMILL_COST, SAWMILL_INTERVAL_TICKS,
-    SAWMILL_LOCAL_WOOD_CAPACITY, SAWMILL_OUTPUT, TowerArchetype,
+    Command, EntityKind, Event, GameError, GameState, PersonState, ResourceKind, TowerArchetype,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -281,6 +278,7 @@ struct SnapshotDto {
 impl From<&GameState> for SnapshotDto {
     fn from(state: &GameState) -> Self {
         let snapshot = state.snapshot();
+        let rules = state.rules();
         Self {
             contract_version: CONTRACT_VERSION,
             seed: snapshot.seed.to_string(),
@@ -296,17 +294,17 @@ impl From<&GameState> for SnapshotDto {
             town_max_health: snapshot.town_max_health,
             grid_width: snapshot.grid_width,
             grid_height: snapshot.grid_height,
-            sawmill_cost: SAWMILL_COST,
-            sawmill_output: SAWMILL_OUTPUT,
-            sawmill_interval_ticks: SAWMILL_INTERVAL_TICKS,
-            sawmill_local_wood_capacity: SAWMILL_LOCAL_WOOD_CAPACITY,
-            house_cost: HOUSE_COST,
-            house_unlock_completed_waves: HOUSE_UNLOCK_COMPLETED_WAVES,
-            house_population_capacity: HOUSE_POPULATION_CAPACITY,
-            person_carry_capacity: PERSON_CARRY_CAPACITY,
-            arrow_tower_cost: ARROW_TOWER_COST,
-            cannon_tower_cost: CANNON_TOWER_COST,
-            max_tower_level: MAX_TOWER_LEVEL,
+            sawmill_cost: rules.buildings.sawmill.wood_cost,
+            sawmill_output: rules.economy.sawmill_output,
+            sawmill_interval_ticks: rules.economy.sawmill_interval_ticks,
+            sawmill_local_wood_capacity: rules.economy.sawmill_local_wood_capacity,
+            house_cost: rules.buildings.house.wood_cost,
+            house_unlock_completed_waves: rules.buildings.house.unlock_completed_waves,
+            house_population_capacity: rules.buildings.house.population_capacity,
+            person_carry_capacity: rules.population.carry_capacity,
+            arrow_tower_cost: rules.towers.arrow.build_cost,
+            cannon_tower_cost: rules.towers.cannon.build_cost,
+            max_tower_level: rules.towers.max_level,
             checksum: state.checksum().to_string(),
             entities: snapshot.entities.into_iter().map(EntityDto::from).collect(),
         }

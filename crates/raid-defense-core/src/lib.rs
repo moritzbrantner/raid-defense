@@ -4,37 +4,47 @@ use std::collections::{BTreeMap, VecDeque};
 
 use collection_kernels::{SparseMap, SparseSet};
 
+mod default_rules;
+pub mod rules;
+
+pub use default_rules::STANDARD_RULES;
+pub use rules::*;
+
 pub type EntityId = u32;
 
+// Topology and deterministic representation are engine invariants, not balance knobs.
 pub const GRID_WIDTH: i16 = 17;
 pub const GRID_HEIGHT: i16 = 13;
 pub const CELL_SCALE: i32 = 1_000;
-pub const STARTING_WOOD: u32 = 120;
-pub const TOWN_WOOD_CAPACITY: u32 = 500;
-pub const SAWMILL_COST: u32 = 40;
-pub const SAWMILL_OUTPUT: u16 = 4;
-pub const SAWMILL_INTERVAL_TICKS: u16 = 10;
-pub const SAWMILL_LOCAL_WOOD_CAPACITY: u32 = 24;
-pub const ARROW_TOWER_COST: u32 = 25;
-pub const CANNON_TOWER_COST: u32 = 45;
-pub const MAX_TOWER_LEVEL: u8 = 3;
-pub const HOUSE_UNLOCK_COMPLETED_WAVES: u32 = 10;
-pub const HOUSE_COST: u32 = 60;
-pub const BASE_POPULATION_CAPACITY: u16 = 2;
-pub const HOUSE_POPULATION_CAPACITY: u16 = 2;
-pub const PERSON_CARRY_CAPACITY: u16 = 8;
-pub const PERSON_SPEED_MILLI: u16 = 500;
-pub const TOWN_MAX_HEALTH: u16 = 250;
-pub const DAY_LENGTH_TICKS: u16 = 600;
 
-const TOWER_MAX_HEALTH: u16 = 100;
-const SAWMILL_MAX_HEALTH: u16 = 80;
-const HOUSE_MAX_HEALTH: u16 = 90;
-const PERSON_MAX_HEALTH: u16 = 20;
-const RAIDER_BASE_HEALTH: u16 = 30;
-const RAIDER_BASE_DAMAGE: u16 = 10;
-const RAIDER_SPEED_MILLI: u16 = 250;
-const RAIDER_BASE_WOOD_STEAL: u32 = 15;
+// Compatibility aliases for callers that use the standard profile. New simulation
+// code must read the immutable `GameState::rules()` value instead.
+pub const STARTING_WOOD: u32 = STANDARD_RULES.economy.starting_wood;
+pub const TOWN_WOOD_CAPACITY: u32 = STANDARD_RULES.economy.town_wood_capacity;
+pub const SAWMILL_COST: u32 = STANDARD_RULES.buildings.sawmill.wood_cost;
+pub const SAWMILL_OUTPUT: u16 = STANDARD_RULES.economy.sawmill_output;
+pub const SAWMILL_INTERVAL_TICKS: u16 = STANDARD_RULES.economy.sawmill_interval_ticks;
+pub const SAWMILL_LOCAL_WOOD_CAPACITY: u32 = STANDARD_RULES.economy.sawmill_local_wood_capacity;
+pub const ARROW_TOWER_COST: u32 = STANDARD_RULES.towers.arrow.build_cost;
+pub const CANNON_TOWER_COST: u32 = STANDARD_RULES.towers.cannon.build_cost;
+pub const MAX_TOWER_LEVEL: u8 = STANDARD_RULES.towers.max_level;
+pub const HOUSE_UNLOCK_COMPLETED_WAVES: u32 = STANDARD_RULES.buildings.house.unlock_completed_waves;
+pub const HOUSE_COST: u32 = STANDARD_RULES.buildings.house.wood_cost;
+pub const BASE_POPULATION_CAPACITY: u16 = STANDARD_RULES.population.base_capacity;
+pub const HOUSE_POPULATION_CAPACITY: u16 = STANDARD_RULES.buildings.house.population_capacity;
+pub const PERSON_CARRY_CAPACITY: u16 = STANDARD_RULES.population.carry_capacity;
+pub const PERSON_SPEED_MILLI: u16 = STANDARD_RULES.population.speed_milli;
+pub const TOWN_MAX_HEALTH: u16 = STANDARD_RULES.buildings.town_hall.max_health;
+pub const DAY_LENGTH_TICKS: u16 = STANDARD_RULES.cycle.day_length_ticks;
+
+const TOWER_MAX_HEALTH: u16 = STANDARD_RULES.towers.max_health;
+const SAWMILL_MAX_HEALTH: u16 = STANDARD_RULES.buildings.sawmill.max_health;
+const HOUSE_MAX_HEALTH: u16 = STANDARD_RULES.buildings.house.max_health;
+const PERSON_MAX_HEALTH: u16 = STANDARD_RULES.population.person_health;
+const RAIDER_BASE_HEALTH: u16 = STANDARD_RULES.raids.base_health;
+const RAIDER_BASE_DAMAGE: u16 = STANDARD_RULES.raids.base_damage;
+const RAIDER_SPEED_MILLI: u16 = STANDARD_RULES.raids.speed_milli;
+const RAIDER_BASE_WOOD_STEAL: u32 = STANDARD_RULES.raids.base_wood_steal;
 const TOWN_ENTITY: EntityId = 0;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -348,6 +358,7 @@ pub struct GameSnapshot {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GameState {
     seed: u64,
+    rules: GameRules,
     tick: u64,
     wave: u32,
     completed_waves: u32,
@@ -371,12 +382,23 @@ pub struct GameState {
 impl GameState {
     #[must_use]
     pub fn new(seed: u64) -> Self {
+        Self::with_rules(seed, STANDARD_RULES)
+    }
+
+    #[must_use]
+    pub fn with_rules(seed: u64, rules: GameRules) -> Self {
+        Self::try_with_rules(seed, rules).expect("game rules must be valid")
+    }
+
+    pub fn try_with_rules(seed: u64, rules: GameRules) -> Result<Self, RulesError> {
+        rules.validate()?;
         let mut state = Self {
             seed,
+            rules,
             tick: 0,
             wave: 0,
             completed_waves: 0,
-            day_ticks_remaining: DAY_LENGTH_TICKS,
+            day_ticks_remaining: rules.cycle.day_length_ticks,
             next_entity: 1,
             transforms: SparseMap::new(),
             health: SparseMap::new(),
@@ -400,8 +422,8 @@ impl GameState {
         state.health.insert(
             entity_key(TOWN_ENTITY),
             Health {
-                current: TOWN_MAX_HEALTH,
-                maximum: TOWN_MAX_HEALTH,
+                current: rules.buildings.town_hall.max_health,
+                maximum: rules.buildings.town_hall.max_health,
             },
         );
         state.buildings.insert(
@@ -414,25 +436,30 @@ impl GameState {
         state.storage.insert(
             entity_key(TOWN_ENTITY),
             ResourceStorage {
-                wood: STARTING_WOOD,
-                wood_capacity: TOWN_WOOD_CAPACITY,
+                wood: rules.economy.starting_wood,
+                wood_capacity: rules.economy.town_wood_capacity,
             },
         );
         state.housing.insert(
             entity_key(TOWN_ENTITY),
             Housing {
-                capacity: BASE_POPULATION_CAPACITY,
+                capacity: rules.population.base_capacity,
             },
         );
-        for _ in 0..BASE_POPULATION_CAPACITY {
+        for _ in 0..rules.population.starting_people {
             state.spawn_person();
         }
-        state
+        Ok(state)
     }
 
     #[must_use]
     pub const fn seed(&self) -> u64 {
         self.seed
+    }
+
+    #[must_use]
+    pub const fn rules(&self) -> GameRules {
+        self.rules
     }
 
     #[must_use]
@@ -462,7 +489,7 @@ impl GameState {
 
     #[must_use]
     pub fn houses_unlocked(&self) -> bool {
-        self.completed_waves >= HOUSE_UNLOCK_COMPLETED_WAVES
+        self.rules.houses_unlocked(self.completed_waves)
     }
 
     #[must_use]
@@ -557,7 +584,7 @@ impl GameState {
             population_capacity: self.population_capacity(),
             houses_unlocked: self.houses_unlocked(),
             town_health: self.town_health(),
-            town_max_health: TOWN_MAX_HEALTH,
+            town_max_health: self.rules.buildings.town_hall.max_health,
             grid_width: GRID_WIDTH,
             grid_height: GRID_HEIGHT,
             entities,
@@ -568,6 +595,7 @@ impl GameState {
     pub fn checksum(&self) -> u64 {
         let mut hash = 0xcbf2_9ce4_8422_2325_u64;
         feed_u64(&mut hash, self.seed);
+        feed_u64(&mut hash, self.rules.fingerprint());
         feed_u64(&mut hash, self.tick);
         feed_u64(&mut hash, u64::from(self.wave));
         feed_u64(&mut hash, u64::from(self.completed_waves));
@@ -697,7 +725,7 @@ impl GameState {
 
     fn place_tower(&mut self, cell: Cell, archetype: TowerArchetype) -> Result<Event, GameError> {
         self.validate_build_cell(cell)?;
-        let cost = tower_cost(archetype);
+        let cost = self.rules.tower(archetype).build_cost;
         self.require_wood(cost)?;
         self.validate_blocking_build(cell, None)?;
 
@@ -707,12 +735,12 @@ impl GameState {
         self.health.insert(
             entity_key(entity),
             Health {
-                current: TOWER_MAX_HEALTH,
-                maximum: TOWER_MAX_HEALTH,
+                current: self.rules.towers.max_health,
+                maximum: self.rules.towers.max_health,
             },
         );
         self.attacks
-            .insert(entity_key(entity), attack_for(archetype, 1, 0));
+            .insert(entity_key(entity), attack_for(self.rules, archetype, 1, 0));
         self.buildings.insert(
             entity_key(entity),
             Building {
@@ -740,7 +768,9 @@ impl GameState {
 
     fn place_sawmill(&mut self, cell: Cell) -> Result<Event, GameError> {
         self.validate_build_cell(cell)?;
-        self.require_wood(SAWMILL_COST)?;
+        let building_rules = self.rules.buildings.sawmill;
+        let cost = building_rules.wood_cost;
+        self.require_wood(cost)?;
         self.validate_blocking_build(cell, Some(cell))?;
 
         let entity = self.allocate_entity();
@@ -749,8 +779,8 @@ impl GameState {
         self.health.insert(
             entity_key(entity),
             Health {
-                current: SAWMILL_MAX_HEALTH,
-                maximum: SAWMILL_MAX_HEALTH,
+                current: building_rules.max_health,
+                maximum: building_rules.max_health,
             },
         );
         self.buildings.insert(
@@ -764,8 +794,8 @@ impl GameState {
             entity_key(entity),
             ResourceProducer {
                 resource: ResourceKind::Wood,
-                amount: SAWMILL_OUTPUT,
-                interval_ticks: SAWMILL_INTERVAL_TICKS,
+                amount: self.rules.economy.sawmill_output,
+                interval_ticks: self.rules.economy.sawmill_interval_ticks,
                 progress_ticks: 0,
             },
         );
@@ -773,15 +803,15 @@ impl GameState {
             entity_key(entity),
             ResourceStorage {
                 wood: 0,
-                wood_capacity: SAWMILL_LOCAL_WOOD_CAPACITY,
+                wood_capacity: self.rules.economy.sawmill_local_wood_capacity,
             },
         );
-        self.spend_wood(SAWMILL_COST);
+        self.spend_wood(cost);
 
         Ok(Event::SawmillBuilt {
             entity,
             cell,
-            wood_cost: SAWMILL_COST,
+            wood_cost: cost,
         })
     }
 
@@ -790,7 +820,9 @@ impl GameState {
             return Err(GameError::HouseLocked);
         }
         self.validate_build_cell(cell)?;
-        self.require_wood(HOUSE_COST)?;
+        let house_rules = self.rules.buildings.house;
+        let cost = house_rules.wood_cost;
+        self.require_wood(cost)?;
         self.validate_blocking_build(cell, None)?;
 
         let entity = self.allocate_entity();
@@ -799,8 +831,8 @@ impl GameState {
         self.health.insert(
             entity_key(entity),
             Health {
-                current: HOUSE_MAX_HEALTH,
-                maximum: HOUSE_MAX_HEALTH,
+                current: house_rules.max_health,
+                maximum: house_rules.max_health,
             },
         );
         self.buildings.insert(
@@ -813,19 +845,19 @@ impl GameState {
         self.housing.insert(
             entity_key(entity),
             Housing {
-                capacity: HOUSE_POPULATION_CAPACITY,
+                capacity: house_rules.population_capacity,
             },
         );
-        self.spend_wood(HOUSE_COST);
-        for _ in 0..HOUSE_POPULATION_CAPACITY {
+        self.spend_wood(cost);
+        for _ in 0..house_rules.people_added {
             self.spawn_person();
         }
 
         Ok(Event::HouseBuilt {
             entity,
             cell,
-            wood_cost: HOUSE_COST,
-            people_added: HOUSE_POPULATION_CAPACITY,
+            wood_cost: cost,
+            people_added: house_rules.people_added,
             population_capacity: self.population_capacity(),
         })
     }
@@ -843,8 +875,10 @@ impl GameState {
             .get(entity_key(entity))
             .copied()
             .expect("tower buildings always have a tower component");
-        let cost =
-            tower_upgrade_cost(tower.archetype, tower.level).ok_or(GameError::MaxTowerLevel)?;
+        let cost = self
+            .rules
+            .tower_upgrade_cost(tower.archetype, tower.level)
+            .ok_or(GameError::MaxTowerLevel)?;
         self.require_wood(cost)?;
 
         let next_level = tower.level + 1;
@@ -852,7 +886,7 @@ impl GameState {
             .attacks
             .get(entity_key(entity))
             .map_or(0, |attack| attack.cooldown_remaining);
-        let next_attack = attack_for(tower.archetype, next_level, cooldown_remaining);
+        let next_attack = attack_for(self.rules, tower.archetype, next_level, cooldown_remaining);
         self.towers.insert(
             entity_key(entity),
             Tower {
@@ -949,21 +983,22 @@ impl GameState {
         self.day_ticks_remaining = 0;
         self.wave = self.wave.saturating_add(1);
         let offset = (mix64(self.seed ^ u64::from(self.wave)) % 4) as usize;
-        for index in 0..4 {
+        for index in 0..usize::from(self.rules.raids.raiders_per_wave) {
             let edge = Edge::ALL[(index + offset) % Edge::ALL.len()];
             self.spawn_raider(edge);
         }
 
         Ok(Event::WaveStarted {
             wave: self.wave,
-            raiders: 4,
+            raiders: self.rules.raids.raiders_per_wave,
         })
     }
 
     fn advance_tick(&mut self) -> Event {
         self.tick = self.tick.saturating_add(1);
         let had_raiders = self.raider_count() > 0;
-        let (wood_produced, wood_picked_up, wood_delivered) = if had_raiders {
+        let economy_paused = had_raiders && self.rules.cycle.pause_economy_during_raids;
+        let (wood_produced, wood_picked_up, wood_delivered) = if economy_paused {
             (0, 0, 0)
         } else {
             let wood_produced = self.run_resource_production_system();
@@ -972,7 +1007,7 @@ impl GameState {
         };
 
         let mut wave_active_this_tick = had_raiders;
-        if !had_raiders {
+        if !had_raiders && self.rules.cycle.automatic_raids {
             self.day_ticks_remaining = self.day_ticks_remaining.saturating_sub(1);
             if self.day_ticks_remaining == 0 && self.town_health() > 0 {
                 self.start_wave()
@@ -993,7 +1028,7 @@ impl GameState {
             && self.completed_waves < self.wave
         {
             self.completed_waves = self.wave;
-            self.day_ticks_remaining = DAY_LENGTH_TICKS;
+            self.day_ticks_remaining = self.rules.cycle.day_length_ticks;
             Some(self.wave)
         } else {
             None
@@ -1192,7 +1227,7 @@ impl GameState {
                     from: start,
                     to: next,
                     progress_milli: 0,
-                    speed_milli: PERSON_SPEED_MILLI,
+                    speed_milli: self.rules.population.speed_milli,
                 },
             );
             let entry = reserved.entry(target).or_default();
@@ -1245,7 +1280,7 @@ impl GameState {
                     from: start,
                     to: next,
                     progress_milli: 0,
-                    speed_milli: PERSON_SPEED_MILLI,
+                    speed_milli: self.rules.population.speed_milli,
                 },
             );
         }
@@ -1461,7 +1496,11 @@ impl GameState {
     }
 
     fn raider_wood_steal_amount(&self) -> u32 {
-        RAIDER_BASE_WOOD_STEAL.saturating_add(self.wave.saturating_sub(1).saturating_mul(2))
+        self.rules.raids.base_wood_steal.saturating_add(
+            self.wave
+                .saturating_sub(1)
+                .saturating_mul(self.rules.raids.wood_steal_per_wave),
+        )
     }
 
     fn spawn_raider(&mut self, edge: Edge) {
@@ -1472,9 +1511,10 @@ impl GameState {
         let entity = self.allocate_entity();
         let wave_bonus = u16::try_from(self.wave.saturating_sub(1))
             .unwrap_or(u16::MAX)
-            .saturating_mul(3);
-        let max_health = RAIDER_BASE_HEALTH.saturating_add(wave_bonus);
-        let damage_bonus = u16::try_from(self.wave / 3).unwrap_or(u16::MAX);
+            .saturating_mul(self.rules.raids.health_per_wave);
+        let max_health = self.rules.raids.base_health.saturating_add(wave_bonus);
+        let damage_bonus = u16::try_from(self.wave / self.rules.raids.damage_increase_every_waves)
+            .unwrap_or(u16::MAX);
         self.transforms
             .insert(entity_key(entity), Transform::at_cell(from));
         self.health.insert(
@@ -1487,7 +1527,7 @@ impl GameState {
         self.attacks.insert(
             entity_key(entity),
             Attack {
-                damage: RAIDER_BASE_DAMAGE.saturating_add(damage_bonus),
+                damage: self.rules.raids.base_damage.saturating_add(damage_bonus),
                 range_milli: 0,
                 cooldown_ticks: 0,
                 cooldown_remaining: 0,
@@ -1501,7 +1541,7 @@ impl GameState {
                 from,
                 to,
                 progress_milli: 0,
-                speed_milli: RAIDER_SPEED_MILLI,
+                speed_milli: self.rules.raids.speed_milli,
             },
         );
     }
@@ -1513,8 +1553,8 @@ impl GameState {
         self.health.insert(
             entity_key(entity),
             Health {
-                current: PERSON_MAX_HEALTH,
-                maximum: PERSON_MAX_HEALTH,
+                current: self.rules.population.person_health,
+                maximum: self.rules.population.person_health,
             },
         );
         self.people.insert(
@@ -1523,7 +1563,7 @@ impl GameState {
                 state: PersonState::IdleAtTownHall,
                 target_sawmill: None,
                 cargo_wood: 0,
-                cargo_capacity: PERSON_CARRY_CAPACITY,
+                cargo_capacity: self.rules.population.carry_capacity,
             },
         );
         entity
@@ -1614,7 +1654,7 @@ impl GameState {
                 tower_archetype: tower.map(|tower| tower.archetype),
                 tower_level: tower.map_or(0, |tower| tower.level),
                 upgrade_cost: tower
-                    .and_then(|tower| tower_upgrade_cost(tower.archetype, tower.level)),
+                    .and_then(|tower| self.rules.tower_upgrade_cost(tower.archetype, tower.level)),
                 projectile_target: None,
                 stored_wood: storage.wood,
                 wood_capacity: storage.wood_capacity,
@@ -1879,67 +1919,26 @@ impl GameState {
 
 #[must_use]
 pub const fn tower_cost(archetype: TowerArchetype) -> u32 {
-    match archetype {
-        TowerArchetype::Arrow => ARROW_TOWER_COST,
-        TowerArchetype::Cannon => CANNON_TOWER_COST,
-    }
+    STANDARD_RULES.tower(archetype).build_cost
 }
 
 #[must_use]
 pub const fn tower_upgrade_cost(archetype: TowerArchetype, level: u8) -> Option<u32> {
-    match (archetype, level) {
-        (TowerArchetype::Arrow, 1) => Some(20),
-        (TowerArchetype::Arrow, 2) => Some(30),
-        (TowerArchetype::Cannon, 1) => Some(30),
-        (TowerArchetype::Cannon, 2) => Some(45),
-        _ => None,
-    }
+    STANDARD_RULES.tower_upgrade_cost(archetype, level)
 }
 
 #[must_use]
 pub const fn tower_stats(archetype: TowerArchetype, level: u8) -> TowerStats {
-    match (archetype, level) {
-        (TowerArchetype::Arrow, 1) => TowerStats {
-            damage: 8,
-            range_milli: 3_200,
-            cooldown_ticks: 3,
-            projectile_speed_milli: 900,
-        },
-        (TowerArchetype::Arrow, 2) => TowerStats {
-            damage: 12,
-            range_milli: 3_500,
-            cooldown_ticks: 3,
-            projectile_speed_milli: 1_000,
-        },
-        (TowerArchetype::Arrow, _) => TowerStats {
-            damage: 17,
-            range_milli: 3_800,
-            cooldown_ticks: 2,
-            projectile_speed_milli: 1_100,
-        },
-        (TowerArchetype::Cannon, 1) => TowerStats {
-            damage: 18,
-            range_milli: 4_200,
-            cooldown_ticks: 7,
-            projectile_speed_milli: 500,
-        },
-        (TowerArchetype::Cannon, 2) => TowerStats {
-            damage: 27,
-            range_milli: 4_500,
-            cooldown_ticks: 6,
-            projectile_speed_milli: 550,
-        },
-        (TowerArchetype::Cannon, _) => TowerStats {
-            damage: 40,
-            range_milli: 4_800,
-            cooldown_ticks: 5,
-            projectile_speed_milli: 600,
-        },
-    }
+    STANDARD_RULES.tower_level(archetype, level).stats()
 }
 
-fn attack_for(archetype: TowerArchetype, level: u8, cooldown_remaining: u8) -> Attack {
-    let stats = tower_stats(archetype, level);
+fn attack_for(
+    rules: GameRules,
+    archetype: TowerArchetype,
+    level: u8,
+    cooldown_remaining: u8,
+) -> Attack {
+    let stats = rules.tower_level(archetype, level).stats();
     Attack {
         damage: stats.damage,
         range_milli: stats.range_milli,
@@ -1950,7 +1949,15 @@ fn attack_for(archetype: TowerArchetype, level: u8, cooldown_remaining: u8) -> A
 }
 
 pub fn replay(seed: u64, commands: &[Command]) -> Result<GameState, GameError> {
-    let mut state = GameState::new(seed);
+    replay_with_rules(seed, STANDARD_RULES, commands)
+}
+
+pub fn replay_with_rules(
+    seed: u64,
+    rules: GameRules,
+    commands: &[Command],
+) -> Result<GameState, GameError> {
+    let mut state = GameState::with_rules(seed, rules);
     for command in commands {
         state.apply(*command)?;
     }
@@ -2443,6 +2450,55 @@ mod tests {
             Err(GameError::ProtectedCell)
         );
         assert_eq!(state, before);
+    }
+
+    #[test]
+    fn custom_rules_change_mechanics_without_engine_changes() {
+        let mut rules = STANDARD_RULES;
+        rules.buildings.house.unlock_completed_waves = 0;
+        rules.buildings.house.wood_cost = 5;
+        rules.buildings.house.population_capacity = 3;
+        rules.buildings.house.people_added = 1;
+        rules.cycle.day_length_ticks = 2;
+
+        let mut state = GameState::with_rules(23, rules);
+        let starting_wood = state.wood();
+        state
+            .apply(Command::PlaceHouse { x: 2, z: 2 })
+            .expect("custom rules should unlock the house immediately");
+        assert_eq!(state.wood(), starting_wood - 5);
+        assert_eq!(
+            state.population_capacity(),
+            rules.population.base_capacity + 3
+        );
+        assert_eq!(
+            state.people_count(),
+            usize::from(rules.population.starting_people + 1)
+        );
+
+        state
+            .apply(Command::AdvanceTick)
+            .expect("first short day tick should advance");
+        assert_eq!(state.wave(), 0);
+        state
+            .apply(Command::AdvanceTick)
+            .expect("second short day tick should auto-start a wave");
+        assert_eq!(state.wave(), 1);
+        assert_eq!(
+            state.raider_count(),
+            usize::from(rules.raids.raiders_per_wave)
+        );
+    }
+
+    #[test]
+    fn rules_are_part_of_deterministic_identity() {
+        let standard = GameState::new(29);
+        let mut changed = STANDARD_RULES;
+        changed.buildings.house.unlock_completed_waves += 1;
+        let custom = GameState::with_rules(29, changed);
+
+        assert_ne!(standard.rules().fingerprint(), custom.rules().fingerprint());
+        assert_ne!(standard.checksum(), custom.checksum());
     }
 
     #[test]

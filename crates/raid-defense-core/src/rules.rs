@@ -119,10 +119,7 @@ impl GameRules {
         feed_u16(&mut hash, self.raids.base_health);
         feed_u16(&mut hash, self.raids.health_per_wave);
         feed_u16(&mut hash, self.raids.base_damage);
-        feed_u64(
-            &mut hash,
-            u64::from(self.raids.damage_increase_every_waves),
-        );
+        feed_u64(&mut hash, u64::from(self.raids.damage_increase_every_waves));
         feed_u16(&mut hash, self.raids.speed_milli);
         feed_u64(&mut hash, u64::from(self.raids.base_wood_steal));
         feed_u64(&mut hash, u64::from(self.raids.wood_steal_per_wave));
