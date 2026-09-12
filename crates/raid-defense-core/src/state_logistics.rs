@@ -1,7 +1,7 @@
 use super::*;
 
 impl GameState {
-    fn run_resource_production_system(&mut self) -> u16 {
+    pub(super) fn run_resource_production_system(&mut self) -> u16 {
         let mut ids = self.producers.keys().map(key_entity).collect::<Vec<_>>();
         ids.sort_unstable();
         let mut produced_total = 0_u16;
@@ -20,10 +20,9 @@ impl GameState {
                 continue;
             }
 
-            let available = self
-                .storage
-                .get(entity_key(entity))
-                .map_or(0, |storage| storage.wood_capacity.saturating_sub(storage.wood));
+            let available = self.storage.get(entity_key(entity)).map_or(0, |storage| {
+                storage.wood_capacity.saturating_sub(storage.wood)
+            });
             let requested = available.min(u32::from(producer.amount));
             if requested == 0 {
                 continue;
@@ -42,7 +41,7 @@ impl GameState {
         produced_total
     }
 
-    fn run_person_logistics_system(&mut self) -> (u16, u16, u16) {
+    pub(super) fn run_person_logistics_system(&mut self) -> (u16, u16, u16) {
         let mut picked_up_total = 0_u16;
         let mut delivered_total = 0_u16;
         let mut towers_completed = 0_u16;
@@ -144,8 +143,7 @@ impl GameState {
                         self.people.insert(entity_key(entity), person);
                         continue;
                     };
-                    let Some(source) =
-                        self.nearest_storage_with_wood_for_site(site, movement.from)
+                    let Some(source) = self.nearest_storage_with_wood_for_site(site, movement.from)
                     else {
                         self.send_person_home(entity, &mut person, movement.from);
                         self.people.insert(entity_key(entity), person);
@@ -226,7 +224,7 @@ impl GameState {
         (picked_up_total, delivered_total, towers_completed)
     }
 
-    fn assign_idle_people(&mut self) {
+    pub(super) fn assign_idle_people(&mut self) {
         let mut reserved_construction = BTreeMap::<EntityId, u32>::new();
         let mut reserved_sawmills = BTreeMap::<EntityId, u32>::new();
         for (_, person) in self.people.iter() {
@@ -266,16 +264,16 @@ impl GameState {
                 .copied()
                 .map_or(town_center(), cell_for_transform);
 
-            if let Some(site) = self.best_construction_for_person(&reserved_construction) {
-                if self.nearest_storage_with_wood_for_site(site, start).is_some() {
-                    person.state = PersonState::ToConstructionStorage;
-                    person.target_entity = Some(site);
-                    self.people.insert(entity_key(entity), person);
-                    self.rebuild_person_movement(entity, person);
-                    let entry = reserved_construction.entry(site).or_default();
-                    *entry = entry.saturating_add(u32::from(person.cargo_capacity));
-                    continue;
-                }
+            if let Some(site) = self.best_construction_for_person(&reserved_construction)
+                && self.nearest_storage_with_wood_for_site(site, start).is_some()
+            {
+                person.state = PersonState::ToConstructionStorage;
+                person.target_entity = Some(site);
+                self.people.insert(entity_key(entity), person);
+                self.rebuild_person_movement(entity, person);
+                let entry = reserved_construction.entry(site).or_default();
+                *entry = entry.saturating_add(u32::from(person.cargo_capacity));
+                continue;
             }
 
             let Some(target) = self.best_sawmill_for_person(&reserved_sawmills) else {
@@ -302,7 +300,10 @@ impl GameState {
         }
     }
 
-    fn best_construction_for_person(&self, reserved: &BTreeMap<EntityId, u32>) -> Option<EntityId> {
+    pub(super) fn best_construction_for_person(
+        &self,
+        reserved: &BTreeMap<EntityId, u32>,
+    ) -> Option<EntityId> {
         self.construction_sites().into_iter().find(|site| {
             let remaining = self.construction_remaining(*site);
             let reserved = reserved.get(site).copied().unwrap_or(0);
@@ -310,7 +311,10 @@ impl GameState {
         })
     }
 
-    fn best_sawmill_for_person(&self, reserved: &BTreeMap<EntityId, u32>) -> Option<EntityId> {
+    pub(super) fn best_sawmill_for_person(
+        &self,
+        reserved: &BTreeMap<EntityId, u32>,
+    ) -> Option<EntityId> {
         let mut candidates = self
             .producers
             .keys()
@@ -326,7 +330,7 @@ impl GameState {
         candidates.first().map(|(_, entity)| *entity)
     }
 
-    fn take_sawmill_wood(&mut self, sawmill: EntityId, capacity: u16) -> u16 {
+    pub(super) fn take_sawmill_wood(&mut self, sawmill: EntityId, capacity: u16) -> u16 {
         let Some(storage) = self.storage.get_mut(entity_key(sawmill)) else {
             return 0;
         };
@@ -335,13 +339,13 @@ impl GameState {
         u16::try_from(amount).unwrap_or(u16::MAX)
     }
 
-    fn send_person_home(&mut self, entity: EntityId, person: &mut Person, start: Cell) {
+    pub(super) fn send_person_home(&mut self, entity: EntityId, person: &mut Person, start: Cell) {
         person.state = PersonState::ToTownHall;
         person.target_entity = None;
         self.route_person_to_goals(entity, start, &town_goal_cells());
     }
 
-    fn route_person_to_goals(&mut self, entity: EntityId, start: Cell, goals: &[Cell]) {
+    pub(super) fn route_person_to_goals(&mut self, entity: EntityId, start: Cell, goals: &[Cell]) {
         if let Some(next) = self.next_path_step_to_any(start, goals, None) {
             self.movements.insert(
                 entity_key(entity),
@@ -357,7 +361,7 @@ impl GameState {
         }
     }
 
-    fn rebuild_person_movement(&mut self, entity: EntityId, person: Person) {
+    pub(super) fn rebuild_person_movement(&mut self, entity: EntityId, person: Person) {
         let start = self
             .transforms
             .get(entity_key(entity))
@@ -366,16 +370,20 @@ impl GameState {
         let goals = match person.state {
             PersonState::IdleAtTownHall => return,
             PersonState::ToTownHall => town_goal_cells(),
-            PersonState::ToSawmill => person
-                .target_entity
-                .map_or_else(Vec::new, |target| self.sawmill_pickup_cells(target, None)),
-            PersonState::ToStorage => person
-                .target_entity
-                .map_or_else(Vec::new, |target| self.storage_goal_cells(target, None)),
-            PersonState::ToConstructionStorage => person.target_entity.map_or_else(Vec::new, |site| {
-                self.nearest_storage_with_wood_for_site(site, start)
-                    .map_or_else(Vec::new, |storage| self.storage_goal_cells(storage, None))
+            PersonState::ToSawmill => person.target_entity.map_or_else(Vec::new, |target| {
+                self.sawmill_pickup_cells(target, None)
             }),
+            PersonState::ToStorage => person.target_entity.map_or_else(Vec::new, |target| {
+                self.storage_goal_cells(target, None)
+            }),
+            PersonState::ToConstructionStorage => {
+                person.target_entity.map_or_else(Vec::new, |site| {
+                    self.nearest_storage_with_wood_for_site(site, start)
+                        .map_or_else(Vec::new, |storage| {
+                            self.storage_goal_cells(storage, None)
+                        })
+                })
+            }
             PersonState::ToConstructionSite => person
                 .target_entity
                 .map_or_else(Vec::new, |site| self.construction_goal_cells(site, None)),
@@ -383,7 +391,11 @@ impl GameState {
         self.route_person_to_goals(entity, start, &goals);
     }
 
-    fn construction_goal_cells(&self, site: EntityId, extra_block: Option<Cell>) -> Vec<Cell> {
+    pub(super) fn construction_goal_cells(
+        &self,
+        site: EntityId,
+        extra_block: Option<Cell>,
+    ) -> Vec<Cell> {
         let Some(building) = self.buildings.get(entity_key(site)) else {
             return Vec::new();
         };
