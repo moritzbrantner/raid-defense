@@ -1,7 +1,7 @@
 use super::*;
 
 impl GameState {
-    fn run_tower_attack_system(&mut self) -> u16 {
+    pub(super) fn run_tower_attack_system(&mut self) -> u16 {
         let mut tower_ids = self
             .towers
             .iter()
@@ -54,7 +54,7 @@ impl GameState {
         shots
     }
 
-    fn run_projectile_system(&mut self) -> (u16, Vec<EntityId>) {
+    pub(super) fn run_projectile_system(&mut self) -> (u16, Vec<EntityId>) {
         let mut ids = self.projectiles.keys().map(key_entity).collect::<Vec<_>>();
         ids.sort_unstable();
         let mut impacts = 0_u16;
@@ -65,7 +65,8 @@ impl GameState {
             let Some(projectile) = self.projectiles.get(entity_key(entity)).copied() else {
                 continue;
             };
-            let Some(target_health) = self.health.get(entity_key(projectile.target)).copied() else {
+            let Some(target_health) = self.health.get(entity_key(projectile.target)).copied()
+            else {
                 despawn.push(entity);
                 continue;
             };
@@ -129,7 +130,7 @@ impl GameState {
         (impacts, killed)
     }
 
-    fn target_for_tower(&self, tower: EntityId, range_milli: i32) -> Option<EntityId> {
+    pub(super) fn target_for_tower(&self, tower: EntityId, range_milli: i32) -> Option<EntityId> {
         let tower_position = *self.transforms.get(entity_key(tower))?;
         let range_sq = i64::from(range_milli) * i64::from(range_milli);
         let mut candidates = self
@@ -153,7 +154,7 @@ impl GameState {
         candidates.first().map(|(_, entity)| *entity)
     }
 
-    fn run_raider_movement_system(&mut self) -> (u16, u16) {
+    pub(super) fn run_raider_movement_system(&mut self) -> (u16, u16) {
         let mut raiders = self.raiders.keys().map(key_entity).collect::<Vec<_>>();
         raiders.sort_unstable();
         let mut wood_stolen = 0_u16;
@@ -176,13 +177,11 @@ impl GameState {
                     .expect("raider ids come from the raider store");
 
                 if self.storage_reached(raider.target_storage, movement.from) {
-                    let stolen = self.take_wood_at(
-                        raider.target_storage,
-                        self.raider_wood_steal_amount(),
-                    );
+                    let stolen =
+                        self.take_wood_at(raider.target_storage, self.raider_wood_steal_amount());
                     if stolen > 0 {
-                        wood_stolen = wood_stolen
-                            .saturating_add(u16::try_from(stolen).unwrap_or(u16::MAX));
+                        wood_stolen =
+                            wood_stolen.saturating_add(u16::try_from(stolen).unwrap_or(u16::MAX));
                         finished.push(entity);
                         continue;
                     }
@@ -234,7 +233,7 @@ impl GameState {
         (wood_stolen, town_damage)
     }
 
-    fn raider_wood_steal_amount(&self) -> u32 {
+    pub(super) fn raider_wood_steal_amount(&self) -> u32 {
         self.rules.raids.base_wood_steal.saturating_add(
             self.wave
                 .saturating_sub(1)
@@ -242,7 +241,7 @@ impl GameState {
         )
     }
 
-    fn spawn_raider(&mut self, edge: Edge) {
+    pub(super) fn spawn_raider(&mut self, edge: Edge) {
         let from = edge.spawn_cell();
         let target_storage = self.nearest_raider_storage(from);
         let goals = self.storage_goal_cells(target_storage, None);
@@ -295,7 +294,7 @@ impl GameState {
         );
     }
 
-    fn spawn_person(&mut self) -> EntityId {
+    pub(super) fn spawn_person(&mut self) -> EntityId {
         let entity = self.allocate_entity();
         self.transforms
             .insert(entity_key(entity), Transform::at_cell(town_center()));
@@ -318,7 +317,7 @@ impl GameState {
         entity
     }
 
-    fn despawn_raider(&mut self, entity: EntityId) {
+    pub(super) fn despawn_raider(&mut self, entity: EntityId) {
         let mut dependent_projectiles = self
             .projectiles
             .iter()
@@ -340,14 +339,14 @@ impl GameState {
         self.alive.remove(key);
     }
 
-    fn despawn_projectile(&mut self, entity: EntityId) {
+    pub(super) fn despawn_projectile(&mut self, entity: EntityId) {
         let key = entity_key(entity);
         self.transforms.remove(key);
         self.projectiles.remove(key);
         self.alive.remove(key);
     }
 
-    fn allocate_entity(&mut self) -> EntityId {
+    pub(super) fn allocate_entity(&mut self) -> EntityId {
         let entity = self.next_entity;
         self.next_entity = self
             .next_entity
@@ -357,7 +356,7 @@ impl GameState {
         entity
     }
 
-    fn spawn_entity(&mut self, entity: EntityId) {
+    pub(super) fn spawn_entity(&mut self, entity: EntityId) {
         let inserted = self.alive.insert(entity_key(entity));
         assert!(inserted, "entity ids must be unique");
     }
