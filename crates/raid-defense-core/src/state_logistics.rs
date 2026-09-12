@@ -1,3 +1,6 @@
+use super::*;
+
+impl GameState {
     fn run_resource_production_system(&mut self) -> u16 {
         let mut ids = self.producers.keys().map(key_entity).collect::<Vec<_>>();
         ids.sort_unstable();
@@ -386,3 +389,4 @@
         };
         self.adjacent_walkable_cells(building.cell, extra_block)
     }
+}
