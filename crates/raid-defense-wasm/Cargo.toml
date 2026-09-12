@@ -9,7 +9,7 @@ publish.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-raid-defense-core = { path = "../raid-defense-core" }
+raid-defense-core = { package = "raid-defense-ecs", path = "../raid-defense-ecs" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 wasm-bindgen.workspace = true
