@@ -4,78 +4,97 @@
 
 Raid Defense is a deterministic grid-based tower-defense/maul game inspired by Warcraft III custom maps. The gameplay plane is a 2D integer grid, while the presentation is fully 3D.
 
-The central game tension is **economy versus defense**. The Town Hall stores the settlement's resources. Economic buildings increase future income, while defensive buildings protect that accumulated value from raiders. Spending too much on economy leaves the settlement exposed; spending everything on towers leaves no compounding production base.
+The central tension is **economy versus defense**, but the economy is deliberately physical rather than just a set of counters. The Town Hall stores spendable resources. Sawmills create wood locally. People must travel to the Sawmills, pick that wood up, and carry it back to the Town Hall before the player can spend it. More economic buildings therefore create a logistics problem as well as more potential income.
 
-Buildings also shape the battlefield. Towers and economic buildings occupy grid cells, raiders repath around them, and a placement is rejected if it would remove every valid route from any active spawn or currently moving raider to the Town Hall.
+Buildings also shape the battlefield. Towers, Sawmills, and Houses occupy grid cells, raiders repath around them, and placement is rejected if it would remove required raider or worker routes.
 
-## Resource model
+## Resource and logistics model
 
-Wood is the first authoritative resource.
+Wood is the first material resource.
 
-- The Town Hall owns a `ResourceStorage` component and begins with a bounded amount of stored wood.
-- Sawmills own `ResourceProducer` components. Every production interval they deposit wood into the Town Hall, bounded by its storage capacity.
-- Sawmills cost wood to construct, so investing in production has an immediate defensive opportunity cost.
-- Arrow towers, Cannon towers, and tower upgrades consume wood from the Town Hall.
-- Raider kills do not mint resources. Wood comes from the economy, not combat rewards.
-- Raiders that reach the Town Hall steal stored wood. If there is no wood left to steal, they damage the Town Hall instead.
+- The Town Hall owns the authoritative spendable `ResourceStorage`.
+- Sawmills own `ResourceProducer` components plus bounded local `ResourceStorage` buffers.
+- Production fills the local Sawmill buffer; it never teleports directly to the Town Hall.
+- People are ECS entities with `Person` cargo/task state, `Transform`, `Health`, and `Movement`.
+- Idle people at the Town Hall are deterministically assigned to Sawmills with waiting wood.
+- A person travels to an accessible Sawmill-adjacent cell, picks up at most their cargo capacity, then returns through the authoritative grid and deposits the load at the Town Hall.
+- If Sawmills outproduce the available carriers, their local buffers fill and additional theoretical production is lost. Population is therefore real logistics throughput rather than a passive percentage bonus.
+- Towers, upgrades, Sawmills, and Houses consume Town Hall wood.
+- Raider kills do not mint resources.
+- Raiders that reach the Town Hall steal stored wood; if none remains, they damage the Town Hall.
 
-This makes stored wealth itself part of the risk surface: a stronger economy gives the player more options, but also creates more value for successful raiders to take.
+## Population and progression
+
+The settlement begins with two people and population capacity for two, supplied by the Town Hall.
+
+Houses are the first progression-gated economic building. They become available only after **10 waves have completed**. `completed_waves` is tracked separately from the current/last-started `wave`, so starting wave 10 cannot unlock the building early.
+
+A House:
+
+- costs wood;
+- occupies and path-shapes one grid cell;
+- adds two authoritative population capacity through a `Housing` component;
+- introduces two additional people in the same successful command transaction.
+
+This keeps population expansion tied to both progression and an immediate economic/defensive opportunity cost.
 
 ## Authority boundary
 
-`raid-defense-core` is the sole authority for ECS state and game outcomes. It owns entity lifecycle, resource storage/production, building costs, grid occupancy, pathfinding, wave spawning, movement, targeting, projectile lifecycle, upgrades, theft, damage, health, command validation, replay, and checksums.
+`raid-defense-core` is the sole authority for ECS state and game outcomes. It owns entity lifecycle, population, housing, local and Town Hall storage, production, carrier assignment/pathing/cargo transfer, grid occupancy, wave completion, building unlocks, raider pathfinding, targeting, projectiles, upgrades, theft, damage, health, command validation, replay, and checksums.
 
-`raid-defense-wasm` is a versioned serialization adapter only. It maps JSON commands/events/snapshots without recomputing rules.
+`raid-defense-wasm` is a versioned serialization adapter only. It maps commands/events/snapshots without recomputing rules.
 
-The browser owns input, camera, interpolation/presentation, and 3D rendering. It may request deterministic ticks, but it never decides production, spending, theft, movement, placement legality, targeting, projectile impacts, or damage.
+The browser owns input, camera, and 3D presentation. It requests deterministic ticks but does not decide production, carrier assignments, cargo transfers, unlocks, movement, targeting, damage, or resource theft.
 
 ## ECS storage
 
-Raid Defense composes typed component stores over `collection-kernels::SparseMap<T>` and uses `SparseSet` for entity liveness. These are reusable low-level collection primitives from `rust-kernels`, not a cross-repository game framework.
+Raid Defense composes typed component stores over `collection-kernels::SparseMap<T>` and uses `SparseSet` for entity liveness.
 
-Current components:
+Current components include:
 
-- `Transform`: fixed-point X/Z position on the gameplay plane;
-- `Health`: current and maximum hit points;
-- `Attack`: damage, range, cooldown, and projectile launch speed;
-- `Building`: Town Hall, tower, or Sawmill grid occupancy;
-- `ResourceStorage`: stored wood and storage capacity, currently owned by the Town Hall;
-- `ResourceProducer`: resource kind, production amount, interval, and progress, currently used by Sawmills;
-- `Tower`: tower archetype and upgrade level;
-- `Raider`: raider identity/spawn edge;
-- `Movement`: current/next cell, sub-cell progress, and speed;
-- `Projectile`: target entity, damage payload, speed, and visual/combat archetype.
+- `Transform` — fixed-point X/Z world position;
+- `Health` — current and maximum hit points;
+- `Attack` — tower/raider combat values;
+- `Building` — authoritative grid occupancy and building kind;
+- `Tower` — tower archetype and upgrade level;
+- `ResourceStorage` — Town Hall and Sawmill wood storage;
+- `ResourceProducer` — timed Sawmill production;
+- `Housing` — authoritative population capacity;
+- `Person` — carrier state, target, cargo, and cargo capacity;
+- `Raider` — raid identity/spawn edge;
+- `Movement` — deterministic cell-to-cell movement used by raiders and people;
+- `Projectile` — target, damage payload, speed, and originating tower archetype.
 
-Systems iterate only the components they need. New resources or economic buildings should extend these generic storage/production boundaries instead of adding unrelated global counters.
+## Determinism and pathing
 
-## Determinism
+Authoritative positions are integer fixed-point values (`CELL_SCALE = 1000`). Grid routes use deterministic breadth-first search with fixed neighbor ordering. Carrier assignment is ordered by available Sawmill stock and stable entity id. Towers target by distance and entity id. Projectiles use deterministic integer movement.
 
-Authoritative positions are integer fixed-point values (`CELL_SCALE = 1000`). Paths are found with deterministic breadth-first search and a fixed neighbor order. Target selection is ordered by distance and entity id. Projectiles pursue targets with deterministic integer movement and integer square-root distance normalization. Resource producers are processed in entity-id order. Equal seeds plus equal ordered commands therefore replay to equal component state and equal checksums.
+Building commands validate completely before mutation. A new blocking building must keep every edge/active raider connected to the Town Hall, every Sawmill reachable by workers, and every currently moving worker able to finish their task.
 
-Commands validate fully before mutation. Building placement verifies bounds, protected cells, occupancy, available Town Hall wood, and reachability from all four gates plus every active raider before spending wood or spawning an entity. Tower upgrades validate the selected tower, level cap, and wood price before changing stats or storage.
-
-Entity lifecycle is closed over dependent state: when a raider leaves the world, projectiles targeting that entity are removed at the same authoritative boundary rather than being left as orphaned entities.
+Equal seeds plus equal ordered commands therefore replay to equal ECS state and equal checksums.
 
 ## Current vertical slice
 
-The current slice uses a 17×13 grid with a protected 3×3 Town Hall and four edge gates.
+The current playable loop has:
 
-The economy currently consists of Sawmills that turn time into Town Hall wood. The player chooses whether to spend the starting wood on Sawmills, Arrow towers, Cannon towers, or tower upgrades. Sawmills and towers both occupy cells and participate in path shaping.
+- 17×13 authoritative grid and 3D presentation;
+- central Town Hall with stored wood;
+- Arrow and Cannon towers with three upgrade levels and real projectile entities;
+- Sawmills that create buffered wood;
+- two starting carrier people who shuttle between Town Hall and Sawmills;
+- raiders from four edges that steal Town Hall wood;
+- completed-wave progression;
+- Houses unlocked after 10 completed waves to expand population/logistics capacity.
 
-Raids still begin manually in this slice. A raid contains one raider from each edge. Raiders move toward the Town Hall, and successful arrivals steal stored wood before they can damage the Town Hall itself. Towers block grid cells, acquire deterministic targets, create real projectile ECS entities, and only deal damage when those projectiles impact moving raiders.
+## Next mechanics
 
-The models are deliberately primitive geometry. The rendering contract is already 3D, so later asset work can replace meshes without changing the authoritative simulation representation.
+The strongest next mechanics remain vertical rather than content-heavy:
 
-## Next systems
-
-The next mechanics should deepen the economy/defense tension before broadening content:
-
-1. automatic raid cadence / preparation timer so waiting for infinite Sawmill income is impossible;
-2. returning raiders that visibly carry stolen resources toward an exit, with a rule for whether killing them recovers the loot;
-3. larger timed waves, spawn schedules, and distinct raider archetypes;
-4. additional resources and economic buildings only when wood/storage/production semantics are stable;
-5. movement traits such as ground/flying plus slow/status components;
-6. projectile variants such as splash, piercing, or status payloads where the archetype needs them;
-7. tower sale/rebuild flows and authoritative/advisory path-preview feedback;
-8. spatial-query acceleration for targeting once measured entity counts justify it;
-9. richer 3D assets, animation, effects, terrain, and impact feedback while preserving simulation authority in Rust.
+1. automatic preparation/raid cadence so economic growth always consumes scarce time;
+2. richer worker allocation/priorities once there are multiple resource types;
+3. distinct raider archetypes and larger scheduled waves;
+4. worker vulnerability/evacuation only if it improves the economy-defense decision rather than adding busywork;
+5. movement/status effects and projectile variants;
+6. tower sale/rebuild and authoritative/advisory path-preview feedback;
+7. spatial-query acceleration once measured entity counts justify it;
+8. richer 3D assets, animation, cargo feedback, terrain, and impact effects without moving simulation authority out of Rust.

@@ -5,7 +5,9 @@ async function openGame(page: import("@playwright/test").Page) {
   await expect(page.getByTestId("raid-defense-game")).toBeVisible();
   await expect(page.getByTestId("world-3d")).toBeVisible();
   await expect(page.getByTestId("wood-value")).toHaveText("120");
+  await expect(page.getByTestId("people-value")).toHaveText("2/2");
   await expect(page.getByTestId("sawmill-count")).toHaveText("0");
+  await expect(page.getByTestId("completed-waves-value")).toHaveText("0");
 }
 
 async function selectCell(page: import("@playwright/test").Page, x: number, z: number) {
@@ -13,20 +15,38 @@ async function selectCell(page: import("@playwright/test").Page, x: number, z: n
   await page.getByTestId("cell-z").fill(String(z));
 }
 
-test("builds a sawmill and deposits produced wood in the Town Hall", async ({ page }) => {
+test("sawmill wood waits for real people to carry it back to the Town Hall", async ({ page }) => {
   await openGame(page);
 
   await selectCell(page, 2, 2);
   await page.getByTestId("build-sawmill").click();
 
-  await expect(page.getByTestId("event-feedback")).toContainText("Sawmill built at 2, 2");
+  await expect(page.getByTestId("event-feedback")).toContainText("must be carried back");
   await expect(page.getByTestId("sawmill-count")).toHaveText("1");
   await expect(page.getByTestId("wood-value")).toHaveText("80");
-  await expect(page.getByTestId("selected-building")).toContainText("Sawmill");
+  await expect(page.getByTestId("selected-building")).toContainText("local wood 0/24");
 
   await expect
-    .poll(async () => Number(await page.getByTestId("wood-value").textContent()))
+    .poll(async () => Number(await page.getByTestId("hauling-value").textContent()), {
+      timeout: 8_000,
+    })
+    .toBeGreaterThan(0);
+
+  await expect
+    .poll(async () => Number(await page.getByTestId("wood-value").textContent()), {
+      timeout: 12_000,
+    })
     .toBeGreaterThan(80);
+});
+
+test("Houses are visibly locked until ten completed waves", async ({ page }) => {
+  await openGame(page);
+
+  await expect(page.getByTestId("house-lock-state")).toContainText(
+    "Houses unlock after 10 completed waves (0/10)",
+  );
+  await expect(page.getByTestId("build-house")).toBeDisabled();
+  await expect(page.getByTestId("build-house")).toContainText("unlocks after 10 waves");
 });
 
 test("spends Town Hall wood on distinct tower archetypes", async ({ page }) => {
@@ -67,7 +87,9 @@ test("raiders steal stored wood when they reach the Town Hall", async ({ page })
   await expect(page.getByTestId("wave-value")).toHaveText("1");
 
   await expect
-    .poll(async () => Number(await page.getByTestId("wood-value").textContent()))
+    .poll(async () => Number(await page.getByTestId("wood-value").textContent()), {
+      timeout: 8_000,
+    })
     .toBeLessThan(120);
   await expect(page.getByTestId("event-feedback")).toContainText("wood stolen");
 });
@@ -81,10 +103,10 @@ test("runs a defended raid with authoritative projectile entities", async ({ pag
   await expect(page.getByTestId("wave-value")).toHaveText("1");
 
   await expect
-    .poll(async () => Number(await page.getByTestId("tick-value").textContent()))
-    .toBeGreaterThan(0);
-  await expect
-    .poll(async () => Number(await page.getByTestId("projectile-count").textContent()))
+    .poll(async () => {
+      const text = await page.getByTestId("projectile-count").textContent();
+      return Number(text?.replace("Projectiles ", "") ?? "0");
+    })
     .toBeGreaterThan(0);
 });
 
