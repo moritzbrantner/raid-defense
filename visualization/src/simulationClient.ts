@@ -39,7 +39,7 @@ function parseSnapshotValue(value: unknown): SnapshotView {
   if (!isObject(value)) {
     throw new Error("snapshot must be an object");
   }
-  if (value.contract_version !== 2) {
+  if (value.contract_version !== 3) {
     throw new Error(`unsupported contract version: ${String(value.contract_version)}`);
   }
   if (!Array.isArray(value.entities)) {
@@ -61,7 +61,7 @@ function parseSnapshot(json: string) {
 
 function parseResponse(json: string): DispatchResponse {
   const value = parseObject(json, "dispatch response");
-  if (value.contract_version !== 2 || typeof value.ok !== "boolean") {
+  if (value.contract_version !== 3 || typeof value.ok !== "boolean") {
     throw new Error("dispatch response has an invalid contract envelope");
   }
 
