@@ -151,12 +151,18 @@ impl GameState {
 
     #[must_use]
     pub fn tower_count(&self) -> usize {
-        self.towers.iter().filter(|(_, tower)| tower.level > 0).count()
+        self.towers
+            .iter()
+            .filter(|(_, tower)| tower.level > 0)
+            .count()
     }
 
     #[must_use]
     pub fn construction_site_count(&self) -> usize {
-        self.towers.iter().filter(|(_, tower)| tower.level == 0).count()
+        self.towers
+            .iter()
+            .filter(|(_, tower)| tower.level == 0)
+            .count()
     }
 
     #[must_use]
@@ -192,9 +198,7 @@ impl GameState {
 
     pub fn apply(&mut self, command: Command) -> Result<Event, GameError> {
         match command {
-            Command::PlaceTower { x, z, archetype } => {
-                self.place_tower(Cell::new(x, z), archetype)
-            }
+            Command::PlaceTower { x, z, archetype } => self.place_tower(Cell::new(x, z), archetype),
             Command::PlaceSawmill { x, z } => self.place_sawmill(Cell::new(x, z)),
             Command::PlaceStorageHouse { x, z } => self.place_storage_house(Cell::new(x, z)),
             Command::PlaceHouse { x, z } => self.place_house(Cell::new(x, z)),
