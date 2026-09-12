@@ -72,7 +72,13 @@ pub enum GameError {
 impl GameState {
     #[must_use]
     pub fn new(seed: u64) -> Self {
-        let names = ["Capital", "North March", "River Ward", "Iron Hills", "Outer Reach"];
+        let names = [
+            "Capital",
+            "North March",
+            "River Ward",
+            "Iron Hills",
+            "Outer Reach",
+        ];
         let provinces = names
             .into_iter()
             .enumerate()
@@ -129,7 +135,6 @@ impl GameState {
         &self.provinces
     }
 
-    #[must_use]
     pub const fn active_raid(&self) -> Option<Raid> {
         self.active_raid
     }
@@ -282,7 +287,7 @@ impl GameState {
             return Event::DayAdvanced { day: self.day };
         }
 
-        if self.day % 3 == 0 {
+        if self.day.is_multiple_of(3) {
             let raid = self.spawn_raid();
             self.active_raid = Some(raid);
             return Event::RaidSighted(raid);
@@ -333,9 +338,8 @@ impl GameState {
         };
         let selector = mix64(self.seed ^ u64::from(self.day) ^ self.event_nonce);
         let target = targets[(selector as usize) % targets.len()];
-        let strength = 12
-            + (mix64(selector ^ 0xa5a5_a5a5_a5a5_a5a5) % 19) as u16
-            + (self.day / 4) as u16;
+        let strength =
+            12 + (mix64(selector ^ 0xa5a5_a5a5_a5a5_a5a5) % 19) as u16 + (self.day / 4) as u16;
         self.event_nonce = self.event_nonce.wrapping_add(1);
 
         Raid {
@@ -369,9 +373,7 @@ impl GameState {
             let damage = raid.strength - defense;
             let province = &mut self.provinces[index];
             province.garrison = 0;
-            province.control = province
-                .control
-                .saturating_sub((damage / 2).min(40) as u8);
+            province.control = province.control.saturating_sub((damage / 2).min(40) as u8);
             province.threat = province.threat.saturating_add(5).min(MAX_CONTROL);
             if raid.target == 0 {
                 self.capital_health = self.capital_health.saturating_sub(damage);
@@ -391,7 +393,6 @@ impl GameState {
     }
 }
 
-#[must_use]
 pub fn replay(seed: u64, commands: &[Command]) -> Result<GameState, GameError> {
     let mut state = GameState::new(seed);
     for command in commands {
