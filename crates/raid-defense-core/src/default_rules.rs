@@ -1,8 +1,12 @@
 use crate::rules::{
-    BuildingRules, EconomyRules, GameRules, HouseRules, PopulationRules, RaidRules, SawmillRules,
-    TowerArchetypeRules, TowerLevelRules, TowerRules, TownHallRules,
+    BuildingRules, CycleRules, EconomyRules, GameRules, HouseRules, PopulationRules, RaidRules,
+    SawmillRules, TowerArchetypeRules, TowerLevelRules, TowerRules, TownHallRules,
 };
 
+/// The standard Raid Defense balance profile.
+///
+/// Ordinary gameplay tuning belongs here. Simulation systems should consume
+/// `GameRules` and must not grow their own balance constants or formulas.
 pub const STANDARD_RULES: GameRules = GameRules {
     economy: EconomyRules {
         starting_wood: 120,
@@ -97,5 +101,10 @@ pub const STANDARD_RULES: GameRules = GameRules {
         speed_milli: 250,
         base_wood_steal: 15,
         wood_steal_per_wave: 2,
+    },
+    cycle: CycleRules {
+        day_length_ticks: 600,
+        automatic_raids: true,
+        pause_economy_during_raids: true,
     },
 };
