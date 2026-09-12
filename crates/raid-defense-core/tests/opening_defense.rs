@@ -56,3 +56,32 @@ fn invalid_upgrade_is_transactional_inside_a_trace() {
     assert_eq!(rejected, Err(GameError::NoTower));
     assert_eq!(state, before);
 }
+
+#[test]
+fn ending_a_wave_does_not_leave_orphaned_projectiles() {
+    let mut state = GameState::new(0x5eed);
+    state
+        .apply(Command::PlaceTower {
+            x: 6,
+            z: 4,
+            archetype: TowerArchetype::Arrow,
+        })
+        .expect("tower should build");
+    state.apply(Command::StartWave).expect("wave should start");
+
+    for _ in 0..100 {
+        state
+            .apply(Command::AdvanceTick)
+            .expect("wave tick should advance");
+        if state.raider_count() == 0 {
+            break;
+        }
+    }
+
+    assert_eq!(state.raider_count(), 0, "wave should eventually end");
+    assert_eq!(
+        state.projectile_count(),
+        0,
+        "despawned raiders must not retain targeting projectiles"
+    );
+}
