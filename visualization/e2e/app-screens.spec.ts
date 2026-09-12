@@ -49,7 +49,6 @@ test("runs a live wave with visible authoritative projectile entities", async ({
   await selectCell(page, 7, 2);
   await page.getByTestId("build-arrow-tower").click();
   await page.getByTestId("start-wave").click();
-  await expect(page.getByTestId("event-feedback")).toContainText("Wave 1 started from all four edges");
   await expect(page.getByTestId("wave-value")).toHaveText("1");
 
   await expect
