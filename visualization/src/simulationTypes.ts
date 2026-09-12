@@ -1,48 +1,55 @@
-export type ProvinceView = {
-  id: number;
-  name: string;
-  controlled: boolean;
-  fort_level: number;
-  garrison: number;
-  control: number;
-  threat: number;
+export type CellView = {
+  x: number;
+  z: number;
 };
 
-export type RaidView = {
-  target: number;
-  strength: number;
-  eta_days: number;
+export type EntityKind = "town" | "tower" | "raider";
+
+export type EntityView = {
+  id: number;
+  kind: EntityKind;
+  x_milli: number;
+  z_milli: number;
+  cell: CellView;
+  health: number;
+  max_health: number;
+  attack_damage: number;
+  attack_range_milli: number;
 };
 
 export type SnapshotView = {
-  contract_version: 1;
+  contract_version: 2;
   seed: string;
-  day: number;
-  treasury: number;
-  influence: number;
-  capital_health: number;
+  tick: number;
+  gold: number;
+  wave: number;
+  town_health: number;
+  town_max_health: number;
+  grid_width: number;
+  grid_height: number;
+  tower_cost: number;
   checksum: string;
-  active_raid: RaidView | null;
-  provinces: ProvinceView[];
+  entities: EntityView[];
 };
 
 export type RaidDefenseCommand =
-  | { type: "build_fort"; province: number }
-  | { type: "recruit"; province: number; soldiers: number }
-  | { type: "claim_province"; province: number }
-  | { type: "advance_day" };
+  | { type: "place_tower"; x: number; z: number }
+  | { type: "start_wave" }
+  | { type: "advance_tick" };
 
 export type RaidDefenseEvent =
-  | { type: "fort_built"; province: number; level: number }
-  | { type: "recruited"; province: number; soldiers: number }
-  | { type: "province_claimed"; province: number }
-  | { type: "day_advanced"; day: number }
-  | { type: "raid_sighted"; raid: RaidView }
-  | { type: "raid_repelled"; province: number; losses: number }
-  | { type: "raid_breached"; province: number; damage: number };
+  | { type: "tower_built"; entity: number; cell: CellView }
+  | { type: "wave_started"; wave: number; raiders: number }
+  | {
+      type: "tick_advanced";
+      tick: number;
+      shots: number;
+      kills: number;
+      town_damage: number;
+    };
 
 export type DispatchResponse = {
-  contract_version: 1;
+  contract_version: 2;
   ok: boolean;
   event: RaidDefenseEvent | null;
   error: { code: string } | null;

@@ -39,14 +39,17 @@ function parseSnapshotValue(value: unknown): SnapshotView {
   if (!isObject(value)) {
     throw new Error("snapshot must be an object");
   }
-  if (value.contract_version !== 1) {
+  if (value.contract_version !== 2) {
     throw new Error(`unsupported contract version: ${String(value.contract_version)}`);
   }
-  if (!Array.isArray(value.provinces)) {
-    throw new Error("snapshot provinces must be an array");
+  if (!Array.isArray(value.entities)) {
+    throw new Error("snapshot entities must be an array");
   }
   if (typeof value.checksum !== "string") {
     throw new Error("snapshot checksum must be a string");
+  }
+  if (typeof value.grid_width !== "number" || typeof value.grid_height !== "number") {
+    throw new Error("snapshot grid dimensions must be numbers");
   }
 
   return value as SnapshotView;
@@ -58,7 +61,7 @@ function parseSnapshot(json: string) {
 
 function parseResponse(json: string): DispatchResponse {
   const value = parseObject(json, "dispatch response");
-  if (value.contract_version !== 1 || typeof value.ok !== "boolean") {
+  if (value.contract_version !== 2 || typeof value.ok !== "boolean") {
     throw new Error("dispatch response has an invalid contract envelope");
   }
 
