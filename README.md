@@ -54,6 +54,8 @@ Structural simulation contracts remain separate: grid dimensions, fixed-point re
 
 For normal balance changes, edit `default_rules.rs` and the relevant acceptance expectations; do not modify an ECS system merely to change a cost, rate, threshold, health value, or scaling curve.
 
+Custom profiles are validated before simulation starts, including cross-field invariants such as starting storage not exceeding capacity, House population growth not exceeding its capacity growth, non-negative active tower ranges, and non-zero cadence divisors. Invalid profiles fail closed instead of being silently clamped into another game.
+
 `GameState::new(seed)` creates the standard game. Validated custom rule profiles are available for tests and future game modes. External JSON/TOML rule loading is intentionally not part of the core yet; the typed profile gives one authoritative configuration surface without adding format/versioning complexity before it is needed.
 
 ## ECS direction
