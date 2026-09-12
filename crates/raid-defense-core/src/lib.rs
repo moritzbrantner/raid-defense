@@ -37,14 +37,6 @@ pub const PERSON_SPEED_MILLI: u16 = STANDARD_RULES.population.speed_milli;
 pub const TOWN_MAX_HEALTH: u16 = STANDARD_RULES.buildings.town_hall.max_health;
 pub const DAY_LENGTH_TICKS: u16 = STANDARD_RULES.cycle.day_length_ticks;
 
-const TOWER_MAX_HEALTH: u16 = STANDARD_RULES.towers.max_health;
-const SAWMILL_MAX_HEALTH: u16 = STANDARD_RULES.buildings.sawmill.max_health;
-const HOUSE_MAX_HEALTH: u16 = STANDARD_RULES.buildings.house.max_health;
-const PERSON_MAX_HEALTH: u16 = STANDARD_RULES.population.person_health;
-const RAIDER_BASE_HEALTH: u16 = STANDARD_RULES.raids.base_health;
-const RAIDER_BASE_DAMAGE: u16 = STANDARD_RULES.raids.base_damage;
-const RAIDER_SPEED_MILLI: u16 = STANDARD_RULES.raids.speed_milli;
-const RAIDER_BASE_WOOD_STEAL: u32 = STANDARD_RULES.raids.base_wood_steal;
 const TOWN_ENTITY: EntityId = 0;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -2362,7 +2354,7 @@ mod tests {
                 from: Cell::new(town.x, town.z - 2),
                 to: Cell::new(town.x, town.z - 1),
                 progress_milli: 900,
-                speed_milli: RAIDER_SPEED_MILLI,
+                speed_milli: STANDARD_RULES.raids.speed_milli,
             },
         );
         state.transforms.insert(

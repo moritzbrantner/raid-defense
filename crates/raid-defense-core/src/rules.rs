@@ -21,7 +21,6 @@ pub enum RulesError {
 }
 
 impl GameRules {
-    #[must_use]
     pub const fn validate(self) -> Result<(), RulesError> {
         if self.population.starting_people > self.population.base_capacity {
             return Err(RulesError::StartingPopulationExceedsCapacity);
