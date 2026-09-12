@@ -25,6 +25,7 @@ pub const HOUSE_POPULATION_CAPACITY: u16 = 2;
 pub const PERSON_CARRY_CAPACITY: u16 = 8;
 pub const PERSON_SPEED_MILLI: u16 = 500;
 pub const TOWN_MAX_HEALTH: u16 = 250;
+pub const DAY_LENGTH_TICKS: u16 = 600;
 
 const TOWER_MAX_HEALTH: u16 = 100;
 const SAWMILL_MAX_HEALTH: u16 = 80;
@@ -350,6 +351,7 @@ pub struct GameState {
     tick: u64,
     wave: u32,
     completed_waves: u32,
+    day_ticks_remaining: u16,
     next_entity: EntityId,
     transforms: SparseMap<Transform>,
     health: SparseMap<Health>,
@@ -374,6 +376,7 @@ impl GameState {
             tick: 0,
             wave: 0,
             completed_waves: 0,
+            day_ticks_remaining: DAY_LENGTH_TICKS,
             next_entity: 1,
             transforms: SparseMap::new(),
             health: SparseMap::new(),
@@ -445,6 +448,16 @@ impl GameState {
     #[must_use]
     pub const fn completed_waves(&self) -> u32 {
         self.completed_waves
+    }
+
+    #[must_use]
+    pub const fn day_ticks_remaining(&self) -> u16 {
+        self.day_ticks_remaining
+    }
+
+    #[must_use]
+    pub fn is_night(&self) -> bool {
+        self.raider_count() != 0
     }
 
     #[must_use]
@@ -558,6 +571,7 @@ impl GameState {
         feed_u64(&mut hash, self.tick);
         feed_u64(&mut hash, u64::from(self.wave));
         feed_u64(&mut hash, u64::from(self.completed_waves));
+        feed_u16(&mut hash, self.day_ticks_remaining);
         feed_u64(&mut hash, u64::from(self.next_entity));
 
         for entity in &self.snapshot().entities {
@@ -932,6 +946,7 @@ impl GameState {
             return Err(GameError::RaidersStillActive);
         }
 
+        self.day_ticks_remaining = 0;
         self.wave = self.wave.saturating_add(1);
         let offset = (mix64(self.seed ^ u64::from(self.wave)) % 4) as usize;
         for index in 0..4 {
@@ -948,8 +963,24 @@ impl GameState {
     fn advance_tick(&mut self) -> Event {
         self.tick = self.tick.saturating_add(1);
         let had_raiders = self.raider_count() > 0;
-        let wood_produced = self.run_resource_production_system();
-        let (wood_picked_up, wood_delivered) = self.run_person_logistics_system();
+        let (wood_produced, wood_picked_up, wood_delivered) = if had_raiders {
+            (0, 0, 0)
+        } else {
+            let wood_produced = self.run_resource_production_system();
+            let (wood_picked_up, wood_delivered) = self.run_person_logistics_system();
+            (wood_produced, wood_picked_up, wood_delivered)
+        };
+
+        let mut wave_active_this_tick = had_raiders;
+        if !had_raiders {
+            self.day_ticks_remaining = self.day_ticks_remaining.saturating_sub(1);
+            if self.day_ticks_remaining == 0 && self.town_health() > 0 {
+                self.start_wave()
+                    .expect("an expired peaceful day can always begin its next wave");
+                wave_active_this_tick = true;
+            }
+        }
+
         let shots = self.run_tower_attack_system();
         let (impacts, killed) = self.run_projectile_system();
         let kills = u16::try_from(killed.len()).unwrap_or(u16::MAX);
@@ -957,13 +988,16 @@ impl GameState {
             self.despawn_raider(entity);
         }
         let (wood_stolen, town_damage) = self.run_raider_movement_system();
-        let completed_wave =
-            if had_raiders && self.raider_count() == 0 && self.completed_waves < self.wave {
-                self.completed_waves = self.wave;
-                Some(self.wave)
-            } else {
-                None
-            };
+        let completed_wave = if wave_active_this_tick
+            && self.raider_count() == 0
+            && self.completed_waves < self.wave
+        {
+            self.completed_waves = self.wave;
+            self.day_ticks_remaining = DAY_LENGTH_TICKS;
+            Some(self.wave)
+        } else {
+            None
+        };
 
         Event::TickAdvanced {
             tick: self.tick,
@@ -2159,6 +2193,120 @@ mod tests {
     }
 
     #[test]
+    fn first_night_starts_after_sixty_seconds_of_day_ticks() {
+        let mut state = GameState::new(7);
+
+        for _ in 0..DAY_LENGTH_TICKS - 1 {
+            state
+                .apply(Command::AdvanceTick)
+                .expect("day tick should advance");
+        }
+
+        assert_eq!(state.wave(), 0);
+        assert_eq!(state.raider_count(), 0);
+        assert_eq!(state.day_ticks_remaining(), 1);
+        assert!(!state.is_night());
+
+        state
+            .apply(Command::AdvanceTick)
+            .expect("last day tick should begin the night");
+
+        assert_eq!(state.wave(), 1);
+        assert_eq!(state.raider_count(), 4);
+        assert_eq!(state.day_ticks_remaining(), 0);
+        assert!(state.is_night());
+    }
+
+    #[test]
+    fn night_pauses_production_and_person_logistics() {
+        let mut state = GameState::new(13);
+        state
+            .apply(Command::PlaceSawmill { x: 2, z: 2 })
+            .expect("sawmill should build");
+        let sawmill = sawmill_entity(&state);
+        state
+            .storage
+            .get_mut(entity_key(sawmill))
+            .expect("sawmill should have storage")
+            .wood = u32::from(PERSON_CARRY_CAPACITY);
+        state.run_person_logistics_system();
+        state.day_ticks_remaining = 1;
+
+        state
+            .apply(Command::AdvanceTick)
+            .expect("last day tick should begin the night");
+        assert!(state.is_night());
+
+        let producer_before = *state
+            .producers
+            .get(entity_key(sawmill))
+            .expect("sawmill should have a producer");
+        let person = state
+            .people
+            .iter()
+            .find_map(|(key, person)| {
+                (person.state != PersonState::IdleAtTownHall).then_some(key_entity(key))
+            })
+            .expect("a carrier should be active before night");
+        let person_before = *state
+            .people
+            .get(entity_key(person))
+            .expect("person should exist");
+        let movement_before = *state
+            .movements
+            .get(entity_key(person))
+            .expect("active carrier should have movement");
+        let transform_before = *state
+            .transforms
+            .get(entity_key(person))
+            .expect("person should have a transform");
+
+        let Event::TickAdvanced {
+            wood_produced,
+            wood_picked_up,
+            wood_delivered,
+            ..
+        } = state
+            .apply(Command::AdvanceTick)
+            .expect("night tick should advance")
+        else {
+            unreachable!();
+        };
+
+        assert_eq!(wood_produced, 0);
+        assert_eq!(wood_picked_up, 0);
+        assert_eq!(wood_delivered, 0);
+        assert_eq!(
+            *state
+                .producers
+                .get(entity_key(sawmill))
+                .expect("sawmill should still have a producer"),
+            producer_before
+        );
+        assert_eq!(
+            *state
+                .people
+                .get(entity_key(person))
+                .expect("person should still exist"),
+            person_before
+        );
+        assert_eq!(
+            *state
+                .movements
+                .get(entity_key(person))
+                .expect("carrier movement should remain paused"),
+            movement_before
+        );
+        assert_eq!(
+            *state
+                .transforms
+                .get(entity_key(person))
+                .expect("carrier position should remain paused"),
+            transform_before
+        );
+    }
+
+    #[test]
     fn replay_includes_deterministic_people_logistics() {
         let mut commands = vec![Command::PlaceSawmill { x: 2, z: 2 }];
         commands.extend(std::iter::repeat_n(Command::AdvanceTick, 80));
@@ -2192,6 +2340,7 @@ mod tests {
         let mut state = GameState::new(3);
         state.wave = HOUSE_UNLOCK_COMPLETED_WAVES;
         state.completed_waves = HOUSE_UNLOCK_COMPLETED_WAVES - 1;
+        state.day_ticks_remaining = 0;
         state.spawn_raider(Edge::North);
         let raider = state
             .raiders
@@ -2226,6 +2375,8 @@ mod tests {
             unreachable!();
         };
         assert_eq!(completed_wave, Some(HOUSE_UNLOCK_COMPLETED_WAVES));
+        assert_eq!(state.day_ticks_remaining(), DAY_LENGTH_TICKS);
+        assert!(!state.is_night());
         assert!(state.houses_unlocked());
     }
 
