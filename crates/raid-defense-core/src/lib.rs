@@ -6,6 +6,11 @@ use collection_kernels::{SparseMap, SparseSet};
 
 mod default_rules;
 pub mod rules;
+mod state_basic;
+mod state_combat;
+mod state_economy;
+mod state_logistics;
+mod state_snapshot_path;
 mod world;
 
 pub use default_rules::STANDARD_RULES;
@@ -393,14 +398,6 @@ pub struct GameState {
     housing: SparseMap<Housing>,
     people: SparseMap<Person>,
     alive: SparseSet,
-}
-
-impl GameState {
-    include!("state_basic.rs");
-    include!("state_economy.rs");
-    include!("state_logistics.rs");
-    include!("state_combat.rs");
-    include!("state_snapshot_path.rs");
 }
 
 include!("helpers.rs");
