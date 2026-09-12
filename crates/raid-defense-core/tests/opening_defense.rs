@@ -1,12 +1,21 @@
-use raid_defense_core::{Command, GameError, GameState, replay};
+use raid_defense_core::{Command, GameError, GameState, TowerArchetype, replay};
 
 fn opening_trace() -> Vec<Command> {
     let mut commands = vec![
-        Command::PlaceTower { x: 7, z: 2 },
-        Command::PlaceTower { x: 9, z: 2 },
+        Command::PlaceTower {
+            x: 7,
+            z: 2,
+            archetype: TowerArchetype::Arrow,
+        },
+        Command::PlaceTower {
+            x: 9,
+            z: 2,
+            archetype: TowerArchetype::Cannon,
+        },
+        Command::UpgradeTower { x: 7, z: 2 },
         Command::StartWave,
     ];
-    commands.extend(std::iter::repeat_n(Command::AdvanceTick, 24));
+    commands.extend(std::iter::repeat_n(Command::AdvanceTick, 28));
     commands
 }
 
@@ -27,8 +36,23 @@ fn invalid_grid_build_is_transactional_inside_a_trace() {
     let mut state = GameState::new(0x5eed);
     let before = state.clone();
 
-    let rejected = state.apply(Command::PlaceTower { x: -1, z: 2 });
+    let rejected = state.apply(Command::PlaceTower {
+        x: -1,
+        z: 2,
+        archetype: TowerArchetype::Arrow,
+    });
 
     assert_eq!(rejected, Err(GameError::OutOfBounds));
+    assert_eq!(state, before);
+}
+
+#[test]
+fn invalid_upgrade_is_transactional_inside_a_trace() {
+    let mut state = GameState::new(0x5eed);
+    let before = state.clone();
+
+    let rejected = state.apply(Command::UpgradeTower { x: 2, z: 2 });
+
+    assert_eq!(rejected, Err(GameError::NoTower));
     assert_eq!(state, before);
 }
