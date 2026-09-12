@@ -7,6 +7,7 @@ pub struct GameRules {
     pub buildings: BuildingRules,
     pub towers: TowerRules,
     pub raids: RaidRules,
+    pub cycle: CycleRules,
 }
 
 impl GameRules {
@@ -39,6 +40,65 @@ impl GameRules {
     #[must_use]
     pub const fn houses_unlocked(self, completed_waves: u32) -> bool {
         completed_waves >= self.buildings.house.unlock_completed_waves
+    }
+
+    /// Stable deterministic identity for a complete rule set.
+    ///
+    /// A game checksum includes this value so simulations created with different
+    /// rules can never be mistaken for the same authoritative state.
+    #[must_use]
+    pub fn fingerprint(self) -> u64 {
+        let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+
+        feed_u64(&mut hash, u64::from(self.economy.starting_wood));
+        feed_u64(&mut hash, u64::from(self.economy.town_wood_capacity));
+        feed_u16(&mut hash, self.economy.sawmill_output);
+        feed_u16(&mut hash, self.economy.sawmill_interval_ticks);
+        feed_u64(
+            &mut hash,
+            u64::from(self.economy.sawmill_local_wood_capacity),
+        );
+
+        feed_u16(&mut hash, self.population.starting_people);
+        feed_u16(&mut hash, self.population.base_capacity);
+        feed_u16(&mut hash, self.population.person_health);
+        feed_u16(&mut hash, self.population.carry_capacity);
+        feed_u16(&mut hash, self.population.speed_milli);
+
+        feed_u16(&mut hash, self.buildings.town_hall.max_health);
+        feed_u64(&mut hash, u64::from(self.buildings.sawmill.wood_cost));
+        feed_u16(&mut hash, self.buildings.sawmill.max_health);
+        feed_u64(&mut hash, u64::from(self.buildings.house.wood_cost));
+        feed_u16(&mut hash, self.buildings.house.max_health);
+        feed_u64(
+            &mut hash,
+            u64::from(self.buildings.house.unlock_completed_waves),
+        );
+        feed_u16(&mut hash, self.buildings.house.population_capacity);
+        feed_u16(&mut hash, self.buildings.house.people_added);
+
+        feed_byte(&mut hash, self.towers.max_level);
+        feed_u16(&mut hash, self.towers.max_health);
+        feed_tower(&mut hash, self.towers.arrow);
+        feed_tower(&mut hash, self.towers.cannon);
+
+        feed_u16(&mut hash, self.raids.raiders_per_wave);
+        feed_u16(&mut hash, self.raids.base_health);
+        feed_u16(&mut hash, self.raids.health_per_wave);
+        feed_u16(&mut hash, self.raids.base_damage);
+        feed_u64(
+            &mut hash,
+            u64::from(self.raids.damage_increase_every_waves),
+        );
+        feed_u16(&mut hash, self.raids.speed_milli);
+        feed_u64(&mut hash, u64::from(self.raids.base_wood_steal));
+        feed_u64(&mut hash, u64::from(self.raids.wood_steal_per_wave));
+
+        feed_u16(&mut hash, self.cycle.day_length_ticks);
+        feed_bool(&mut hash, self.cycle.automatic_raids);
+        feed_bool(&mut hash, self.cycle.pause_economy_during_raids);
+
+        hash
     }
 }
 
@@ -132,4 +192,55 @@ pub struct RaidRules {
     pub speed_milli: u16,
     pub base_wood_steal: u32,
     pub wood_steal_per_wave: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CycleRules {
+    pub day_length_ticks: u16,
+    pub automatic_raids: bool,
+    pub pause_economy_during_raids: bool,
+}
+
+fn feed_tower(hash: &mut u64, tower: TowerArchetypeRules) {
+    feed_u64(hash, u64::from(tower.build_cost));
+    for level in tower.levels {
+        feed_u16(hash, level.damage);
+        feed_i32(hash, level.range_milli);
+        feed_byte(hash, level.cooldown_ticks);
+        feed_u16(hash, level.projectile_speed_milli);
+        match level.upgrade_cost {
+            Some(cost) => {
+                feed_byte(hash, 1);
+                feed_u64(hash, u64::from(cost));
+            }
+            None => feed_byte(hash, 0),
+        }
+    }
+}
+
+fn feed_bool(hash: &mut u64, value: bool) {
+    feed_byte(hash, u8::from(value));
+}
+
+fn feed_u64(hash: &mut u64, value: u64) {
+    for byte in value.to_le_bytes() {
+        feed_byte(hash, byte);
+    }
+}
+
+fn feed_i32(hash: &mut u64, value: i32) {
+    for byte in value.to_le_bytes() {
+        feed_byte(hash, byte);
+    }
+}
+
+fn feed_u16(hash: &mut u64, value: u16) {
+    for byte in value.to_le_bytes() {
+        feed_byte(hash, byte);
+    }
+}
+
+fn feed_byte(hash: &mut u64, byte: u8) {
+    *hash ^= u64::from(byte);
+    *hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
 }
