@@ -98,6 +98,7 @@ pub const STANDARD_RULES: GameRules = GameRules {
         health_per_wave: 3,
         base_damage: 10,
         damage_increase_every_waves: 3,
+        damage_increase_amount: 1,
         speed_milli: 250,
         base_wood_steal: 15,
         wood_steal_per_wave: 2,
