@@ -1,7 +1,7 @@
 use super::*;
 
 impl GameState {
-    fn entity_snapshot(&self, entity: EntityId) -> Option<EntitySnapshot> {
+    pub(super) fn entity_snapshot(&self, entity: EntityId) -> Option<EntitySnapshot> {
         let key = entity_key(entity);
         let transform = *self.transforms.get(key)?;
         let health = self.health.get(key).copied().unwrap_or(Health {
@@ -154,7 +154,7 @@ impl GameState {
         })
     }
 
-    fn tower_entity_at(&self, cell: Cell) -> Option<EntityId> {
+    pub(super) fn tower_entity_at(&self, cell: Cell) -> Option<EntityId> {
         self.buildings.iter().find_map(|(key, building)| {
             if building.kind != BuildingKind::Tower || building.cell != cell {
                 return None;
@@ -166,19 +166,19 @@ impl GameState {
         })
     }
 
-    fn cell_has_building(&self, cell: Cell) -> bool {
+    pub(super) fn cell_has_building(&self, cell: Cell) -> bool {
         self.buildings
             .iter()
             .any(|(_, building)| building.kind != BuildingKind::TownHall && building.cell == cell)
     }
 
-    fn unit_uses_cell(&self, cell: Cell) -> bool {
+    pub(super) fn unit_uses_cell(&self, cell: Cell) -> bool {
         self.movements
             .iter()
             .any(|(_, movement)| movement.from == cell || movement.to == cell)
     }
 
-    fn routes_remain_open(&self, extra_block: Option<Cell>) -> bool {
+    pub(super) fn routes_remain_open(&self, extra_block: Option<Cell>) -> bool {
         let goals = town_goal_cells();
         Edge::ALL.into_iter().all(|edge| {
             self.next_path_step_to_any(edge.spawn_cell(), &goals, extra_block)
@@ -191,7 +191,7 @@ impl GameState {
         })
     }
 
-    fn all_sawmills_accessible(
+    pub(super) fn all_sawmills_accessible(
         &self,
         extra_block: Option<Cell>,
         hypothetical_sawmill: Option<Cell>,
@@ -215,7 +215,7 @@ impl GameState {
         })
     }
 
-    fn worker_routes_remain_open(&self, extra_block: Option<Cell>) -> bool {
+    pub(super) fn worker_routes_remain_open(&self, extra_block: Option<Cell>) -> bool {
         self.people.iter().all(|(key, person)| {
             let start = self.movements.get(key).map_or_else(
                 || {
@@ -235,15 +235,14 @@ impl GameState {
                 PersonState::ToStorage => person.target_entity.map_or_else(Vec::new, |target| {
                     self.storage_goal_cells(target, extra_block)
                 }),
-                PersonState::ToConstructionStorage => person.target_entity.map_or_else(
-                    Vec::new,
-                    |site| {
+                PersonState::ToConstructionStorage => {
+                    person.target_entity.map_or_else(Vec::new, |site| {
                         self.nearest_storage_with_wood_for_site(site, start)
                             .map_or_else(Vec::new, |storage| {
                                 self.storage_goal_cells(storage, extra_block)
                             })
-                    },
-                ),
+                    })
+                }
                 PersonState::ToConstructionSite => {
                     person.target_entity.map_or_else(Vec::new, |site| {
                         self.construction_goal_cells(site, extra_block)
@@ -257,14 +256,18 @@ impl GameState {
         })
     }
 
-    fn sawmill_pickup_cells(&self, entity: EntityId, extra_block: Option<Cell>) -> Vec<Cell> {
+    pub(super) fn sawmill_pickup_cells(
+        &self,
+        entity: EntityId,
+        extra_block: Option<Cell>,
+    ) -> Vec<Cell> {
         let Some(building) = self.buildings.get(entity_key(entity)) else {
             return Vec::new();
         };
         self.pickup_cells_for_sawmill_cell(building.cell, extra_block)
     }
 
-    fn pickup_cells_for_sawmill_cell(
+    pub(super) fn pickup_cells_for_sawmill_cell(
         &self,
         sawmill_cell: Cell,
         extra_block: Option<Cell>,
@@ -272,7 +275,7 @@ impl GameState {
         self.adjacent_walkable_cells(sawmill_cell, extra_block)
     }
 
-    fn next_path_step_to_any(
+    pub(super) fn next_path_step_to_any(
         &self,
         start: Cell,
         goals: &[Cell],
@@ -324,7 +327,7 @@ impl GameState {
         }
     }
 
-    fn path_cell_blocked(&self, cell: Cell, extra_block: Option<Cell>) -> bool {
+    pub(super) fn path_cell_blocked(&self, cell: Cell, extra_block: Option<Cell>) -> bool {
         !is_town_cell(cell) && (extra_block == Some(cell) || self.cell_has_building(cell))
     }
 }
