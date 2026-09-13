@@ -123,7 +123,7 @@ function storageAvailable() {
 function isReplayEntry(value: unknown): value is ReplayEntry {
   if (!isObject(value) || typeof value.kind !== "string") return false;
   if (value.kind === "advance_ticks") {
-    return Number.isInteger(value.count) && Number(value.count) > 0;
+    return typeof value.count === "number" && Number.isInteger(value.count) && value.count > 0;
   }
   return value.kind === "command" && isObject(value.command) && typeof value.command.type === "string";
 }
@@ -133,13 +133,32 @@ function parseSavedGame(raw: string): SavedGameV1 | null {
     const value: unknown = JSON.parse(raw);
     if (!isObject(value)) return null;
     if (value.version !== 1 || value.contract_version !== CONTRACT_VERSION) return null;
-    if (!Number.isInteger(value.seed) || Number(value.seed) < 0 || Number(value.seed) > 0xffff_ffff) {
+    if (
+      typeof value.seed !== "number" ||
+      !Number.isInteger(value.seed) ||
+      value.seed < 0 ||
+      value.seed > 0xffff_ffff
+    ) {
       return null;
     }
     if (!Array.isArray(value.entries) || !value.entries.every(isReplayEntry)) return null;
     if (typeof value.checksum !== "string") return null;
-    if (!Number.isInteger(value.tick) || !Number.isInteger(value.wave)) return null;
-    if (!Number.isInteger(value.completed_waves) || !Number.isFinite(value.saved_at)) return null;
+    if (
+      typeof value.tick !== "number" ||
+      typeof value.wave !== "number" ||
+      !Number.isInteger(value.tick) ||
+      !Number.isInteger(value.wave)
+    ) {
+      return null;
+    }
+    if (
+      typeof value.completed_waves !== "number" ||
+      typeof value.saved_at !== "number" ||
+      !Number.isInteger(value.completed_waves) ||
+      !Number.isFinite(value.saved_at)
+    ) {
+      return null;
+    }
     return value as SavedGameV1;
   } catch {
     return null;
