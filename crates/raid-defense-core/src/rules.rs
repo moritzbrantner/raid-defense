@@ -17,7 +17,8 @@ pub enum RulesError {
     HousePopulationExceedsCapacity,
     ZeroForestCount,
     ZeroForestWood,
-    ZeroSawmillHarvestRadius,
+    ZeroForestRegrowthAmount,
+    ZeroForestRegrowthInterval,
     ZeroSawmillInterval,
     ZeroStorageCapacity,
     InvalidTowerLevelCount,
@@ -44,8 +45,11 @@ impl GameRules {
         if self.economy.forest_tile_wood == 0 {
             return Err(RulesError::ZeroForestWood);
         }
-        if self.economy.sawmill_harvest_radius == 0 {
-            return Err(RulesError::ZeroSawmillHarvestRadius);
+        if self.economy.forest_regrowth_amount == 0 {
+            return Err(RulesError::ZeroForestRegrowthAmount);
+        }
+        if self.economy.forest_regrowth_interval_ticks == 0 {
+            return Err(RulesError::ZeroForestRegrowthInterval);
         }
         if self.economy.sawmill_interval_ticks == 0 {
             return Err(RulesError::ZeroSawmillInterval);
@@ -116,7 +120,8 @@ impl GameRules {
         feed_u64(&mut hash, u64::from(self.economy.town_wood_capacity));
         feed_u16(&mut hash, self.economy.forest_tile_count);
         feed_u64(&mut hash, u64::from(self.economy.forest_tile_wood));
-        feed_u16(&mut hash, self.economy.sawmill_harvest_radius);
+        feed_u16(&mut hash, self.economy.forest_regrowth_amount);
+        feed_u16(&mut hash, self.economy.forest_regrowth_interval_ticks);
         feed_u16(&mut hash, self.economy.sawmill_output);
         feed_u16(&mut hash, self.economy.sawmill_interval_ticks);
         feed_u64(
@@ -177,7 +182,8 @@ pub struct EconomyRules {
     pub town_wood_capacity: u32,
     pub forest_tile_count: u16,
     pub forest_tile_wood: u32,
-    pub sawmill_harvest_radius: u16,
+    pub forest_regrowth_amount: u16,
+    pub forest_regrowth_interval_ticks: u16,
     pub sawmill_output: u16,
     pub sawmill_interval_ticks: u16,
     pub sawmill_local_wood_capacity: u32,
@@ -373,7 +379,7 @@ mod tests {
     fn resource_rules_participate_in_rule_identity() {
         let standard = STANDARD_RULES.fingerprint();
         let mut changed = STANDARD_RULES;
-        changed.economy.forest_tile_wood += 1;
+        changed.economy.forest_regrowth_interval_ticks += 1;
         assert_ne!(standard, changed.fingerprint());
     }
 
