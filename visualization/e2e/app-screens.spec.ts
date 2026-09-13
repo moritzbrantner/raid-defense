@@ -43,7 +43,7 @@ test("seeded forest feeds a sawmill and people carry harvested wood into storage
   await selectCell(page, 2, 2);
   await page.getByTestId("build-sawmill").click();
 
-  await expect(page.getByTestId("event-feedback")).toContainText("harvests nearby forest");
+  await expect(page.getByTestId("event-feedback")).toContainText("nearest reachable stocked forest");
   await expect(page.getByTestId("sawmill-count")).toHaveText("1");
   await expect(page.getByTestId("wood-value")).toHaveText("80");
   await expect(page.getByTestId("selected-building")).toContainText("local wood 0/24");
