@@ -2,6 +2,8 @@ use super::*;
 
 const FOREST_MIN_DISTANCE_SQ: i32 = 9;
 const FOREST_TOWN_CLEARANCE: i16 = 3;
+const FOREST_LATTICE_PERIOD: i16 = 3;
+const FOREST_LATTICE_VARIANTS: usize = 9;
 
 impl GameState {
     pub(super) fn spawn_seeded_forests(&mut self) {
@@ -24,8 +26,28 @@ impl GameState {
             )
         });
 
+        let primary = self.select_forest_cells(&candidates, desired);
+        let selected = if primary.len() == desired {
+            primary
+        } else {
+            self.select_lattice_forest_cells(&candidates, desired)
+                .unwrap_or(primary)
+        };
+        assert_eq!(
+            selected.len(),
+            desired,
+            "forest_tile_count exceeds deterministic seeded layout capacity"
+        );
+
+        for cell in selected {
+            self.spawn_forest_cell(cell);
+        }
+    }
+
+    fn select_forest_cells(&self, candidates: &[Cell], desired: usize) -> Vec<Cell> {
+        let mut probe = self.clone();
         let mut selected = Vec::with_capacity(desired);
-        for cell in candidates {
+        for &cell in candidates {
             if selected.len() >= desired {
                 break;
             }
@@ -35,29 +57,60 @@ impl GameState {
             {
                 continue;
             }
-            if !self.routes_remain_open(Some(cell)) {
+            if !probe.routes_remain_open(Some(cell)) {
                 continue;
             }
 
-            let entity = self.allocate_entity();
-            self.transforms
-                .insert(entity_key(entity), Transform::at_cell(cell));
-            self.buildings.insert(
-                entity_key(entity),
-                Building {
-                    kind: BuildingKind::Forest,
-                    cell,
-                },
-            );
-            self.storage.insert(
-                entity_key(entity),
-                ResourceStorage {
-                    wood: self.rules.economy.forest_tile_wood,
-                    wood_capacity: self.rules.economy.forest_tile_wood,
-                },
-            );
+            probe.spawn_forest_cell(cell);
             selected.push(cell);
         }
+        selected
+    }
+
+    fn select_lattice_forest_cells(
+        &self,
+        candidates: &[Cell],
+        desired: usize,
+    ) -> Option<Vec<Cell>> {
+        let first_variant = usize::try_from(mix64(self.seed) % 9).unwrap_or_default();
+        for offset in 0..FOREST_LATTICE_VARIANTS {
+            let variant = (first_variant + offset) % FOREST_LATTICE_VARIANTS;
+            let x_residue = i16::try_from(variant % 3).unwrap_or_default();
+            let z_residue = i16::try_from(variant / 3).unwrap_or_default();
+            let lattice = candidates
+                .iter()
+                .copied()
+                .filter(|cell| {
+                    cell.x.rem_euclid(FOREST_LATTICE_PERIOD) == x_residue
+                        && cell.z.rem_euclid(FOREST_LATTICE_PERIOD) == z_residue
+                })
+                .collect::<Vec<_>>();
+            let selected = self.select_forest_cells(&lattice, desired);
+            if selected.len() == desired {
+                return Some(selected);
+            }
+        }
+        None
+    }
+
+    fn spawn_forest_cell(&mut self, cell: Cell) {
+        let entity = self.allocate_entity();
+        self.transforms
+            .insert(entity_key(entity), Transform::at_cell(cell));
+        self.buildings.insert(
+            entity_key(entity),
+            Building {
+                kind: BuildingKind::Forest,
+                cell,
+            },
+        );
+        self.storage.insert(
+            entity_key(entity),
+            ResourceStorage {
+                wood: self.rules.economy.forest_tile_wood,
+                wood_capacity: self.rules.economy.forest_tile_wood,
+            },
+        );
     }
 
     fn forest_candidate_cell(&self, cell: Cell) -> bool {
@@ -167,7 +220,6 @@ impl GameState {
         ids.sort_unstable();
         ids
     }
-
     pub(super) fn settlement_wood_total(&self) -> u32 {
         self.settlement_storage_ids()
             .into_iter()
