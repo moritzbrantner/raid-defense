@@ -2,8 +2,8 @@
 
 use raid_defense_core::{
     Command, DayLength, EntityKind, Event, ForestDensity, ForestRegrowth, GameError, GameState,
-    PersonState, RaidEconomy, RaidSize, RaidTiming, RaiderStrength, ResourceKind, SawmillThroughput,
-    ScenarioOptions, StartingSupplies, TowerArchetype,
+    PersonState, RaidEconomy, RaidSize, RaidTiming, RaiderStrength, ResourceKind,
+    SawmillThroughput, ScenarioOptions, StartingSupplies, TowerArchetype,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
