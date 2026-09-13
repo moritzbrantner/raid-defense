@@ -79,13 +79,39 @@ impl GameState {
             .count()
     }
 
-    pub(super) fn has_harvestable_forest_near(&self, cell: Cell) -> bool {
-        self.best_forest_for_cell(cell).is_some()
+    pub(super) fn run_forest_regrowth_system(&mut self) {
+        let interval = u64::from(self.rules.economy.forest_regrowth_interval_ticks);
+        if !self.tick.is_multiple_of(interval) {
+            return;
+        }
+
+        let amount = u32::from(self.rules.economy.forest_regrowth_amount);
+        let mut forests = self
+            .buildings
+            .iter()
+            .filter_map(|(key, building)| {
+                (building.kind == BuildingKind::Forest).then_some(key_entity(key))
+            })
+            .collect::<Vec<_>>();
+        forests.sort_unstable();
+
+        for forest in forests {
+            let Some(storage) = self.storage.get_mut(entity_key(forest)) else {
+                continue;
+            };
+            storage.wood = storage
+                .wood
+                .saturating_add(amount)
+                .min(storage.wood_capacity);
+        }
     }
 
     fn best_forest_for_cell(&self, cell: Cell) -> Option<EntityId> {
-        let radius = i32::from(self.rules.economy.sawmill_harvest_radius);
-        let radius_sq = radius.saturating_mul(radius);
+        let sawmill_goals = self.adjacent_walkable_cells(cell, None);
+        if sawmill_goals.is_empty() {
+            return None;
+        }
+
         let mut candidates = self
             .buildings
             .iter()
@@ -98,8 +124,9 @@ impl GameState {
                 if storage.wood == 0 {
                     return None;
                 }
-                let distance_sq = cell_distance_sq(cell, building.cell);
-                (distance_sq <= radius_sq).then_some((distance_sq, entity))
+                let forest_goals = self.adjacent_walkable_cells(building.cell, None);
+                let distance = self.distance_between_goal_sets(&sawmill_goals, &forest_goals)?;
+                Some((distance, entity))
             })
             .collect::<Vec<_>>();
         candidates.sort_unstable();
@@ -117,26 +144,12 @@ impl GameState {
         let Some(forest) = self.best_forest_for_cell(sawmill_cell) else {
             return 0;
         };
-        let (harvested, depleted) = {
-            let Some(storage) = self.storage.get_mut(entity_key(forest)) else {
-                return 0;
-            };
-            let harvested = storage.wood.min(amount);
-            storage.wood -= harvested;
-            (harvested, storage.wood == 0)
+        let Some(storage) = self.storage.get_mut(entity_key(forest)) else {
+            return 0;
         };
-        if depleted {
-            self.despawn_forest(forest);
-        }
+        let harvested = storage.wood.min(amount);
+        storage.wood -= harvested;
         harvested
-    }
-
-    fn despawn_forest(&mut self, entity: EntityId) {
-        let key = entity_key(entity);
-        self.transforms.remove(key);
-        self.buildings.remove(key);
-        self.storage.remove(key);
-        self.alive.remove(key);
     }
 
     pub(super) fn settlement_storage_ids(&self) -> Vec<EntityId> {

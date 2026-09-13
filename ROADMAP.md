@@ -19,14 +19,15 @@ The roadmap is vertical: every milestone should leave GitHub Pages more playable
 
 ## B. Economy and physical logistics
 
-- [x] Seed finite forest resource tiles deterministically with blue-noise-like spacing while preserving required routes.
-- [x] Require sawmills to work within range of harvestable forest and consume finite forest wood.
+- [x] Seed renewable forest resource tiles deterministically with blue-noise-like spacing while preserving required routes.
+- [x] Let forests regrow deterministically up to their per-tile capacity.
+- [x] Let sawmills harvest the nearest reachable stocked forest without a fixed harvest radius.
 - [x] Keep sawmill output in a bounded local buffer until a person carries it into settlement storage.
 - [x] Add storage houses as distributed wood stores.
 - [x] Make raiders target the nearest reachable storage that contains wood and retarget when it is emptied.
 - [x] Make tower placement create a construction site; workers must fetch wood from the nearest stocked storage and deliver it before the tower activates.
 - [ ] Add explicit worker assignment/priorities once multiple simultaneous construction and economy jobs need player control.
-- [ ] Add resource regeneration/reforestation only if it improves the economy-defense trade-off without erasing map pressure.
+- [ ] Tune forest regrowth from simulator evidence if renewable supply erases too much map/economy pressure.
 - [ ] Add further resources only after wood logistics remain legible at larger settlement scale.
 
 ## C. Tower-defense combat depth

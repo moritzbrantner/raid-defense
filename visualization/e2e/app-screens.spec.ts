@@ -43,7 +43,7 @@ test("seeded forest feeds a sawmill and people carry harvested wood into storage
   await selectCell(page, 2, 2);
   await page.getByTestId("build-sawmill").click();
 
-  await expect(page.getByTestId("event-feedback")).toContainText("harvests nearby forest");
+  await expect(page.getByTestId("event-feedback")).toContainText("nearest reachable stocked forest");
   await expect(page.getByTestId("sawmill-count")).toHaveText("1");
   await expect(page.getByTestId("wood-value")).toHaveText("80");
   await expect(page.getByTestId("selected-building")).toContainText("local wood 0/24");
@@ -91,7 +91,9 @@ test("tower placement creates a construction site until workers deliver material
 
   await waitForTower(page);
   await expect(page.getByTestId("selected-building")).toContainText("Arrow tower · L1");
-  await expect(page.getByTestId("wood-value")).toHaveText("95");
+  await expect
+    .poll(async () => page.getByTestId("wood-value").textContent(), { timeout: 15_000 })
+    .toBe("95");
   await expect(page.getByTestId("checksum")).not.toHaveText(initialChecksum ?? "");
 });
 

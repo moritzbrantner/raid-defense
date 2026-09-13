@@ -114,9 +114,10 @@ export function GameWiki() {
               <section>
                 <h3>Forests, sawmills, and storage</h3>
                 <p>
-                  Forests are finite seeded resources. A sawmill must be placed close enough to a
-                  harvestable forest, and harvested wood first waits at the sawmill instead of
-                  becoming instantly spendable.
+                  Forest tiles are seeded resource nodes that regrow over time. Sawmills have no
+                  fixed harvest radius: they draw from the nearest reachable forest that currently
+                  contains wood, and harvested wood first waits at the sawmill instead of becoming
+                  instantly spendable.
                 </p>
                 <p>
                   Workers carry that wood into the Town Hall or Storage Houses. All of those stores

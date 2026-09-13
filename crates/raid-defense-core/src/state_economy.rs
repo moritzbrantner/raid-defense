@@ -53,9 +53,6 @@ impl GameState {
 
     pub(super) fn place_sawmill(&mut self, cell: Cell) -> Result<Event, GameError> {
         self.validate_build_cell(cell)?;
-        if !self.has_harvestable_forest_near(cell) {
-            return Err(GameError::NoForestInRange);
-        }
         let building_rules = self.rules.buildings.sawmill;
         let cost = building_rules.wood_cost;
         self.require_wood(cost)?;
@@ -300,6 +297,7 @@ impl GameState {
 
     pub(super) fn advance_tick(&mut self) -> Event {
         self.tick = self.tick.saturating_add(1);
+        self.run_forest_regrowth_system();
         let had_raiders = self.raider_count() > 0;
         let economy_paused = had_raiders && self.rules.cycle.pause_economy_during_raids;
         let (wood_produced, wood_picked_up, wood_delivered, towers_completed) = if economy_paused {

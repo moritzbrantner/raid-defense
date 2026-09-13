@@ -9,8 +9,8 @@ The playable slice is intentionally small but architectural rather than mocked:
 - a 21×21 authoritative build grid;
 - a protected Town Hall at the center;
 - one raider gate on each edge of the map;
-- seed-derived finite forest tiles with minimum-distance spacing;
-- Sawmills that harvest nearby forest into bounded local buffers;
+- seed-derived renewable forest tiles with minimum-distance spacing;
+- Sawmills that harvest the nearest reachable stocked forest without a fixed harvest radius, buffering wood locally;
 - Storage Houses that extend distributed settlement wood storage;
 - **real people/carrier ECS entities** that move wood between producers, storage, and construction sites;
 - Arrow and Cannon tower construction sites that become active only after workers deliver their material;
@@ -53,7 +53,7 @@ visualization/
 
 Ordinary gameplay tuning is centralized in `STANDARD_RULES` rather than scattered through systems. The typed `GameRules` profile covers economy, population/logistics, buildings, towers, raids, progression, and day/night cadence.
 
-Every `GameState` owns one immutable rules profile. Systems consume that profile directly, and the active profile is fingerprinted into deterministic checksums. This means costs, health, production rates, carrier capacity, House unlock timing, tower stats, raid scaling, or day length can be adjusted without rewriting the corresponding ECS systems.
+Every `GameState` owns one immutable rules profile. Systems consume that profile directly, and the active profile is fingerprinted into deterministic checksums. This means costs, health, production rates, forest regrowth, carrier capacity, House unlock timing, tower stats, raid scaling, or day length can be adjusted without rewriting the corresponding ECS systems.
 
 Structural simulation contracts remain separate: grid dimensions, fixed-point representation, deterministic path-neighbor order, and stable tie-breaking are engine invariants rather than ordinary balance knobs.
 
@@ -91,7 +91,7 @@ The current component boundary includes:
 - `Building` — grid occupancy and building kind;
 - `Tower` — tower archetype and level, including construction state;
 - `ResourceStorage` — Town Hall, Sawmill, Storage House, forest, and construction material storage;
-- `ResourceProducer` — timed Sawmill output backed by finite forest harvesting;
+- `ResourceProducer` — timed Sawmill output backed by renewable forest harvesting;
 - `Housing` — population capacity;
 - `Person` — carrier task, target, cargo, and capacity;
 - `Raider` — raid/spawn identity plus storage target;

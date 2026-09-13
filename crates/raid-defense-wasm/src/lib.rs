@@ -6,7 +6,7 @@ use raid_defense_core::{
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-const CONTRACT_VERSION: u8 = 7;
+const CONTRACT_VERSION: u8 = 8;
 
 #[wasm_bindgen]
 pub struct RaidDefenseGame {
@@ -286,7 +286,8 @@ struct SnapshotDto {
     grid_height: i16,
     forest_tile_count: u16,
     forest_tile_wood: u32,
-    sawmill_harvest_radius: u16,
+    forest_regrowth_amount: u16,
+    forest_regrowth_interval_ticks: u16,
     sawmill_cost: u32,
     sawmill_output: u16,
     sawmill_interval_ticks: u16,
@@ -327,7 +328,8 @@ impl From<&GameState> for SnapshotDto {
             grid_height: snapshot.grid_height,
             forest_tile_count: rules.economy.forest_tile_count,
             forest_tile_wood: rules.economy.forest_tile_wood,
-            sawmill_harvest_radius: rules.economy.sawmill_harvest_radius,
+            forest_regrowth_amount: rules.economy.forest_regrowth_amount,
+            forest_regrowth_interval_ticks: rules.economy.forest_regrowth_interval_ticks,
             sawmill_cost: rules.buildings.sawmill.wood_cost,
             sawmill_output: rules.economy.sawmill_output,
             sawmill_interval_ticks: rules.economy.sawmill_interval_ticks,
@@ -542,6 +544,8 @@ mod tests {
         assert_eq!(snapshot.grid_width, 21);
         assert_eq!(snapshot.grid_height, 21);
         assert_eq!(snapshot.people, 2);
+        assert!(snapshot.forest_regrowth_amount > 0);
+        assert!(snapshot.forest_regrowth_interval_ticks > 0);
         assert!(
             snapshot
                 .entities
