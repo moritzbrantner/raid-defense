@@ -81,7 +81,7 @@ impl GameState {
 
     pub(super) fn run_forest_regrowth_system(&mut self) {
         let interval = u64::from(self.rules.economy.forest_regrowth_interval_ticks);
-        if self.tick % interval != 0 {
+        if !self.tick.is_multiple_of(interval) {
             return;
         }
 
