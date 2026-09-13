@@ -1,8 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
-import App from "./App";
-import { GameWiki } from "./GameWiki";
+import RootApp from "./RootApp";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
@@ -11,7 +10,6 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <React.StrictMode>
-    <App />
-    <GameWiki />
+    <RootApp />
   </React.StrictMode>,
 );
