@@ -34,7 +34,7 @@ function describeEvent(event: RaidDefenseEvent | null) {
     case "tower_construction_started":
       return `${towerName(event.archetype)} construction started at ${event.cell.x}, ${event.cell.z}. Workers must haul ${event.wood_required} wood to the site.`;
     case "sawmill_built":
-      return `Sawmill built at ${event.cell.x}, ${event.cell.z}. It harvests nearby forest and workers haul the wood into settlement storage.`;
+      return `Sawmill built at ${event.cell.x}, ${event.cell.z}. It harvests the nearest reachable stocked forest; workers haul the wood into settlement storage.`;
     case "storage_house_built":
       return `Storage house built at ${event.cell.x}, ${event.cell.z} with capacity for ${event.wood_capacity} wood.`;
     case "house_built":
@@ -68,7 +68,7 @@ function describeError(code: string) {
     protected_cell: "That cell is reserved for the Town Hall or an edge spawn gate.",
     path_blocked: "That building would seal a required raider or worker route.",
     insufficient_wood: "Settlement storage does not contain enough wood for that action.",
-    no_forest_in_range: "A sawmill needs a harvestable forest within its working radius.",
+    no_forest_in_range: "No reachable stocked forest is currently available for that sawmill.",
     house_locked: "Houses unlock after you complete the first 10 waves.",
     no_tower: "There is no completed tower on the selected cell to upgrade.",
     max_tower_level: "That tower is already at the maximum level.",
@@ -469,7 +469,7 @@ function App() {
         setClient(simulation);
         setSnapshot(initial);
         setFeedback(
-          "Forests are finite. Sawmills harvest nearby trees, workers move wood between stores, and tower sites need physical deliveries.",
+          "Forests regrow over time. Sawmills harvest the nearest reachable stocked forest, workers move wood between stores, and tower sites need physical deliveries.",
         );
       })
       .catch((error: unknown) => {
@@ -571,7 +571,7 @@ function App() {
       : selectedStorage
         ? `Storage house · ${selectedStorage.stored_wood}/${selectedStorage.wood_capacity} wood`
         : selectedForest
-          ? `Forest · ${selectedForest.stored_wood}/${selectedForest.wood_capacity} wood remaining`
+          ? `Forest · ${selectedForest.stored_wood}/${selectedForest.wood_capacity} wood · regrows +${snapshot.forest_regrowth_amount} every ${snapshot.forest_regrowth_interval_ticks} ticks`
           : selectedHouse
             ? `House · +${selectedHouse.housing_capacity} population capacity`
             : "Empty build cell";
