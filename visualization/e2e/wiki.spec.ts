@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("opens an isolated presentation-only field guide for the core game systems", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?screen=game&new=1&seed=24301");
   await expect(page.getByTestId("raid-defense-game")).toBeVisible();
 
   const launcher = page.getByTestId("open-wiki");
