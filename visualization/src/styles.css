@@ -16,12 +16,17 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
   background: #0f140f;
 }
 
 button,
 input {
   font: inherit;
+}
+
+button {
+  touch-action: manipulation;
 }
 
 button:focus-visible,
@@ -43,6 +48,7 @@ button:disabled {
 
 .loading-shell {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-content: center;
   text-align: center;
@@ -50,6 +56,7 @@ button:disabled {
 
 .game-shell {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   grid-template-rows: auto minmax(520px, 1fr) auto auto;
 }
@@ -105,6 +112,7 @@ button:disabled {
 
 .wave-button,
 .build-button {
+  min-height: 44px;
   border: 1px solid #756847;
   border-radius: 4px;
   background: #d5c38e;
@@ -131,6 +139,7 @@ button:disabled {
   display: block;
   width: 100% !important;
   height: 100% !important;
+  touch-action: none;
 }
 
 .town-health {
@@ -169,6 +178,11 @@ button:disabled {
   background: #b68555;
 }
 
+.mobile-world-hint,
+.mobile-cell-nudge {
+  display: none;
+}
+
 .build-bar {
   display: grid;
   grid-template-columns: auto auto minmax(240px, 1fr);
@@ -182,14 +196,14 @@ button:disabled {
 
 .cell-controls {
   display: grid;
-  grid-template-columns: auto auto;
+  grid-template-columns: auto;
   align-items: end;
   gap: 8px;
 }
 
-.cell-controls .eyebrow,
-.selected-tower {
-  grid-column: 1 / -1;
+.coordinate-inputs {
+  display: flex;
+  gap: 8px;
 }
 
 .cell-controls label {
@@ -203,6 +217,7 @@ button:disabled {
 
 .cell-controls input {
   width: 58px;
+  min-height: 40px;
   border: 1px solid #444c40;
   border-radius: 3px;
   background: #0d120d;
@@ -212,9 +227,11 @@ button:disabled {
 
 .selected-tower {
   max-width: 275px;
+  overflow: hidden;
   color: #777f72;
   font-family: "DM Mono", monospace;
   font-size: 0.64rem;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -295,50 +312,227 @@ button:disabled {
 }
 
 @media (max-width: 560px) {
-  .top-bar,
-  .build-bar {
-    padding-left: 12px;
-    padding-right: 12px;
+  .game-shell {
+    min-height: 100dvh;
+    grid-template-rows: auto minmax(56dvh, 1fr) auto;
+    padding-bottom: calc(184px + env(safe-area-inset-bottom));
+  }
+
+  .top-bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: calc(10px + env(safe-area-inset-top)) 12px 9px;
+  }
+
+  .identity .eyebrow {
+    display: none;
+  }
+
+  .identity h1 {
+    font-size: 1.25rem;
+  }
+
+  .wave-button {
+    min-height: 46px;
+    padding: 9px 13px;
   }
 
   .status-strip {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 14px;
     overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding: 2px 0 3px;
+    scrollbar-width: none;
+  }
+
+  .status-strip::-webkit-scrollbar,
+  .tower-actions::-webkit-scrollbar {
+    display: none;
   }
 
   .status-strip div {
-    min-width: 48px;
+    min-width: 58px;
+    flex: 0 0 auto;
+  }
+
+  .status-strip dt {
+    font-size: 0.6rem;
+  }
+
+  .status-strip dd {
+    font-size: 0.9rem;
   }
 
   .battlefield {
-    min-height: 400px;
+    min-height: max(360px, 56dvh);
+  }
+
+  .town-health {
+    left: 10px;
+    top: 10px;
+    min-width: min(220px, calc(100% - 20px));
+    padding: 8px 9px;
+    border-radius: 4px;
+    background: rgb(9 13 9 / 62%);
+    backdrop-filter: blur(3px);
+    font-size: 0.67rem;
+  }
+
+  .mobile-world-hint {
+    position: absolute;
+    left: 50%;
+    bottom: 12px;
+    z-index: 4;
+    display: block;
+    max-width: calc(100% - 28px);
+    margin: 0;
+    transform: translateX(-50%);
+    border: 1px solid rgb(117 104 71 / 55%);
+    border-radius: 999px;
+    padding: 6px 10px;
+    pointer-events: none;
+    background: rgb(9 13 9 / 72%);
+    color: #c6c0af;
+    font-family: "DM Mono", monospace;
+    font-size: 0.62rem;
+    text-align: center;
+    white-space: nowrap;
   }
 
   .build-bar {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    width: 100%;
+    max-width: 1440px;
+    margin: 0 auto;
+    display: grid;
     grid-template-columns: 1fr;
+    gap: 7px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+    border-top: 1px solid #3b4338;
+    border-bottom: 0;
+    background: rgb(18 24 18 / 97%);
+    box-shadow: 0 -12px 34px rgb(0 0 0 / 34%);
+    backdrop-filter: blur(8px);
   }
 
   .cell-controls {
-    justify-content: start;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px 8px;
+  }
+
+  .cell-controls .eyebrow {
+    margin: 0;
+  }
+
+  .coordinate-inputs {
+    display: none;
+  }
+
+  .selected-tower {
+    grid-column: 1;
+    max-width: none;
+    color: #a6a89e;
+    font-size: 0.65rem;
+  }
+
+  .mobile-cell-nudge {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    display: grid;
+    grid-template-columns: repeat(5, 44px);
+    gap: 4px;
+  }
+
+  .mobile-cell-nudge button,
+  .mobile-cell-nudge output {
+    min-width: 44px;
+    min-height: 44px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #4f584a;
+    border-radius: 4px;
+    background: #171e17;
+    color: #ddd6c2;
+    font-family: "DM Mono", monospace;
+    font-size: 0.8rem;
+  }
+
+  .mobile-cell-nudge button {
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .mobile-cell-nudge button:not(:disabled):active {
+    background: #2b3328;
+  }
+
+  .mobile-cell-nudge output {
+    border-color: #756847;
+    color: #e6dcbf;
+    font-size: 0.68rem;
   }
 
   .tower-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 7px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding: 1px 0 3px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
   }
 
+  .build-button,
   .economy-button,
   .upgrade-button {
-    grid-column: 1 / -1;
+    min-width: 112px;
+    min-height: 48px;
+    flex: 0 0 auto;
+    grid-column: auto;
+    padding: 9px 12px;
+    scroll-snap-align: start;
+    font-size: 0.76rem;
   }
 
   .feedback-line {
     grid-column: auto;
+    max-height: 2.5em;
+    overflow: hidden;
+    color: #aaa99e;
+    font-size: 0.7rem;
+    line-height: 1.25;
   }
 
   .evidence-line {
-    flex-direction: column;
-    gap: 2px;
-    padding-left: 12px;
-    padding-right: 12px;
+    display: none;
+  }
+}
+
+@media (max-width: 400px) {
+  .mobile-cell-nudge {
+    grid-template-columns: repeat(5, 40px);
+  }
+
+  .mobile-cell-nudge button,
+  .mobile-cell-nudge output {
+    min-width: 40px;
+    width: 40px;
+  }
+}
+
+@media (pointer: coarse) {
+  .wave-button,
+  .build-button,
+  .cell-controls input {
+    min-height: 44px;
   }
 }
