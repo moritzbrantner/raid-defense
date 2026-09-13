@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import "./GameWiki.css";
 
 export function GameWiki() {
   const [open, setOpen] = useState(false);
