@@ -91,7 +91,9 @@ test("tower placement creates a construction site until workers deliver material
 
   await waitForTower(page);
   await expect(page.getByTestId("selected-building")).toContainText("Arrow tower · L1");
-  await expect(page.getByTestId("wood-value")).toHaveText("95");
+  await expect
+    .poll(async () => page.getByTestId("wood-value").textContent(), { timeout: 15_000 })
+    .toBe("95");
   await expect(page.getByTestId("checksum")).not.toHaveText(initialChecksum ?? "");
 });
 
