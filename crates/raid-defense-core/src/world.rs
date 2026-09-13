@@ -220,6 +220,7 @@ impl GameState {
         ids.sort_unstable();
         ids
     }
+
     pub(super) fn settlement_wood_total(&self) -> u32 {
         self.settlement_storage_ids()
             .into_iter()
