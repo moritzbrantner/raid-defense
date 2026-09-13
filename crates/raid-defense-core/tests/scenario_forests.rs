@@ -4,7 +4,9 @@ use raid_defense_core::{ForestDensity, GameState, ScenarioOptions};
 fn dense_forest_profile_realizes_requested_count_deterministically() {
     let mut scenario = ScenarioOptions::standard();
     scenario.forest_density = ForestDensity::Dense;
-    let rules = scenario.into_rules().expect("dense scenario rules must validate");
+    let rules = scenario
+        .into_rules()
+        .expect("dense scenario rules must validate");
 
     for seed in [0_u64, 1, 7, 8, 189, 24_301, u64::from(u32::MAX)] {
         let first = GameState::try_with_rules(seed, rules)
