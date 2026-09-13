@@ -124,14 +124,13 @@ mod tests {
             .entities
             .into_iter()
             .find(|entity| entity.kind == EntityKind::Forest)
-            .expect("single seeded forest must exist")
-            .cell;
+            .expect("single seeded forest must exist");
 
         let mut distant_cell = None;
         for z in 1..GRID_HEIGHT - 1 {
             for x in 1..GRID_WIDTH - 1 {
                 let cell = Cell::new(x, z);
-                if distance_sq(cell, forest) <= 25 {
+                if distance_sq(cell, forest.cell) <= 25 {
                     continue;
                 }
                 if state.validate_build_cell(cell).is_ok()
@@ -153,6 +152,26 @@ mod tests {
             })
             .expect("forest distance must not reject a valid sawmill");
         assert_eq!(state.sawmill_count(), 1);
+
+        let mut produced = 0_u16;
+        for _ in 0..state.rules.economy.sawmill_interval_ticks {
+            let Event::TickAdvanced { wood_produced, .. } = state.advance_tick() else {
+                unreachable!("advance_tick always yields a tick event");
+            };
+            produced = produced.saturating_add(wood_produced);
+        }
+        assert_eq!(produced, state.rules.economy.sawmill_output);
+        let forest_after = state
+            .snapshot()
+            .entities
+            .into_iter()
+            .find(|entity| entity.id == forest.id)
+            .expect("forest must persist after harvesting")
+            .stored_wood;
+        assert_eq!(
+            forest.stored_wood - forest_after,
+            u32::from(state.rules.economy.sawmill_output)
+        );
     }
 
     #[test]
