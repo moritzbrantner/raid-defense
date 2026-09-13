@@ -51,7 +51,7 @@ export type EntityView = {
 };
 
 export type SnapshotView = {
-  contract_version: 7;
+  contract_version: 8;
   seed: string;
   tick: number;
   wood: number;
@@ -69,7 +69,8 @@ export type SnapshotView = {
   grid_height: number;
   forest_tile_count: number;
   forest_tile_wood: number;
-  sawmill_harvest_radius: number;
+  forest_regrowth_amount: number;
+  forest_regrowth_interval_ticks: number;
   sawmill_cost: number;
   sawmill_output: number;
   sawmill_interval_ticks: number;
@@ -149,7 +150,7 @@ export type RaidDefenseEvent =
     };
 
 export type DispatchResponse = {
-  contract_version: 7;
+  contract_version: 8;
   ok: boolean;
   event: RaidDefenseEvent | null;
   error: { code: string } | null;
