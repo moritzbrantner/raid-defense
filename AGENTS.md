@@ -79,6 +79,7 @@
 - Keep cheap deterministic core checks ahead of browser or hosted acceptance.
 - GitHub Pages is the primary integrated browser acceptance surface after merge.
 - Do not treat missing, cancelled, or unavailable evidence as green.
+- Browser acceptance must include a phone-sized touch viewport whenever interaction controls or battlefield input change.
 
 ## UI
 
@@ -87,3 +88,6 @@
 - Render people, cargo, forests, storage, construction sites, and buildings from authoritative snapshots rather than maintaining browser-owned substitutes.
 - Keep browser state interaction-focused; the Rust core remains the game-state authority.
 - In-game wiki/help content is explanatory only. Do not encode legality or progression logic there, and do not duplicate tunable numeric rule values in static prose. Read live values from authoritative snapshots when a number is useful, or explain the mechanic without a number.
+- Mobile controls must not depend on hover, tiny coordinate fields, or pixel-precise taps. Keep primary touch targets at least 44 CSS pixels tall/wide, respect safe-area insets, and keep build/raid actions reachable without covering the battlefield unnecessarily.
+- The battlefield should support direct touch manipulation: tap selects, drag orbits, and pinch zooms. Camera gestures must not accidentally issue grid-selection or gameplay commands.
+- Preserve a precise mobile fallback for selecting a neighboring grid cell so players are not forced to hit a small 3D tile accurately.

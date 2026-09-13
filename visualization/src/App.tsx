@@ -109,6 +109,71 @@ function isGateCell(cell: CellView, snapshot: SnapshotView) {
   );
 }
 
+function clampCellCoordinate(value: number, size: number) {
+  return Math.max(0, Math.min(size - 1, value));
+}
+
+function MobileCellNudge({
+  selectedCell,
+  snapshot,
+  onSelectCell,
+}: {
+  selectedCell: CellView;
+  snapshot: SnapshotView;
+  onSelectCell: (cell: CellView) => void;
+}) {
+  function move(dx: number, dz: number) {
+    onSelectCell({
+      x: clampCellCoordinate(selectedCell.x + dx, snapshot.grid_width),
+      z: clampCellCoordinate(selectedCell.z + dz, snapshot.grid_height),
+    });
+  }
+
+  return (
+    <div className="mobile-cell-nudge" aria-label="Move selected grid cell">
+      <button
+        type="button"
+        aria-label="Move selected cell west"
+        data-testid="cell-west"
+        disabled={selectedCell.x <= 0}
+        onClick={() => move(-1, 0)}
+      >
+        ←
+      </button>
+      <button
+        type="button"
+        aria-label="Move selected cell north"
+        data-testid="cell-north"
+        disabled={selectedCell.z <= 0}
+        onClick={() => move(0, -1)}
+      >
+        ↑
+      </button>
+      <output data-testid="mobile-selected-cell" aria-label="Selected grid cell">
+        {selectedCell.x},{selectedCell.z}
+      </output>
+      <button
+        type="button"
+        aria-label="Move selected cell south"
+        data-testid="cell-south"
+        disabled={selectedCell.z >= snapshot.grid_height - 1}
+        onClick={() => move(0, 1)}
+      >
+        ↓
+      </button>
+      <button
+        type="button"
+        aria-label="Move selected cell east"
+        data-testid="cell-east"
+        disabled={selectedCell.x >= snapshot.grid_width - 1}
+        onClick={() => move(1, 0)}
+      >
+        →
+      </button>
+    </div>
+  );
+}
+
 function GroundTile({
   cell,
   snapshot,
@@ -133,6 +198,7 @@ function GroundTile({
       ]}
       onClick={(event) => {
         event.stopPropagation();
+        if (event.delta > 6) return;
         onSelectCell(cell);
       }}
       receiveShadow
@@ -409,7 +475,12 @@ function GameWorld({
   ];
 
   return (
-    <Canvas camera={{ position: [15, 18, 19], fov: 42, near: 0.1, far: 100 }} shadows dpr={[1, 1.6]}>
+    <Canvas
+      camera={{ position: [15, 18, 19], fov: 42, near: 0.1, far: 100 }}
+      shadows
+      dpr={[1, 1.6]}
+      style={{ touchAction: "none" }}
+    >
       <color attach="background" args={["#111712"]} />
       <fog attach="fog" args={["#111712", 26, 54]} />
       <ambientLight intensity={1.3} />
@@ -615,13 +686,53 @@ function App() {
               : `Houses unlock after ${snapshot.house_unlock_completed_waves} completed waves (${snapshot.completed_waves}/${snapshot.house_unlock_completed_waves})`}
           </span>
         </div>
+        <p className="mobile-world-hint" data-testid="mobile-world-hint">
+          Tap a tile to select · drag to orbit · pinch to zoom
+        </p>
       </section>
 
-      <section className="build-bar" aria-label="Build controls">
+      <section className="build-bar" aria-label="Build controls" data-testid="mobile-command-dock">
         <div className="cell-controls">
           <span className="eyebrow">Selected grid cell</span>
-          <label>X<input data-testid="cell-x" type="number" min={0} max={snapshot.grid_width - 1} value={selectedCell.x} onChange={(event) => setSelectedCell((current) => ({ ...current, x: Number(event.target.value) }))} /></label>
-          <label>Z<input data-testid="cell-z" type="number" min={0} max={snapshot.grid_height - 1} value={selectedCell.z} onChange={(event) => setSelectedCell((current) => ({ ...current, z: Number(event.target.value) }))} /></label>
+          <div className="coordinate-inputs">
+            <label>
+              X
+              <input
+                data-testid="cell-x"
+                type="number"
+                min={0}
+                max={snapshot.grid_width - 1}
+                value={selectedCell.x}
+                onChange={(event) =>
+                  setSelectedCell((current) => ({
+                    ...current,
+                    x: clampCellCoordinate(Number(event.target.value), snapshot.grid_width),
+                  }))
+                }
+              />
+            </label>
+            <label>
+              Z
+              <input
+                data-testid="cell-z"
+                type="number"
+                min={0}
+                max={snapshot.grid_height - 1}
+                value={selectedCell.z}
+                onChange={(event) =>
+                  setSelectedCell((current) => ({
+                    ...current,
+                    z: clampCellCoordinate(Number(event.target.value), snapshot.grid_height),
+                  }))
+                }
+              />
+            </label>
+          </div>
+          <MobileCellNudge
+            selectedCell={selectedCell}
+            snapshot={snapshot}
+            onSelectCell={setSelectedCell}
+          />
           <span className="selected-tower" data-testid="selected-building">{selectedDescription}</span>
         </div>
         <div className="tower-actions">
