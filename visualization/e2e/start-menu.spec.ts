@@ -9,11 +9,9 @@ test("starts a new game and resumes saved authoritative progress", async ({ page
   await page.getByTestId("new-game").click();
   await expect(page.getByTestId("raid-defense-game")).toBeVisible();
 
-  await page.getByTestId("cell-x").fill("3");
-  await page.getByTestId("cell-z").fill("2");
-  await page.getByTestId("build-storage-house").click();
-  await expect(page.getByTestId("storage-count")).toHaveText("1");
-  await expect(page.getByTestId("event-feedback")).toContainText("Storage house built at 3, 2");
+  await page.getByTestId("start-wave").click();
+  await expect(page.getByTestId("wave-value")).toHaveText("1");
+  await expect(page.getByTestId("cycle-timer")).toHaveText("Night · Wave 1");
 
   await page.getByTestId("return-to-menu").click();
   await expect(page.getByTestId("start-menu")).toBeVisible();
@@ -25,8 +23,8 @@ test("starts a new game and resumes saved authoritative progress", async ({ page
 
   await page.getByTestId("resume-game").click();
   await expect(page.getByTestId("raid-defense-game")).toBeVisible();
-  await expect(page.getByTestId("storage-count")).toHaveText("1");
-  await expect(page.getByTestId("wood-value")).toHaveText("70");
+  await expect(page.getByTestId("wave-value")).toHaveText("1");
+  await expect(page.getByTestId("cycle-timer")).toHaveText("Night · Wave 1");
 });
 
 test("opens URL-addressable settings and persists presentation preferences", async ({ page }) => {
