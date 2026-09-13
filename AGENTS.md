@@ -6,7 +6,7 @@
 
 - `crates/raid-defense-core` owns ECS entity/component state, resources, population, housing, production, logistics, spending, theft, game rules, command validation, grid occupancy, pathfinding, deterministic simulation, replay, and checksums.
 - `crates/raid-defense-wasm` is a translation boundary only. It may serialize and map values, but it must not own game rules.
-- `visualization/` owns browser input, camera, and 3D presentation only. It must not recompute authoritative game outcomes.
+- `visualization/` owns browser input, camera, 3D presentation, and explanatory reference content only. It must not recompute authoritative game outcomes.
 - The gameplay plane is a 2D grid. Rendering may be fully 3D, but visual transforms must derive from authoritative Rust positions.
 
 ## Game-rules architecture
@@ -23,14 +23,16 @@
 
 ## Economy and logistics invariants
 
-- The Town Hall is the authoritative settlement store. Do not add browser/global shadow resource counters.
-- Wood is the first material resource. Towers, tower upgrades, Sawmills, and Houses spend stored Town Hall wood.
-- Sawmills produce wood into bounded **local** storage. Production does not directly increase Town Hall wood.
-- People are real ECS entities with bounded cargo. They travel from the Town Hall to Sawmills, pick up wood, and physically carry it back before that wood becomes spendable.
+- The Town Hall and Storage Houses are authoritative settlement storage nodes. `GameState::wood()` and capacity represent the aggregate authoritative settlement inventory; do not add browser/global shadow resource counters.
+- Settlement spending must operate on authoritative stored wood in a deterministic order. Tower upgrades and ordinary building purchases consume settlement storage through Rust commands.
+- Sawmills harvest finite nearby Forest entities into bounded **local** storage. Production does not directly increase spendable settlement wood.
+- People are real ECS entities with bounded cargo. They physically carry wood from Sawmills into reachable settlement storage before that wood becomes spendable.
+- Tower placement creates an inactive construction site. Workers withdraw material from stocked settlement storage, haul it to the site, and only the Rust core activates the tower after the full build requirement has been delivered.
+- Storage selection, worker assignment, pathfinding, pickup, delivery, construction completion, and resource depletion are authoritative Rust/ECS behavior. Presentation may visualize them but must not predict or complete them independently.
 - Combat kills do not create wood. Production plus logistics remain the economic authority.
-- Raiders that reach the Town Hall steal stored wood before they damage the Town Hall itself.
+- Raiders target the nearest reachable settlement storage that currently contains wood. They may retarget as storage changes; the Town Hall remains the fallback target, and Town Hall damage occurs only through authoritative raid resolution.
 - Economic buildings participate in grid occupancy and path shaping just like defensive buildings.
-- Building placement must preserve both raider access to the Town Hall and worker access to every active Sawmill/task.
+- Building placement must preserve required raider routes and worker access to active logistics/construction tasks.
 - Extend generic storage/production/logistics components when adding resources or producers rather than introducing unrelated special-case counters.
 
 ## Population and progression invariants
@@ -68,7 +70,7 @@
 - Building placement happens on the authoritative grid.
 - Buildings may shape routes but must not remove all valid routes from any active spawn or moving raider to the Town Hall.
 - Spawn gates and Town Hall cells are protected from ordinary building placement.
-- Browser path previews, range displays, logistics displays, and economy projections are advisory presentation; Rust remains authoritative for legality, production, transfer, spending, theft, movement, and combat.
+- Browser path previews, range displays, logistics displays, economy projections, and help/wiki text are advisory presentation; Rust remains authoritative for legality, production, transfer, spending, theft, movement, construction, and combat.
 
 ## Validation
 
@@ -81,5 +83,6 @@
 
 - The main battlefield should be the 3D game world, not explanatory dashboard cards.
 - Keep economy/build/raid/progression controls and feedback close to the world state they affect.
-- Render people, cargo, and buildings from authoritative snapshots rather than maintaining browser-owned substitutes.
+- Render people, cargo, forests, storage, construction sites, and buildings from authoritative snapshots rather than maintaining browser-owned substitutes.
 - Keep browser state interaction-focused; the Rust core remains the game-state authority.
+- In-game wiki/help content is explanatory only. Do not encode legality or progression logic there, and do not duplicate tunable numeric rule values in static prose. Read live values from authoritative snapshots when a number is useful, or explain the mechanic without a number.
