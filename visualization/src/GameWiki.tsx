@@ -1,29 +1,67 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./GameWiki.css";
+
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export function GameWiki() {
   const [open, setOpen] = useState(false);
+  const launcherRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!open) return;
 
+    const gameShell = document.querySelector<HTMLElement>(".game-shell");
+    gameShell?.setAttribute("inert", "");
+
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setOpen(false);
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (event.shiftKey && (active === first || !dialog.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !dialog.contains(active))) {
+        event.preventDefault();
+        first.focus();
       }
     }
 
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      gameShell?.removeAttribute("inert");
+      launcherRef.current?.focus();
+    };
   }, [open]);
 
   return (
     <>
       <button
+        ref={launcherRef}
         className="wiki-launcher"
         type="button"
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
+        aria-expanded={open}
         data-testid="open-wiki"
       >
         Field guide
@@ -39,6 +77,7 @@ export function GameWiki() {
           }}
         >
           <section
+            ref={dialogRef}
             className="wiki-dialog"
             role="dialog"
             aria-modal="true"
