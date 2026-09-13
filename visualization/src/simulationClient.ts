@@ -3,16 +3,22 @@ import type {
   RaidDefenseCommand,
   SnapshotView,
 } from "./simulationTypes";
+import {
+  isScenarioOptions,
+  STANDARD_SCENARIO_OPTIONS,
+  type ScenarioOptions,
+} from "./scenarioOptions";
 
 type WasmModule = typeof import("./generated/raid-defense-wasm/raid_defense_wasm.js");
 type JsonObject = Record<string, unknown>;
-type SessionIntent = { kind: "new"; seed: number } | { kind: "resume" };
+type SessionIntent =
+  | { kind: "new"; seed: number; scenario: ScenarioOptions }
+  | { kind: "resume" };
 type ReplayEntry =
   | { kind: "advance_ticks"; count: number }
   | { kind: "command"; command: RaidDefenseCommand };
 
-type SavedGameV1 = {
-  version: 1;
+type SavedGameBase = {
   contract_version: 8;
   seed: number;
   entries: ReplayEntry[];
@@ -23,12 +29,24 @@ type SavedGameV1 = {
   saved_at: number;
 };
 
+type SavedGameV1 = SavedGameBase & {
+  version: 1;
+};
+
+type SavedGameV2 = SavedGameBase & {
+  version: 2;
+  scenario: ScenarioOptions;
+};
+
+type SavedGame = SavedGameV1 | SavedGameV2;
+
 export type SavedGameSummary = Pick<
-  SavedGameV1,
+  SavedGameBase,
   "seed" | "checksum" | "tick" | "wave" | "completed_waves" | "saved_at"
 >;
 
-const SAVE_KEY = "raid-defense.save.v1";
+const SAVE_KEY = "raid-defense.save.v2";
+const LEGACY_SAVE_KEY = "raid-defense.save.v1";
 const CONTRACT_VERSION = 8;
 const TICKS_PER_PERSIST = 10;
 
@@ -128,11 +146,13 @@ function isReplayEntry(value: unknown): value is ReplayEntry {
   return value.kind === "command" && isObject(value.command) && typeof value.command.type === "string";
 }
 
-function parseSavedGame(raw: string): SavedGameV1 | null {
+function parseSavedGame(raw: string): SavedGame | null {
   try {
     const value: unknown = JSON.parse(raw);
     if (!isObject(value)) return null;
-    if (value.version !== 1 || value.contract_version !== CONTRACT_VERSION) return null;
+    if ((value.version !== 1 && value.version !== 2) || value.contract_version !== CONTRACT_VERSION) {
+      return null;
+    }
     if (
       typeof value.seed !== "number" ||
       !Number.isInteger(value.seed) ||
@@ -159,7 +179,8 @@ function parseSavedGame(raw: string): SavedGameV1 | null {
     ) {
       return null;
     }
-    return value as SavedGameV1;
+    if (value.version === 2 && !isScenarioOptions(value.scenario)) return null;
+    return value as SavedGame;
   } catch {
     return null;
   }
@@ -167,20 +188,28 @@ function parseSavedGame(raw: string): SavedGameV1 | null {
 
 function readSavedGame() {
   if (!storageAvailable()) return null;
-  const raw = window.localStorage.getItem(SAVE_KEY);
-  return raw ? parseSavedGame(raw) : null;
+  const current = window.localStorage.getItem(SAVE_KEY);
+  if (current !== null) return parseSavedGame(current);
+  const legacy = window.localStorage.getItem(LEGACY_SAVE_KEY);
+  return legacy ? parseSavedGame(legacy) : null;
 }
 
-function writeSavedGame(save: SavedGameV1) {
+function writeSavedGame(save: SavedGame) {
   if (!storageAvailable()) return;
   try {
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+    if (save.version === 2) {
+      window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+      window.localStorage.removeItem(LEGACY_SAVE_KEY);
+    } else {
+      window.localStorage.setItem(LEGACY_SAVE_KEY, JSON.stringify(save));
+      window.localStorage.removeItem(SAVE_KEY);
+    }
   } catch (error) {
     console.warn("Unable to persist Raid Defense save", error);
   }
 }
 
-function summaryFromSave(save: SavedGameV1): SavedGameSummary {
+function summaryFromSave(save: SavedGame): SavedGameSummary {
   return {
     seed: save.seed,
     checksum: save.checksum,
@@ -197,6 +226,10 @@ function seedFromUrl(fallback: number) {
   return Number.isInteger(value) && value >= 0 && value <= 0xffff_ffff ? value : fallback;
 }
 
+function createScenarioEngine(module: WasmModule, seed: number, scenario: ScenarioOptions) {
+  return module.create_game(seed, JSON.stringify(scenario));
+}
+
 function installFlushListeners() {
   if (flushListenersInstalled || typeof window === "undefined") return;
   flushListenersInstalled = true;
@@ -206,9 +239,12 @@ function installFlushListeners() {
   });
 }
 
-export function prepareNewGame(seed: number) {
+export function prepareNewGame(
+  seed: number,
+  scenario: ScenarioOptions = STANDARD_SCENARIO_OPTIONS,
+) {
   clearSavedGame();
-  pendingSession = { kind: "new", seed: seed >>> 0 };
+  pendingSession = { kind: "new", seed: seed >>> 0, scenario: { ...scenario } };
 }
 
 export function prepareResume() {
@@ -218,7 +254,10 @@ export function prepareResume() {
 export function clearSavedGame() {
   activeClient = null;
   pendingSession = null;
-  if (storageAvailable()) window.localStorage.removeItem(SAVE_KEY);
+  if (storageAvailable()) {
+    window.localStorage.removeItem(SAVE_KEY);
+    window.localStorage.removeItem(LEGACY_SAVE_KEY);
+  }
 }
 
 export function flushActiveSession() {
@@ -232,12 +271,12 @@ export function readSavedGameSummary(): SavedGameSummary | null {
 
 export class RaidDefenseSimulationClient {
   private readonly engine: InstanceType<WasmModule["RaidDefenseGame"]>;
-  private readonly save: SavedGameV1;
+  private readonly save: SavedGame;
   private dirtyTicks = 0;
 
   private constructor(
     engine: InstanceType<WasmModule["RaidDefenseGame"]>,
-    save: SavedGameV1,
+    save: SavedGame,
   ) {
     this.engine = engine;
     this.save = save;
@@ -266,12 +305,14 @@ export class RaidDefenseSimulationClient {
     }
 
     const seed = intent?.kind === "new" ? intent.seed : seedFromUrl(fallbackSeed);
-    const engine = new module.RaidDefenseGame(seed);
+    const scenario = intent?.kind === "new" ? intent.scenario : STANDARD_SCENARIO_OPTIONS;
+    const engine = createScenarioEngine(module, seed, scenario);
     const snapshot = parseSnapshot(engine.snapshot());
-    const save: SavedGameV1 = {
-      version: 1,
+    const save: SavedGameV2 = {
+      version: 2,
       contract_version: CONTRACT_VERSION,
       seed,
+      scenario: { ...scenario },
       entries: [],
       checksum: snapshot.checksum,
       tick: snapshot.tick,
@@ -285,8 +326,10 @@ export class RaidDefenseSimulationClient {
     return client;
   }
 
-  private static async fromSavedGame(module: WasmModule, saved: SavedGameV1) {
-    const engine = new module.RaidDefenseGame(saved.seed);
+  private static async fromSavedGame(module: WasmModule, saved: SavedGame) {
+    const engine = saved.version === 2
+      ? createScenarioEngine(module, saved.seed, saved.scenario)
+      : new module.RaidDefenseGame(saved.seed);
     let replayed = 0;
 
     const replayCommand = async (command: RaidDefenseCommand) => {
@@ -315,7 +358,7 @@ export class RaidDefenseSimulationClient {
       throw new Error("Saved game replay checksum does not match the recorded authoritative state.");
     }
 
-    const cloned = JSON.parse(JSON.stringify(saved)) as SavedGameV1;
+    const cloned = JSON.parse(JSON.stringify(saved)) as SavedGame;
     return new RaidDefenseSimulationClient(engine, cloned);
   }
 
