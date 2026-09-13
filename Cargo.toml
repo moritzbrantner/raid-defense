@@ -1,5 +1,9 @@
 [workspace]
-members = ["crates/raid-defense-core", "crates/raid-defense-wasm"]
+members = [
+    "crates/raid-defense-core",
+    "crates/raid-defense-sim",
+    "crates/raid-defense-wasm",
+]
 resolver = "2"
 
 [workspace.package]

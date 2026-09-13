@@ -1,0 +1,9 @@
+[package]
+name = "raid-defense-sim"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+raid-defense-core = { path = "../raid-defense-core" }
