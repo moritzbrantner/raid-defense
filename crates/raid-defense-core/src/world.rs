@@ -107,6 +107,11 @@ impl GameState {
     }
 
     fn best_forest_for_cell(&self, cell: Cell) -> Option<EntityId> {
+        let sawmill_goals = self.adjacent_walkable_cells(cell, None);
+        if sawmill_goals.is_empty() {
+            return None;
+        }
+
         let mut candidates = self
             .buildings
             .iter()
@@ -119,7 +124,9 @@ impl GameState {
                 if storage.wood == 0 {
                     return None;
                 }
-                Some((cell_distance_sq(cell, building.cell), entity))
+                let forest_goals = self.adjacent_walkable_cells(building.cell, None);
+                let distance = self.distance_between_goal_sets(&sawmill_goals, &forest_goals)?;
+                Some((distance, entity))
             })
             .collect::<Vec<_>>();
         candidates.sort_unstable();
