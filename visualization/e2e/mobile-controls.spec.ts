@@ -57,3 +57,43 @@ test("keeps core controls reachable and touch-sized on a phone", async ({ page }
   expect(dockBox).not.toBeNull();
   expect((guideBox?.y ?? 0) + (guideBox?.height ?? 0)).toBeLessThanOrEqual(dockBox?.y ?? 0);
 });
+
+test("keeps all scenario controls reachable and touch-sized on a phone", async ({ page }) => {
+  await page.goto("/?screen=settings&section=scenario");
+  await expect(page.getByTestId("scenario-settings")).toBeVisible();
+
+  const scenarioControls = [
+    ["scenario-starting-supplies", "rich"],
+    ["scenario-forest-density", "dense"],
+    ["scenario-forest-regrowth", "fast"],
+    ["scenario-sawmill-throughput", "fast"],
+    ["scenario-raid-size", "large"],
+    ["scenario-raider-strength", "harsh"],
+    ["scenario-day-length", "long"],
+    ["scenario-raid-timing", "manual"],
+    ["scenario-raid-economy", "continuous"],
+  ] as const;
+
+  for (const [testId, value] of scenarioControls) {
+    const control = page.getByTestId(testId);
+    await control.scrollIntoViewIfNeeded();
+    await expect(control).toBeVisible();
+    const box = await control.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+    await control.selectOption(value);
+    await expect(control).toHaveValue(value);
+  }
+
+  const pageFitsViewport = await page.evaluate(
+    () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+  );
+  expect(pageFitsViewport).toBe(true);
+
+  const back = page.getByRole("button", { name: "Back" });
+  await back.scrollIntoViewIfNeeded();
+  const backBox = await back.boundingBox();
+  expect(backBox).not.toBeNull();
+  expect(backBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+});
