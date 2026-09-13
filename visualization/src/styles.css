@@ -424,11 +424,14 @@ button:disabled {
   .cell-controls {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
     align-items: center;
     gap: 4px 8px;
   }
 
   .cell-controls .eyebrow {
+    grid-column: 1;
+    grid-row: 1;
     margin: 0;
   }
 
@@ -438,6 +441,7 @@ button:disabled {
 
   .selected-tower {
     grid-column: 1;
+    grid-row: 2;
     max-width: none;
     color: #a6a89e;
     font-size: 0.65rem;
@@ -454,6 +458,7 @@ button:disabled {
   .mobile-cell-nudge button,
   .mobile-cell-nudge output {
     min-width: 44px;
+    width: 44px;
     min-height: 44px;
     display: grid;
     place-items: center;
@@ -514,18 +519,6 @@ button:disabled {
 
   .evidence-line {
     display: none;
-  }
-}
-
-@media (max-width: 400px) {
-  .mobile-cell-nudge {
-    grid-template-columns: repeat(5, 40px);
-  }
-
-  .mobile-cell-nudge button,
-  .mobile-cell-nudge output {
-    min-width: 40px;
-    width: 40px;
   }
 }
 
