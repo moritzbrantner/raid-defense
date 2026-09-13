@@ -25,10 +25,11 @@
 
 - The Town Hall and Storage Houses are authoritative settlement storage nodes. `GameState::wood()` and capacity represent the aggregate authoritative settlement inventory; do not add browser/global shadow resource counters.
 - Settlement spending must operate on authoritative stored wood in a deterministic order. Tower upgrades and ordinary building purchases consume settlement storage through Rust commands.
-- Sawmills harvest finite nearby Forest entities into bounded **local** storage. Production does not directly increase spendable settlement wood.
+- Forest entities are persistent renewable resource nodes. Their stock regrows deterministically up to the configured per-tile capacity; depletion must not despawn or relocate the seeded forest tile.
+- Sawmills have no fixed forest harvest radius. Production selects the nearest reachable Forest with wood using authoritative path distance and stable entity-id tie-breaking, then places harvested wood into bounded **local** Sawmill storage.
 - People are real ECS entities with bounded cargo. They physically carry wood from Sawmills into reachable settlement storage before that wood becomes spendable.
 - Tower placement creates an inactive construction site. Workers withdraw material from stocked settlement storage, haul it to the site, and only the Rust core activates the tower after the full build requirement has been delivered.
-- Storage selection, worker assignment, pathfinding, pickup, delivery, construction completion, and resource depletion are authoritative Rust/ECS behavior. Presentation may visualize them but must not predict or complete them independently.
+- Forest regrowth, forest selection, storage selection, worker assignment, pathfinding, pickup, delivery, construction completion, and resource depletion are authoritative Rust/ECS behavior. Presentation may visualize them but must not predict or complete them independently.
 - Combat kills do not create wood. Production plus logistics remain the economic authority.
 - Raiders target the nearest reachable settlement storage that currently contains wood. They may retarget as storage changes; the Town Hall remains the fallback target, and Town Hall damage occurs only through authoritative raid resolution.
 - Economic buildings participate in grid occupancy and path shaping just like defensive buildings.
@@ -47,7 +48,7 @@
 
 - Day/night timing and automatic raid cadence are authoritative Rust rules, not browser timers.
 - The standard profile starts a raid after 600 peaceful simulation ticks and resets the day after the active wave completes.
-- The standard profile pauses production and carrier logistics while raiders are active. Alternative validated profiles may change that rule without changing system code.
+- The standard profile pauses production and carrier logistics while raiders are active. Natural forest regrowth remains authoritative world progression and is not a Sawmill/carrier action.
 - Presentation may display phase/countdown state but must not decide when a wave starts or whether economic systems advance.
 
 ## ECS and reuse
