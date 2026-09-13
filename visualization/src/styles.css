@@ -139,7 +139,7 @@ button:disabled {
   display: block;
   width: 100% !important;
   height: 100% !important;
-  touch-action: none;
+  touch-action: none !important;
 }
 
 .town-health {
