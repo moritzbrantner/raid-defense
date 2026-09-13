@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 async function openGame(page: import("@playwright/test").Page) {
-  await page.goto("/");
+  await page.goto("/?screen=game&new=1&seed=24301");
   await expect(page.getByTestId("raid-defense-game")).toBeVisible();
   await expect(page.getByTestId("world-3d")).toBeVisible();
   await expect(page.getByTestId("wood-value")).toHaveText("120");

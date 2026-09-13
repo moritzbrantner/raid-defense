@@ -66,6 +66,15 @@
 - System iteration/order must be deterministic when it can affect outcomes; tie-break with stable entity identifiers where needed.
 - Add replay or checksum coverage whenever a new component/system or rule can affect authoritative state.
 
+## Save and resume invariants
+
+- Browser persistence must not deserialize a snapshot into authoritative game state. Persist the initial seed plus the ordered accepted command stream, then reconstruct by replaying those commands through the real Rust/WASM engine.
+- Consecutive `advance_tick` commands may be run-length encoded for storage efficiency, but replay order and count must remain exact.
+- Persist an authoritative checksum with the save and fail closed on resume if replay does not reproduce that checksum.
+- Rejected commands are not part of the replay because they must leave authoritative state unchanged.
+- Save schema and WASM contract versions must be explicit. Incompatible or malformed saves must not be silently coerced into a different game.
+- UI/settings persistence is separate from gameplay persistence and may contain presentation preferences only.
+
 ## Tower-defense invariants
 
 - Building placement happens on the authoritative grid.
@@ -80,6 +89,7 @@
 - GitHub Pages is the primary integrated browser acceptance surface after merge.
 - Do not treat missing, cancelled, or unavailable evidence as green.
 - Browser acceptance must include a phone-sized touch viewport whenever interaction controls or battlefield input change.
+- Start-menu changes must cover a complete new-game -> progress -> menu -> reload -> resume path so persistence evidence is bound to a real reconstructed game.
 
 ## UI
 
@@ -87,6 +97,9 @@
 - Keep economy/build/raid/progression controls and feedback close to the world state they affect.
 - Render people, cargo, forests, storage, construction sites, and buildings from authoritative snapshots rather than maintaining browser-owned substitutes.
 - Keep browser state interaction-focused; the Rust core remains the game-state authority.
+- The default route is the start menu. Menu, game, and settings screens should be URL-addressable with query state rather than hidden SPA-only state.
+- `Resume` is available only when a compatible saved replay exists. `New game` must make replacing an existing save explicit rather than silently discarding it.
+- Settings must remain presentation-only unless a future setting is added to the typed authoritative `GameRules` model deliberately.
 - In-game wiki/help content is explanatory only. Do not encode legality or progression logic there, and do not duplicate tunable numeric rule values in static prose. Read live values from authoritative snapshots when a number is useful, or explain the mechanic without a number.
 - Mobile controls must not depend on hover, tiny coordinate fields, or pixel-precise taps. Keep primary touch targets at least 44 CSS pixels tall/wide, respect safe-area insets, and keep build/raid actions reachable without covering the battlefield unnecessarily.
 - The battlefield should support direct touch manipulation: tap selects, drag orbits, and pinch zooms. Camera gestures must not accidentally issue grid-selection or gameplay commands.

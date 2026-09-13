@@ -6,7 +6,7 @@ test.use({
 });
 
 test("keeps core controls reachable and touch-sized on a phone", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?screen=game&new=1&seed=24301");
   await expect(page.getByTestId("raid-defense-game")).toBeVisible();
   await expect(page.getByTestId("mobile-world-hint")).toContainText("tap a tile", {
     ignoreCase: true,

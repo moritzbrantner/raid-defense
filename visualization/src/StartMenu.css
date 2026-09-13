@@ -1,0 +1,243 @@
+.front-door-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  align-items: center;
+  padding: max(28px, env(safe-area-inset-top)) 24px max(28px, env(safe-area-inset-bottom));
+  background:
+    radial-gradient(circle at 72% 30%, rgb(63 82 56 / 22%), transparent 34rem),
+    linear-gradient(145deg, #111812 0%, #0b100c 62%, #121711 100%);
+}
+
+.start-menu,
+.settings-panel {
+  width: min(440px, 100%);
+  margin-left: clamp(0px, 8vw, 120px);
+}
+
+.menu-kicker {
+  display: block;
+  margin-bottom: 9px;
+  color: #929987;
+  font-family: "DM Mono", monospace;
+  font-size: 0.67rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.start-menu h1,
+.settings-panel h1 {
+  margin: 0;
+  font-size: clamp(2.6rem, 8vw, 4.8rem);
+  line-height: 0.94;
+  letter-spacing: -0.065em;
+}
+
+.settings-panel h1 {
+  font-size: clamp(2.2rem, 7vw, 3.8rem);
+}
+
+.menu-copy {
+  max-width: 50ch;
+  margin: 20px 0 28px;
+  color: #aaa99e;
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+.menu-actions,
+.settings-actions {
+  display: grid;
+  gap: 9px;
+  max-width: 340px;
+}
+
+.menu-button,
+.game-menu-button {
+  min-height: 48px;
+  border: 1px solid #4f584a;
+  border-radius: 4px;
+  background: rgb(18 24 18 / 88%);
+  color: #ddd6c2;
+  padding: 11px 15px;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.menu-button:not(:disabled):hover,
+.game-menu-button:hover {
+  border-color: #a78e58;
+  background: #20281e;
+  color: #f3ecd8;
+}
+
+.menu-button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.menu-button.primary {
+  border-color: #85754f;
+  background: #d5c38e;
+  color: #171b15;
+}
+
+.menu-button.primary:not(:disabled):hover {
+  background: #e4d29a;
+  color: #11150f;
+}
+
+.menu-button.subtle {
+  color: #92998d;
+  background: transparent;
+}
+
+.menu-button.danger {
+  border-color: #76504a;
+  color: #d8aaa2;
+  background: transparent;
+}
+
+.save-summary {
+  margin: -2px 2px 6px;
+  color: #777f72;
+  font-family: "DM Mono", monospace;
+  font-size: 0.66rem;
+}
+
+.new-game-confirm {
+  padding: 12px 0 4px;
+  border-top: 1px solid #30382e;
+  border-bottom: 1px solid #30382e;
+}
+
+.new-game-confirm p {
+  margin: 0 0 10px;
+  color: #b8afa2;
+  font-size: 0.78rem;
+}
+
+.new-game-confirm > div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.setting-row {
+  width: min(620px, 100%);
+  min-height: 76px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 22px;
+  padding: 14px 0;
+  border-bottom: 1px solid #293028;
+  color: #ded8c8;
+  cursor: pointer;
+}
+
+.setting-row:first-of-type {
+  border-top: 1px solid #293028;
+}
+
+.setting-row span {
+  display: grid;
+  gap: 4px;
+}
+
+.setting-row strong {
+  font-size: 0.88rem;
+}
+
+.setting-row small {
+  color: #8c9288;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.setting-row input {
+  width: 22px;
+  height: 22px;
+  accent-color: #d1af63;
+}
+
+.settings-actions {
+  margin-top: 28px;
+}
+
+.game-menu-button {
+  position: fixed;
+  left: 18px;
+  bottom: 18px;
+  z-index: 45;
+  min-width: 82px;
+  text-align: center;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+}
+
+.hide-touch-hints .mobile-world-hint {
+  display: none !important;
+}
+
+.reduce-ui-motion *,
+.reduce-ui-motion *::before,
+.reduce-ui-motion *::after {
+  scroll-behavior: auto !important;
+  transition-duration: 0s !important;
+  animation-duration: 0s !important;
+  animation-iteration-count: 1 !important;
+}
+
+.compact-status .status-strip {
+  gap: 10px;
+}
+
+.compact-status .status-strip div {
+  min-width: 42px;
+}
+
+@media (max-width: 560px) {
+  .front-door-shell {
+    align-items: end;
+    padding: calc(22px + env(safe-area-inset-top)) 18px calc(28px + env(safe-area-inset-bottom));
+  }
+
+  .start-menu,
+  .settings-panel {
+    margin-left: 0;
+  }
+
+  .start-menu h1,
+  .settings-panel h1 {
+    font-size: clamp(2.45rem, 14vw, 3.8rem);
+  }
+
+  .menu-copy {
+    margin-top: 16px;
+    margin-bottom: 22px;
+    font-size: 0.84rem;
+  }
+
+  .menu-actions,
+  .settings-actions {
+    max-width: none;
+  }
+
+  .menu-button {
+    min-height: 52px;
+  }
+
+  .setting-row {
+    min-height: 82px;
+  }
+
+  .game-menu-button {
+    left: 12px;
+    bottom: calc(190px + env(safe-area-inset-bottom));
+    min-height: 44px;
+  }
+}
