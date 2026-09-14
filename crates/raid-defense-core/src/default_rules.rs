@@ -104,6 +104,7 @@ pub const STANDARD_RULES: GameRules = GameRules {
     },
     raids: RaidRules {
         raiders_per_wave: 4,
+        spawn_interval_ticks: 10,
         base_health: 30,
         health_per_wave: 3,
         base_damage: 10,
