@@ -20,6 +20,7 @@ impl GameState {
             wave: 0,
             completed_waves: 0,
             day_ticks_remaining: rules.cycle.day_length_ticks,
+            wave_schedule: WaveSchedule::default(),
             next_entity: 1,
             transforms: SparseMap::new(),
             health: SparseMap::new(),
@@ -107,7 +108,7 @@ impl GameState {
 
     #[must_use]
     pub fn is_night(&self) -> bool {
-        self.raider_count() != 0
+        self.wave_schedule.remaining_raiders != 0 || self.raider_count() != 0
     }
 
     #[must_use]
@@ -244,6 +245,8 @@ impl GameState {
         feed_u64(&mut hash, u64::from(self.wave));
         feed_u64(&mut hash, u64::from(self.completed_waves));
         feed_u16(&mut hash, self.day_ticks_remaining);
+        feed_u16(&mut hash, self.wave_schedule.remaining_raiders);
+        feed_u16(&mut hash, self.wave_schedule.spawn_ticks_remaining);
         feed_u64(&mut hash, u64::from(self.next_entity));
 
         for entity in &self.snapshot().entities {
