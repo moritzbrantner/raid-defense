@@ -41,7 +41,7 @@ The roadmap is vertical: every milestone should leave GitHub Pages more playable
 
 ## D. Waves and raiders
 
-- [ ] Add timed spawn schedules rather than one simultaneous raider per edge.
+- [x] Add timed spawn schedules rather than one simultaneous raider per edge.
 - [ ] Add larger waves and deterministic composition recipes.
 - [ ] Add fast, tank, swarm, ranged, boss, and eventually flying raider archetypes.
 - [ ] Add explicit wave completion, preparation windows, and escalating rewards.
