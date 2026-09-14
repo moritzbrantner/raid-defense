@@ -32,6 +32,11 @@ impl RaidDefenseGame {
         dispatch_json(&mut self.state, command_json)
     }
 
+    /// Advances one deterministic simulation step without routing through command dispatch.
+    pub fn advance_tick(&mut self) -> String {
+        advance_tick_json(&mut self.state)
+    }
+
     pub fn checksum(&self) -> String {
         self.state.checksum().to_string()
     }
@@ -657,6 +662,17 @@ fn dispatch_json(state: &mut GameState, command_json: &str) -> String {
     }
 }
 
+fn advance_tick_json(state: &mut GameState) -> String {
+    let event = state.advance_tick();
+    serialize(&DispatchResponseDto {
+        contract_version: CONTRACT_VERSION,
+        ok: true,
+        event: Some(EventDto::from(event)),
+        error: None,
+        snapshot: SnapshotDto::from(&*state),
+    })
+}
+
 const fn tower_archetype_label(archetype: TowerArchetype) -> &'static str {
     match archetype {
         TowerArchetype::Arrow => "arrow",
@@ -737,6 +753,20 @@ mod tests {
         assert_eq!(value["ok"], false);
         assert_eq!(value["error"]["code"], "invalid_command_json");
         assert_eq!(state.checksum(), before);
+    }
+
+    #[test]
+    fn direct_tick_matches_legacy_command_adapter() {
+        let mut direct = GameState::new(42);
+        let mut legacy = direct.clone();
+
+        let response = advance_tick_json(&mut direct);
+        legacy
+            .apply(Command::AdvanceTick)
+            .expect("legacy tick adapter must remain compatible");
+
+        assert_eq!(checksum_from_response(&response), legacy.checksum().to_string());
+        assert_eq!(direct, legacy);
     }
 
     #[test]
