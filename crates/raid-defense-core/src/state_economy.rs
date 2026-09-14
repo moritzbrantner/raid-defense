@@ -329,7 +329,11 @@ impl GameState {
         }
     }
 
-    pub(super) fn advance_tick(&mut self) -> Event {
+    /// Advance one deterministic simulation step directly.
+    ///
+    /// This is intentionally not an application/CQRS operation. Callers that own the simulation
+    /// clock should use this hot path rather than serializing a synthetic tick command.
+    pub fn advance_tick(&mut self) -> Event {
         self.tick = self.tick.saturating_add(1);
         self.run_forest_regrowth_system();
         let had_active_wave = self.is_night();
