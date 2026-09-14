@@ -367,16 +367,14 @@ impl GameState {
             self.despawn_raider(entity);
         }
         let (wood_stolen, town_damage) = self.run_raider_movement_system();
-        let completed_wave = if wave_active_this_tick
-            && !self.is_night()
-            && self.completed_waves < self.wave
-        {
-            self.completed_waves = self.wave;
-            self.day_ticks_remaining = self.rules.cycle.day_length_ticks;
-            Some(self.wave)
-        } else {
-            None
-        };
+        let completed_wave =
+            if wave_active_this_tick && !self.is_night() && self.completed_waves < self.wave {
+                self.completed_waves = self.wave;
+                self.day_ticks_remaining = self.rules.cycle.day_length_ticks;
+                Some(self.wave)
+            } else {
+                None
+            };
 
         Event::TickAdvanced {
             tick: self.tick,
