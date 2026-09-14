@@ -1,5 +1,91 @@
 use super::*;
 
+const UNREACHABLE_FLOW_DISTANCE: u16 = u16::MAX;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RaiderFlowField {
+    distances: Vec<u16>,
+}
+
+impl RaiderFlowField {
+    fn build(state: &GameState, goals: &[Cell]) -> Option<Self> {
+        if goals.is_empty() {
+            return None;
+        }
+
+        let cell_count = usize::try_from(GRID_WIDTH).ok()? * usize::try_from(GRID_HEIGHT).ok()?;
+        let mut distances = vec![UNREACHABLE_FLOW_DISTANCE; cell_count];
+        let mut queue = VecDeque::new();
+        let mut ordered_goals = goals.to_vec();
+        ordered_goals.sort_unstable();
+        ordered_goals.dedup();
+
+        for goal in ordered_goals {
+            if state.path_cell_blocked(goal, None) {
+                continue;
+            }
+            let index = cell_index(goal)?;
+            if distances[index] == 0 {
+                continue;
+            }
+            distances[index] = 0;
+            queue.push_back(goal);
+        }
+
+        if queue.is_empty() {
+            return None;
+        }
+
+        while let Some(cell) = queue.pop_front() {
+            let cell_distance = distances[cell_index(cell)?];
+            let next_distance = cell_distance.saturating_add(1);
+            for neighbor in neighbors(cell) {
+                if state.path_cell_blocked(neighbor, None) {
+                    continue;
+                }
+                let index = cell_index(neighbor)?;
+                if distances[index] <= next_distance {
+                    continue;
+                }
+                distances[index] = next_distance;
+                queue.push_back(neighbor);
+            }
+        }
+
+        Some(Self { distances })
+    }
+
+    fn distance(&self, cell: Cell) -> Option<u16> {
+        let distance = *self.distances.get(cell_index(cell)?)?;
+        (distance != UNREACHABLE_FLOW_DISTANCE).then_some(distance)
+    }
+
+    fn next_step(&self, start: Cell) -> Option<Cell> {
+        let current_distance = self.distance(start)?;
+        if current_distance == 0 {
+            return Some(start);
+        }
+
+        let mut best = None;
+        for neighbor in neighbors(start) {
+            let Some(distance) = self.distance(neighbor) else {
+                continue;
+            };
+            if distance >= current_distance {
+                continue;
+            }
+            match best {
+                None => best = Some((distance, neighbor)),
+                Some((best_distance, _)) if distance < best_distance => {
+                    best = Some((distance, neighbor));
+                }
+                _ => {}
+            }
+        }
+        best.map(|(_, cell)| cell)
+    }
+}
+
 impl GameState {
     pub(super) fn run_tower_attack_system(&mut self) -> u16 {
         let mut tower_ids = self
@@ -157,6 +243,7 @@ impl GameState {
     pub(super) fn run_raider_movement_system(&mut self) -> (u16, u16) {
         let mut raiders = self.raiders.keys().map(key_entity).collect::<Vec<_>>();
         raiders.sort_unstable();
+        let flow_fields = self.raider_flow_fields(&raiders);
         let mut wood_stolen = 0_u16;
         let mut town_damage = 0_u16;
         let mut finished = Vec::new();
@@ -198,13 +285,15 @@ impl GameState {
                     self.raiders.insert(entity_key(entity), raider);
                 }
 
-                let mut goals = self.storage_goal_cells(raider.target_storage, None);
-                let mut next = self.next_path_step_to_any(movement.from, &goals, None);
+                let mut next = flow_fields
+                    .get(&raider.target_storage)
+                    .and_then(|field| field.next_step(movement.from));
                 if next.is_none() && raider.target_storage != TOWN_ENTITY {
                     raider.target_storage = TOWN_ENTITY;
                     self.raiders.insert(entity_key(entity), raider);
-                    goals = town_goal_cells();
-                    next = self.next_path_step_to_any(movement.from, &goals, None);
+                    next = flow_fields
+                        .get(&TOWN_ENTITY)
+                        .and_then(|field| field.next_step(movement.from));
                 }
                 let Some(next) = next else {
                     movement.to = movement.from;
@@ -231,6 +320,48 @@ impl GameState {
         }
 
         (wood_stolen, town_damage)
+    }
+
+    fn raider_flow_fields(
+        &self,
+        active_raiders: &[EntityId],
+    ) -> BTreeMap<EntityId, RaiderFlowField> {
+        let needs_route = active_raiders.iter().any(|entity| {
+            self.movements
+                .get(entity_key(*entity))
+                .is_some_and(|movement| {
+                    movement.progress_milli.saturating_add(movement.speed_milli)
+                        >= CELL_SCALE as u16
+                })
+        });
+        if !needs_route {
+            return BTreeMap::new();
+        }
+
+        let mut targets = active_raiders
+            .iter()
+            .filter_map(|entity| {
+                self.raiders
+                    .get(entity_key(*entity))
+                    .map(|raider| raider.target_storage)
+            })
+            .collect::<Vec<_>>();
+        targets.extend(self.settlement_storage_ids().into_iter().filter(|entity| {
+            self.storage
+                .get(entity_key(*entity))
+                .is_some_and(|storage| storage.wood > 0)
+        }));
+        targets.push(TOWN_ENTITY);
+        targets.sort_unstable();
+        targets.dedup();
+
+        targets
+            .into_iter()
+            .filter_map(|entity| {
+                let goals = self.storage_goal_cells(entity, None);
+                RaiderFlowField::build(self, &goals).map(|field| (entity, field))
+            })
+            .collect()
     }
 
     pub(super) fn raider_wood_steal_amount(&self) -> u32 {
@@ -359,5 +490,66 @@ impl GameState {
     pub(super) fn spawn_entity(&mut self, entity: EntityId) {
         let inserted = self.alive.insert(entity_key(entity));
         assert!(inserted, "entity ids must be unique");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn raider_flow_field_matches_existing_bfs_routes() {
+        let state = GameState::new(0x5eed);
+        let goals = town_goal_cells();
+        let flow = RaiderFlowField::build(&state, &goals).expect("town must have a flow field");
+
+        for z in 0..GRID_HEIGHT {
+            for x in 0..GRID_WIDTH {
+                let cell = Cell::new(x, z);
+                if state.path_cell_blocked(cell, None) {
+                    continue;
+                }
+                assert_eq!(
+                    flow.next_step(cell),
+                    state.next_path_step_to_any(cell, &goals, None),
+                    "flow field must preserve deterministic BFS routing from {cell:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn raiders_between_cells_require_no_flow_fields() {
+        let mut state = GameState::new(17);
+        state.wave = 1;
+        state.spawn_raider(Edge::North);
+        let raiders = state.raiders.keys().map(key_entity).collect::<Vec<_>>();
+
+        assert!(state.raider_flow_fields(&raiders).is_empty());
+    }
+
+    #[test]
+    fn raiders_crossing_cells_get_all_retarget_candidates() {
+        let mut state = GameState::new(17);
+        state.wave = 1;
+        state.spawn_raider(Edge::North);
+        let raiders = state.raiders.keys().map(key_entity).collect::<Vec<_>>();
+        let raider = raiders[0];
+        let movement = state
+            .movements
+            .get_mut(entity_key(raider))
+            .expect("spawned raider must move");
+        movement.progress_milli = (CELL_SCALE as u16).saturating_sub(movement.speed_milli);
+        let fields = state.raider_flow_fields(&raiders);
+
+        assert!(fields.contains_key(&TOWN_ENTITY));
+        for target in state.settlement_storage_ids().into_iter().filter(|entity| {
+            state
+                .storage
+                .get(entity_key(*entity))
+                .is_some_and(|storage| storage.wood > 0)
+        }) {
+            assert!(fields.contains_key(&target));
+        }
     }
 }
