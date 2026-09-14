@@ -323,7 +323,15 @@ impl GameState {
     }
 
     fn raider_flow_fields(&self, active_raiders: &[EntityId]) -> BTreeMap<EntityId, RaiderFlowField> {
-        if active_raiders.is_empty() {
+        let needs_route = active_raiders.iter().any(|entity| {
+            self.movements.get(entity_key(*entity)).is_some_and(|movement| {
+                movement
+                    .progress_milli
+                    .saturating_add(movement.speed_milli)
+                    >= CELL_SCALE as u16
+            })
+        });
+        if !needs_route {
             return BTreeMap::new();
         }
 
@@ -508,17 +516,27 @@ mod tests {
     }
 
     #[test]
-    fn no_raiders_require_no_flow_fields() {
-        let state = GameState::new(17);
-        assert!(state.raider_flow_fields(&[]).is_empty());
-    }
-
-    #[test]
-    fn active_raiders_get_all_retarget_candidates() {
+    fn raiders_between_cells_require_no_flow_fields() {
         let mut state = GameState::new(17);
         state.wave = 1;
         state.spawn_raider(Edge::North);
         let raiders = state.raiders.keys().map(key_entity).collect::<Vec<_>>();
+
+        assert!(state.raider_flow_fields(&raiders).is_empty());
+    }
+
+    #[test]
+    fn raiders_crossing_cells_get_all_retarget_candidates() {
+        let mut state = GameState::new(17);
+        state.wave = 1;
+        state.spawn_raider(Edge::North);
+        let raiders = state.raiders.keys().map(key_entity).collect::<Vec<_>>();
+        let raider = raiders[0];
+        let movement = state
+            .movements
+            .get_mut(entity_key(raider))
+            .expect("spawned raider must move");
+        movement.progress_milli = (CELL_SCALE as u16).saturating_sub(movement.speed_milli);
         let fields = state.raider_flow_fields(&raiders);
 
         assert!(fields.contains_key(&TOWN_ENTITY));
