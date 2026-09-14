@@ -281,8 +281,8 @@ impl GameState {
                         finished.push(entity);
                         continue;
                     }
-                    raider.target_storage = self
-                        .nearest_raider_storage_from_flow_fields(movement.from, &flow_fields);
+                    raider.target_storage =
+                        self.nearest_raider_storage_from_flow_fields(movement.from, &flow_fields);
                     self.raiders.insert(entity_key(entity), raider);
                 }
 
