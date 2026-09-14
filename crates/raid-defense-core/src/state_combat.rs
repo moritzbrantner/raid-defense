@@ -322,14 +322,17 @@ impl GameState {
         (wood_stolen, town_damage)
     }
 
-    fn raider_flow_fields(&self, active_raiders: &[EntityId]) -> BTreeMap<EntityId, RaiderFlowField> {
+    fn raider_flow_fields(
+        &self,
+        active_raiders: &[EntityId],
+    ) -> BTreeMap<EntityId, RaiderFlowField> {
         let needs_route = active_raiders.iter().any(|entity| {
-            self.movements.get(entity_key(*entity)).is_some_and(|movement| {
-                movement
-                    .progress_milli
-                    .saturating_add(movement.speed_milli)
-                    >= CELL_SCALE as u16
-            })
+            self.movements
+                .get(entity_key(*entity))
+                .is_some_and(|movement| {
+                    movement.progress_milli.saturating_add(movement.speed_milli)
+                        >= CELL_SCALE as u16
+                })
         });
         if !needs_route {
             return BTreeMap::new();
