@@ -18,12 +18,12 @@ Gameplay tuning is an explicit input to the simulation rather than a collection 
 - population — starting people, capacity, health, movement, and carrying capacity;
 - buildings — costs, health, House unlock progression, and population effects;
 - towers — build costs, level stats, upgrade costs, health, and level limit;
-- raids — wave size, health/damage scaling, movement, and resource theft;
+- raids — wave size, spawn cadence, health/damage scaling, movement, and resource theft;
 - cycle — daytime length, automatic raid cadence, and whether raids pause the economy.
 
 `default_rules.rs` contains `STANDARD_RULES`, the single ordinary balance table for the shipped game. Systems do not own copies of these values: each `GameState` stores one immutable `GameRules` value and reads from it whenever a rule affects simulation behavior.
 
-This distinction is deliberate. A designer should be able to change a Sawmill cost, House unlock wave, carrier capacity, tower damage, raid scaling, or day duration by changing a rules profile rather than rewriting a system. By contrast, grid dimensions, fixed-point representation, deterministic path-neighbor order, and stable tie-breaking remain engine invariants because changing them alters simulation representation/topology rather than ordinary balance.
+This distinction is deliberate. A designer should be able to change a Sawmill cost, House unlock wave, carrier capacity, tower damage, raid scaling, spawn cadence, or day duration by changing a rules profile rather than rewriting a system. By contrast, grid dimensions, fixed-point representation, deterministic path-neighbor order, and stable tie-breaking remain engine invariants because changing them alters simulation representation/topology rather than ordinary balance.
 
 Rules validate before a configurable game starts. Invalid profiles fail closed instead of being silently normalized. Every complete rule set also has a deterministic fingerprint, which is included in game checksums so two states produced under different rules cannot accidentally claim the same authoritative identity.
 
@@ -61,17 +61,19 @@ The exact cost, unlock threshold, capacity, and number of people are rules-profi
 
 ## Day/night cycle
 
-Time pressure is authoritative simulation state. The standard profile has a 600-tick peaceful day (60 seconds at the current 100 ms browser tick cadence). When that countdown expires, Rust starts the next raid automatically. While raiders are active, the standard profile pauses Sawmill production and carrier logistics. Completing the wave starts a fresh daytime period.
+Time pressure is authoritative simulation state. The standard profile has a 600-tick peaceful day (60 seconds at the current 100 ms browser tick cadence). When that countdown expires, Rust starts the next raid automatically. The first raider enters immediately and the remaining raiders enter at the configured authoritative spawn interval in a deterministic seed-and-wave-derived edge order.
 
-Those policy values live in `CycleRules`. The state machine remains the same if a future profile uses a longer day, manual-only raids, or allows economic work during combat.
+The raid phase lasts for the entire spawn schedule plus the lifetime of all spawned raiders. A temporary gap with no live raider does not end the night, restart the day, allow another raid, or resume economic work. Under the standard profile, Sawmill production and carrier logistics remain paused until there are neither scheduled nor live raiders. Only then is the wave completed and a fresh daytime period started.
+
+Those policy values live in `RaidRules` and `CycleRules`, while the pending schedule itself is checksum-bound `GameState`. The state machine remains deterministic if a future profile changes wave size, spawn cadence, day length, manual-only raids, or whether economic work continues during combat.
 
 ## Authority boundary
 
-`raid-defense-core` is the sole authority for ECS state and game outcomes. It owns immutable game rules, entity lifecycle, population, housing, local and Town Hall storage, production, carrier assignment/pathing/cargo transfer, grid occupancy, day/night phase progression, wave completion, building unlocks, raider pathfinding, targeting, projectiles, upgrades, theft, damage, health, command validation, replay, and checksums.
+`raid-defense-core` is the sole authority for ECS state and game outcomes. It owns immutable game rules, entity lifecycle, population, housing, local and Town Hall storage, production, carrier assignment/pathing/cargo transfer, grid occupancy, day/night phase progression, timed raid scheduling, wave completion, building unlocks, raider pathfinding, targeting, projectiles, upgrades, theft, damage, health, command validation, replay, and checksums.
 
 `raid-defense-wasm` is a versioned serialization adapter only. It maps commands/events/snapshots without recomputing rules. Values such as costs and unlock thresholds come from the active `GameState` rules, not duplicate adapter constants.
 
-The browser owns input, camera, and 3D presentation. It requests deterministic ticks but does not decide production, carrier assignments, cargo transfers, phase transitions, unlocks, movement, targeting, damage, or resource theft.
+The browser owns input, camera, and 3D presentation. It requests deterministic ticks but does not decide production, carrier assignments, cargo transfers, phase transitions, spawn timing, unlocks, movement, targeting, damage, or resource theft.
 
 ## ECS storage
 
@@ -98,18 +100,18 @@ Authoritative positions are integer fixed-point values (`CELL_SCALE = 1000`). Gr
 
 Building commands validate completely before mutation. A new blocking building must keep every edge/active raider connected to the Town Hall, every Sawmill reachable by workers, and every currently moving worker able to finish their task.
 
-Equal rules, seeds, and ordered commands replay to equal ECS state and equal checksums. Different rules intentionally produce a different checksum identity even if a changed rule has not yet affected an entity.
+Equal rules, seeds, and ordered commands replay to equal ECS state and equal checksums. Pending wave-spawn state is part of that deterministic identity, so resuming in a gap between raiders cannot change when or where the next raider appears. Different rules intentionally produce a different checksum identity even if a changed rule has not yet affected an entity.
 
 ## Current vertical slice
 
 The current playable loop has:
 
-- 17×13 authoritative grid and 3D presentation;
+- 21×21 authoritative grid and 3D presentation;
 - central Town Hall with stored wood;
 - Arrow and Cannon towers with three upgrade levels and real projectile entities;
 - Sawmills that create buffered wood;
 - starting carrier people who shuttle between Town Hall and Sawmills;
-- raiders from four edges that steal Town Hall wood;
+- raiders from four edges that enter waves over authoritative simulation time and steal settlement wood;
 - deterministic daytime preparation followed by automatic night raids;
 - completed-wave progression;
 - Houses unlocked by completed-wave progression to expand population/logistics capacity;
@@ -119,8 +121,8 @@ The current playable loop has:
 
 The strongest next mechanics remain vertical rather than content-heavy:
 
-1. richer worker allocation/priorities once there are multiple resource types;
-2. distinct raider archetypes and larger scheduled waves;
+1. larger deterministic wave composition recipes and distinct raider archetypes;
+2. richer worker allocation/priorities once there are multiple resource types;
 3. worker vulnerability/evacuation only if it improves the economy-defense decision rather than adding busywork;
 4. movement/status effects and projectile variants;
 5. tower sale/rebuild and authoritative/advisory path-preview feedback;

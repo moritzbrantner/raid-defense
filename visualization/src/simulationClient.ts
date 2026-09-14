@@ -19,7 +19,7 @@ type ReplayEntry =
   | { kind: "command"; command: RaidDefenseCommand };
 
 type SavedGameBase = {
-  contract_version: 8;
+  contract_version: 9;
   seed: number;
   entries: ReplayEntry[];
   checksum: string;
@@ -47,7 +47,8 @@ export type SavedGameSummary = Pick<
 
 const SAVE_KEY = "raid-defense.save.v2";
 const LEGACY_SAVE_KEY = "raid-defense.save.v1";
-const CONTRACT_VERSION = 8;
+const WASM_CONTRACT_VERSION = 8;
+const SAVE_CONTRACT_VERSION = 9;
 const TICKS_PER_PERSIST = 10;
 
 let wasmModulePromise: Promise<WasmModule> | null = null;
@@ -84,7 +85,7 @@ function parseSnapshotValue(value: unknown): SnapshotView {
   if (!isObject(value)) {
     throw new Error("snapshot must be an object");
   }
-  if (value.contract_version !== CONTRACT_VERSION) {
+  if (value.contract_version !== WASM_CONTRACT_VERSION) {
     throw new Error(`unsupported contract version: ${String(value.contract_version)}`);
   }
   if (!Array.isArray(value.entities)) {
@@ -126,7 +127,7 @@ function parseSnapshot(json: string) {
 
 function parseResponse(json: string): DispatchResponse {
   const value = parseObject(json, "dispatch response");
-  if (value.contract_version !== CONTRACT_VERSION || typeof value.ok !== "boolean") {
+  if (value.contract_version !== WASM_CONTRACT_VERSION || typeof value.ok !== "boolean") {
     throw new Error("dispatch response has an invalid contract envelope");
   }
 
@@ -150,7 +151,10 @@ function parseSavedGame(raw: string): SavedGame | null {
   try {
     const value: unknown = JSON.parse(raw);
     if (!isObject(value)) return null;
-    if ((value.version !== 1 && value.version !== 2) || value.contract_version !== CONTRACT_VERSION) {
+    if (
+      (value.version !== 1 && value.version !== 2) ||
+      value.contract_version !== SAVE_CONTRACT_VERSION
+    ) {
       return null;
     }
     if (
@@ -290,7 +294,8 @@ export class RaidDefenseSimulationClient {
     pendingSession = null;
     const params = typeof window === "undefined" ? null : new URLSearchParams(window.location.search);
     const directNew = params?.get("new") === "1";
-    const shouldResume = intent?.kind === "resume" || (!intent && !directNew && params?.get("screen") === "game");
+    const shouldResume =
+      intent?.kind === "resume" || (!intent && !directNew && params?.get("screen") === "game");
 
     if (shouldResume) {
       const saved = readSavedGame();
@@ -310,7 +315,7 @@ export class RaidDefenseSimulationClient {
     const snapshot = parseSnapshot(engine.snapshot());
     const save: SavedGameV2 = {
       version: 2,
-      contract_version: CONTRACT_VERSION,
+      contract_version: SAVE_CONTRACT_VERSION,
       seed,
       scenario: { ...scenario },
       entries: [],
@@ -327,9 +332,10 @@ export class RaidDefenseSimulationClient {
   }
 
   private static async fromSavedGame(module: WasmModule, saved: SavedGame) {
-    const engine = saved.version === 2
-      ? createScenarioEngine(module, saved.seed, saved.scenario)
-      : new module.RaidDefenseGame(saved.seed);
+    const engine =
+      saved.version === 2
+        ? createScenarioEngine(module, saved.seed, saved.scenario)
+        : new module.RaidDefenseGame(saved.seed);
     let replayed = 0;
 
     const replayCommand = async (command: RaidDefenseCommand) => {

@@ -190,6 +190,12 @@ pub struct Raider {
     pub target_storage: EntityId,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct WaveSchedule {
+    remaining_raiders: u16,
+    spawn_ticks_remaining: u16,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Movement {
     pub from: Cell,
@@ -384,6 +390,7 @@ pub struct GameState {
     wave: u32,
     completed_waves: u32,
     day_ticks_remaining: u16,
+    wave_schedule: WaveSchedule,
     next_entity: EntityId,
     transforms: SparseMap<Transform>,
     health: SparseMap<Health>,

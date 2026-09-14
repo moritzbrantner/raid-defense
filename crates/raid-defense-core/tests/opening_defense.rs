@@ -250,16 +250,21 @@ fn ending_a_wave_does_not_leave_orphaned_projectiles() {
     assert_eq!(state.tower_count(), 1);
     state.apply(Command::StartWave).expect("wave should start");
 
-    for _ in 0..160 {
+    for _ in 0..200 {
         state
             .apply(Command::AdvanceTick)
             .expect("wave tick should advance");
-        if state.raider_count() == 0 {
+        if !state.is_night() {
             break;
         }
     }
 
-    assert_eq!(state.raider_count(), 0, "wave should eventually end");
+    assert!(!state.is_night(), "wave should eventually end");
+    assert_eq!(
+        state.raider_count(),
+        0,
+        "completed wave has no live raiders"
+    );
     assert_eq!(
         state.projectile_count(),
         0,

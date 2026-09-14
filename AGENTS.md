@@ -46,10 +46,12 @@
 
 ## Day/night invariants
 
-- Day/night timing and automatic raid cadence are authoritative Rust rules, not browser timers.
-- The standard profile starts a raid after 600 peaceful simulation ticks and resets the day after the active wave completes.
-- The standard profile pauses production and carrier logistics while raiders are active. Natural forest regrowth remains authoritative world progression and is not a Sawmill/carrier action.
-- Presentation may display phase/countdown state but must not decide when a wave starts or whether economic systems advance.
+- Day/night timing, raid spawn cadence, and automatic raid cadence are authoritative Rust rules, not browser timers.
+- The standard profile starts a raid after 600 peaceful simulation ticks. The first raider spawns immediately and the rest of the wave enter on the authoritative spawn schedule.
+- A raid remains active while either live raiders or scheduled raiders remain. Zero-live-raider gaps must not complete the wave, permit another raid, or resume paused economy systems.
+- The standard profile pauses production and carrier logistics for the entire active raid schedule. Natural forest regrowth remains authoritative world progression and is not a Sawmill/carrier action.
+- The day resets only after the full scheduled wave has completed.
+- Presentation may display phase/countdown state but must not decide when a wave starts, when a scheduled raider appears, when a wave completes, or whether economic systems advance.
 
 ## ECS and reuse
 
