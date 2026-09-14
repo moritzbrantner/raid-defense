@@ -339,7 +339,12 @@ mod simulator {
             let mut results = Vec::with_capacity(capacity);
             for offset in 0..config.runs {
                 let seed = config.seed.wrapping_add(u64::from(offset));
-                results.push(simulate_scenario(seed, config.ticks, config.policy, case.scenario));
+                results.push(simulate_scenario(
+                    seed,
+                    config.ticks,
+                    config.policy,
+                    case.scenario,
+                ));
             }
 
             print_report(
@@ -385,9 +390,9 @@ mod simulator {
             }
 
             if let Some(command) = policy.choose_action(&state) {
-                state
-                    .apply(command)
-                    .expect("a command accepted by the deterministic policy probe must remain valid");
+                state.apply(command).expect(
+                    "a command accepted by the deterministic policy probe must remain valid",
+                );
                 commands_applied += 1;
             }
 
@@ -650,12 +655,8 @@ Examples:\n  cargo run -p raid-defense-sim --bin scenario-experiment -- --seed 4
 
         #[test]
         fn scenario_rules_participate_in_simulation_identity() {
-            let standard = simulate_scenario(
-                0x5eed,
-                100,
-                Policy::Passive,
-                ScenarioOptions::standard(),
-            );
+            let standard =
+                simulate_scenario(0x5eed, 100, Policy::Passive, ScenarioOptions::standard());
             let mut harsh = ScenarioOptions::standard();
             harsh.raid_size = RaidSize::Large;
             harsh.raider_strength = RaiderStrength::Harsh;
