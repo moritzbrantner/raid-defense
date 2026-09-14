@@ -765,7 +765,10 @@ mod tests {
             .apply(Command::AdvanceTick)
             .expect("legacy tick adapter must remain compatible");
 
-        assert_eq!(checksum_from_response(&response), legacy.checksum().to_string());
+        assert_eq!(
+            checksum_from_response(&response),
+            legacy.checksum().to_string()
+        );
         assert_eq!(direct, legacy);
     }
 
