@@ -243,7 +243,7 @@ impl GameState {
     pub(super) fn run_raider_movement_system(&mut self) -> (u16, u16) {
         let mut raiders = self.raiders.keys().map(key_entity).collect::<Vec<_>>();
         raiders.sort_unstable();
-        let flow_fields = self.raider_flow_fields();
+        let flow_fields = self.raider_flow_fields(&raiders);
         let mut wood_stolen = 0_u16;
         let mut town_damage = 0_u16;
         let mut finished = Vec::new();
@@ -322,8 +322,29 @@ impl GameState {
         (wood_stolen, town_damage)
     }
 
-    fn raider_flow_fields(&self) -> BTreeMap<EntityId, RaiderFlowField> {
-        self.settlement_storage_ids()
+    fn raider_flow_fields(&self, active_raiders: &[EntityId]) -> BTreeMap<EntityId, RaiderFlowField> {
+        if active_raiders.is_empty() {
+            return BTreeMap::new();
+        }
+
+        let mut targets = active_raiders
+            .iter()
+            .filter_map(|entity| {
+                self.raiders
+                    .get(entity_key(*entity))
+                    .map(|raider| raider.target_storage)
+            })
+            .collect::<Vec<_>>();
+        targets.extend(self.settlement_storage_ids().into_iter().filter(|entity| {
+            self.storage
+                .get(entity_key(*entity))
+                .is_some_and(|storage| storage.wood > 0)
+        }));
+        targets.push(TOWN_ENTITY);
+        targets.sort_unstable();
+        targets.dedup();
+
+        targets
             .into_iter()
             .filter_map(|entity| {
                 let goals = self.storage_goal_cells(entity, None);
@@ -487,13 +508,26 @@ mod tests {
     }
 
     #[test]
-    fn raider_flow_fields_cover_every_settlement_storage_target() {
+    fn no_raiders_require_no_flow_fields() {
         let state = GameState::new(17);
-        let fields = state.raider_flow_fields();
-        let targets = state.settlement_storage_ids();
+        assert!(state.raider_flow_fields(&[]).is_empty());
+    }
 
-        assert_eq!(fields.len(), targets.len());
-        for target in targets {
+    #[test]
+    fn active_raiders_get_all_retarget_candidates() {
+        let mut state = GameState::new(17);
+        state.wave = 1;
+        state.spawn_raider(Edge::North);
+        let raiders = state.raiders.keys().map(key_entity).collect::<Vec<_>>();
+        let fields = state.raider_flow_fields(&raiders);
+
+        assert!(fields.contains_key(&TOWN_ENTITY));
+        for target in state.settlement_storage_ids().into_iter().filter(|entity| {
+            state
+                .storage
+                .get(entity_key(*entity))
+                .is_some_and(|storage| storage.wood > 0)
+        }) {
             assert!(fields.contains_key(&target));
         }
     }
