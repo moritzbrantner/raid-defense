@@ -260,7 +260,11 @@ fn ending_a_wave_does_not_leave_orphaned_projectiles() {
     }
 
     assert!(!state.is_night(), "wave should eventually end");
-    assert_eq!(state.raider_count(), 0, "completed wave has no live raiders");
+    assert_eq!(
+        state.raider_count(),
+        0,
+        "completed wave has no live raiders"
+    );
     assert_eq!(
         state.projectile_count(),
         0,
