@@ -12,7 +12,11 @@ fn wave_spawns_raiders_at_authoritative_interval() {
     let mut state = GameState::with_rules(SEED, rules);
 
     state.apply(Command::StartWave).expect("wave should start");
-    assert_eq!(state.raider_count(), 1, "the first raider spawns immediately");
+    assert_eq!(
+        state.raider_count(),
+        1,
+        "the first raider spawns immediately"
+    );
     assert!(state.is_night());
 
     for expected_count in 2..=4 {
@@ -60,7 +64,10 @@ fn raid_stays_active_between_scheduled_spawns() {
         }
     }
 
-    assert!(observed_gap, "the first raider should finish before the second spawn");
+    assert!(
+        observed_gap,
+        "the first raider should finish before the second spawn"
+    );
     assert!(
         state.is_night(),
         "pending scheduled raiders keep the authoritative raid active"
@@ -81,7 +88,11 @@ fn raid_stays_active_between_scheduled_spawns() {
         }
     }
     assert_eq!(state.wave(), 1);
-    assert_eq!(state.raider_count(), 1, "the pending raider must eventually spawn");
+    assert_eq!(
+        state.raider_count(),
+        1,
+        "the pending raider must eventually spawn"
+    );
 }
 
 #[test]
