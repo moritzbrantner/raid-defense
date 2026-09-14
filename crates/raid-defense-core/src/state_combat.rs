@@ -281,7 +281,8 @@ impl GameState {
                         finished.push(entity);
                         continue;
                     }
-                    raider.target_storage = self.nearest_raider_storage(movement.from);
+                    raider.target_storage = self
+                        .nearest_raider_storage_from_flow_fields(movement.from, &flow_fields);
                     self.raiders.insert(entity_key(entity), raider);
                 }
 
@@ -362,6 +363,29 @@ impl GameState {
                 RaiderFlowField::build(self, &goals).map(|field| (entity, field))
             })
             .collect()
+    }
+
+    fn nearest_raider_storage_from_flow_fields(
+        &self,
+        start: Cell,
+        flow_fields: &BTreeMap<EntityId, RaiderFlowField>,
+    ) -> EntityId {
+        let mut candidates = self
+            .settlement_storage_ids()
+            .into_iter()
+            .filter_map(|entity| {
+                let storage = self.storage.get(entity_key(entity))?;
+                if storage.wood == 0 {
+                    return None;
+                }
+                let distance = flow_fields.get(&entity)?.distance(start)?;
+                Some((distance, entity))
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_unstable();
+        candidates
+            .first()
+            .map_or(TOWN_ENTITY, |(_, entity)| *entity)
     }
 
     pub(super) fn raider_wood_steal_amount(&self) -> u32 {
@@ -550,6 +574,62 @@ mod tests {
                 .is_some_and(|storage| storage.wood > 0)
         }) {
             assert!(fields.contains_key(&target));
+        }
+    }
+
+    #[test]
+    fn flow_field_retargeting_matches_existing_bfs_storage_choice() {
+        let mut state = GameState::new(17);
+        let storage_cell = (1..GRID_HEIGHT - 1)
+            .flat_map(|z| (1..GRID_WIDTH - 1).map(move |x| Cell::new(x, z)))
+            .find(|cell| {
+                let mut probe = state.clone();
+                probe
+                    .apply(Command::PlaceStorageHouse {
+                        x: cell.x,
+                        z: cell.z,
+                    })
+                    .is_ok()
+            })
+            .expect("seeded map must expose an accepted storage-house cell");
+        state
+            .apply(Command::PlaceStorageHouse {
+                x: storage_cell.x,
+                z: storage_cell.z,
+            })
+            .expect("storage house should build");
+        let storage_house = state
+            .settlement_storage_ids()
+            .into_iter()
+            .find(|entity| *entity != TOWN_ENTITY)
+            .expect("storage house must join settlement storage");
+        let transferred = state.take_wood_at(TOWN_ENTITY, 20);
+        assert_eq!(transferred, 20);
+        assert_eq!(state.store_wood_at(storage_house, transferred), transferred);
+
+        state.wave = 1;
+        state.spawn_raider(Edge::North);
+        let raiders = state.raiders.keys().map(key_entity).collect::<Vec<_>>();
+        let raider = raiders[0];
+        let movement = state
+            .movements
+            .get_mut(entity_key(raider))
+            .expect("spawned raider must move");
+        movement.progress_milli = (CELL_SCALE as u16).saturating_sub(movement.speed_milli);
+        let fields = state.raider_flow_fields(&raiders);
+
+        for z in 0..GRID_HEIGHT {
+            for x in 0..GRID_WIDTH {
+                let cell = Cell::new(x, z);
+                if state.path_cell_blocked(cell, None) {
+                    continue;
+                }
+                assert_eq!(
+                    state.nearest_raider_storage_from_flow_fields(cell, &fields),
+                    state.nearest_raider_storage(cell),
+                    "flow-field retargeting must preserve BFS storage choice from {cell:?}"
+                );
+            }
         }
     }
 }
