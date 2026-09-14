@@ -9,10 +9,18 @@
     linear-gradient(145deg, #111812 0%, #0b100c 62%, #121711 100%);
 }
 
-.start-menu,
-.settings-panel {
+.settings-shell {
+  align-items: start;
+}
+
+.start-menu {
   width: min(440px, 100%);
   margin-left: clamp(0px, 8vw, 120px);
+}
+
+.settings-panel {
+  width: min(620px, 100%);
+  margin: clamp(0px, 4vh, 48px) 0 clamp(0px, 4vh, 48px) clamp(0px, 8vw, 120px);
 }
 
 .menu-kicker {
@@ -127,6 +135,33 @@
   gap: 8px;
 }
 
+.settings-sections {
+  display: flex;
+  gap: 8px;
+  margin: 22px 0 8px;
+}
+
+.settings-sections button {
+  min-height: 44px;
+  border: 1px solid #3c4639;
+  border-radius: 4px;
+  background: transparent;
+  color: #92998d;
+  padding: 9px 13px;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.settings-sections button:hover,
+.settings-sections button.active {
+  border-color: #85754f;
+  background: #20281e;
+  color: #f0e4c6;
+}
+
 .setting-row {
   width: min(620px, 100%);
   min-height: 76px;
@@ -159,10 +194,39 @@
   line-height: 1.45;
 }
 
-.setting-row input {
+.setting-row input[type="checkbox"] {
   width: 22px;
   height: 22px;
   accent-color: #d1af63;
+}
+
+.setting-row select {
+  min-width: 144px;
+  min-height: 44px;
+  border: 1px solid #4f584a;
+  border-radius: 4px;
+  background: #141a13;
+  color: #ddd6c2;
+  padding: 8px 34px 8px 11px;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.setting-row select:focus-visible,
+.settings-sections button:focus-visible,
+.menu-button:focus-visible,
+.game-menu-button:focus-visible {
+  outline: 2px solid #d1af63;
+  outline-offset: 2px;
+}
+
+.scenario-note {
+  margin: 18px 0 0;
+  color: #9b917c;
+  font-size: 0.74rem;
+  line-height: 1.55;
 }
 
 .settings-actions {
@@ -206,9 +270,18 @@
     padding: calc(22px + env(safe-area-inset-top)) 18px calc(28px + env(safe-area-inset-bottom));
   }
 
+  .settings-shell {
+    align-items: start;
+  }
+
   .start-menu,
   .settings-panel {
     margin-left: 0;
+  }
+
+  .settings-panel {
+    margin-top: 0;
+    margin-bottom: 0;
   }
 
   .start-menu h1,
@@ -231,8 +304,29 @@
     min-height: 52px;
   }
 
+  .settings-sections {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .settings-sections button {
+    min-height: 48px;
+  }
+
   .setting-row {
     min-height: 82px;
+    gap: 14px;
+  }
+
+  .scenario-setting-row {
+    grid-template-columns: minmax(0, 1fr) 128px;
+  }
+
+  .setting-row select {
+    width: 128px;
+    min-width: 128px;
+    min-height: 48px;
+    padding-right: 24px;
   }
 
   .game-menu-button {

@@ -288,6 +288,213 @@ pub struct CycleRules {
     pub pause_economy_during_raids: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StartingSupplies {
+    Lean,
+    Standard,
+    Rich,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ForestDensity {
+    Sparse,
+    Standard,
+    Dense,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ForestRegrowth {
+    Slow,
+    Standard,
+    Fast,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SawmillThroughput {
+    Slow,
+    Standard,
+    Fast,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RaidSize {
+    Small,
+    Standard,
+    Large,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RaiderStrength {
+    Gentle,
+    Standard,
+    Harsh,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DayLength {
+    Short,
+    Standard,
+    Long,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RaidTiming {
+    Standard,
+    Manual,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RaidEconomy {
+    Standard,
+    Continuous,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ScenarioOptions {
+    pub starting_supplies: StartingSupplies,
+    pub forest_density: ForestDensity,
+    pub forest_regrowth: ForestRegrowth,
+    pub sawmill_throughput: SawmillThroughput,
+    pub raid_size: RaidSize,
+    pub raider_strength: RaiderStrength,
+    pub day_length: DayLength,
+    pub raid_timing: RaidTiming,
+    pub raid_economy: RaidEconomy,
+}
+
+impl ScenarioOptions {
+    #[must_use]
+    pub const fn standard() -> Self {
+        Self {
+            starting_supplies: StartingSupplies::Standard,
+            forest_density: ForestDensity::Standard,
+            forest_regrowth: ForestRegrowth::Standard,
+            sawmill_throughput: SawmillThroughput::Standard,
+            raid_size: RaidSize::Standard,
+            raider_strength: RaiderStrength::Standard,
+            day_length: DayLength::Standard,
+            raid_timing: RaidTiming::Standard,
+            raid_economy: RaidEconomy::Standard,
+        }
+    }
+
+    pub fn into_rules(self) -> Result<GameRules, RulesError> {
+        let mut rules = crate::STANDARD_RULES;
+
+        match self.starting_supplies {
+            StartingSupplies::Lean => rules.economy.starting_wood /= 2,
+            StartingSupplies::Standard => {}
+            StartingSupplies::Rich => {
+                rules.economy.starting_wood = rules
+                    .economy
+                    .starting_wood
+                    .saturating_mul(2)
+                    .min(rules.economy.town_wood_capacity);
+            }
+        }
+
+        match self.forest_density {
+            ForestDensity::Sparse => {
+                rules.economy.forest_tile_count = half_nonzero(rules.economy.forest_tile_count);
+            }
+            ForestDensity::Standard => {}
+            ForestDensity::Dense => {
+                rules.economy.forest_tile_count = increase_half(rules.economy.forest_tile_count);
+            }
+        }
+
+        match self.forest_regrowth {
+            ForestRegrowth::Slow => {
+                rules.economy.forest_regrowth_interval_ticks = rules
+                    .economy
+                    .forest_regrowth_interval_ticks
+                    .saturating_mul(2);
+            }
+            ForestRegrowth::Standard => {}
+            ForestRegrowth::Fast => {
+                rules.economy.forest_regrowth_interval_ticks =
+                    half_nonzero(rules.economy.forest_regrowth_interval_ticks);
+            }
+        }
+
+        match self.sawmill_throughput {
+            SawmillThroughput::Slow => {
+                rules.economy.sawmill_output = half_nonzero(rules.economy.sawmill_output);
+            }
+            SawmillThroughput::Standard => {}
+            SawmillThroughput::Fast => {
+                rules.economy.sawmill_output = rules.economy.sawmill_output.saturating_mul(2);
+            }
+        }
+
+        match self.raid_size {
+            RaidSize::Small => {
+                rules.raids.raiders_per_wave = half_nonzero(rules.raids.raiders_per_wave);
+            }
+            RaidSize::Standard => {}
+            RaidSize::Large => {
+                rules.raids.raiders_per_wave = rules.raids.raiders_per_wave.saturating_mul(2);
+            }
+        }
+
+        match self.raider_strength {
+            RaiderStrength::Gentle => {
+                rules.raids.base_health = decrease_third(rules.raids.base_health);
+                rules.raids.health_per_wave = decrease_third(rules.raids.health_per_wave);
+                rules.raids.base_damage = decrease_third(rules.raids.base_damage);
+                rules.raids.damage_increase_amount =
+                    decrease_third(rules.raids.damage_increase_amount);
+            }
+            RaiderStrength::Standard => {}
+            RaiderStrength::Harsh => {
+                rules.raids.base_health = increase_half(rules.raids.base_health);
+                rules.raids.health_per_wave = increase_half(rules.raids.health_per_wave);
+                rules.raids.base_damage = increase_half(rules.raids.base_damage);
+                rules.raids.damage_increase_amount =
+                    increase_half(rules.raids.damage_increase_amount);
+            }
+        }
+
+        match self.day_length {
+            DayLength::Short => {
+                rules.cycle.day_length_ticks = half_nonzero(rules.cycle.day_length_ticks);
+            }
+            DayLength::Standard => {}
+            DayLength::Long => {
+                rules.cycle.day_length_ticks = rules.cycle.day_length_ticks.saturating_mul(2);
+            }
+        }
+
+        if self.raid_timing == RaidTiming::Manual {
+            rules.cycle.automatic_raids = false;
+        }
+        if self.raid_economy == RaidEconomy::Continuous {
+            rules.cycle.pause_economy_during_raids = false;
+        }
+
+        rules.validate()?;
+        Ok(rules)
+    }
+}
+
+impl Default for ScenarioOptions {
+    fn default() -> Self {
+        Self::standard()
+    }
+}
+
+fn half_nonzero(value: u16) -> u16 {
+    (value / 2).max(1)
+}
+
+fn increase_half(value: u16) -> u16 {
+    value.saturating_add((value / 2).max(1))
+}
+
+fn decrease_third(value: u16) -> u16 {
+    u16::try_from((u32::from(value) * 2 / 3).max(1)).unwrap_or(u16::MAX)
+}
+
 const fn has_negative_active_range(tower: TowerArchetypeRules, max_level: u8) -> bool {
     let mut index = 0_usize;
     while index < max_level as usize {
@@ -389,5 +596,45 @@ mod tests {
         let mut changed = STANDARD_RULES;
         changed.raids.damage_increase_amount += 1;
         assert_ne!(standard, changed.fingerprint());
+    }
+
+    #[test]
+    fn standard_scenario_is_exact_standard_rules() {
+        assert_eq!(
+            ScenarioOptions::standard()
+                .into_rules()
+                .expect("standard scenario must validate"),
+            STANDARD_RULES
+        );
+    }
+
+    #[test]
+    fn scenario_modifiers_change_authoritative_rules_and_identity() {
+        let scenario = ScenarioOptions {
+            starting_supplies: StartingSupplies::Rich,
+            forest_density: ForestDensity::Dense,
+            forest_regrowth: ForestRegrowth::Fast,
+            sawmill_throughput: SawmillThroughput::Fast,
+            raid_size: RaidSize::Large,
+            raider_strength: RaiderStrength::Harsh,
+            day_length: DayLength::Long,
+            raid_timing: RaidTiming::Manual,
+            raid_economy: RaidEconomy::Continuous,
+        };
+        let rules = scenario.into_rules().expect("scenario must validate");
+
+        assert!(rules.economy.starting_wood > STANDARD_RULES.economy.starting_wood);
+        assert!(rules.economy.forest_tile_count > STANDARD_RULES.economy.forest_tile_count);
+        assert!(
+            rules.economy.forest_regrowth_interval_ticks
+                < STANDARD_RULES.economy.forest_regrowth_interval_ticks
+        );
+        assert!(rules.economy.sawmill_output > STANDARD_RULES.economy.sawmill_output);
+        assert!(rules.raids.raiders_per_wave > STANDARD_RULES.raids.raiders_per_wave);
+        assert!(rules.raids.base_health > STANDARD_RULES.raids.base_health);
+        assert!(rules.cycle.day_length_ticks > STANDARD_RULES.cycle.day_length_ticks);
+        assert!(!rules.cycle.automatic_raids);
+        assert!(!rules.cycle.pause_economy_during_raids);
+        assert_ne!(rules.fingerprint(), STANDARD_RULES.fingerprint());
     }
 }

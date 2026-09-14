@@ -1,7 +1,9 @@
 #![forbid(unsafe_code)]
 
 use raid_defense_core::{
-    Command, EntityKind, Event, GameError, GameState, PersonState, ResourceKind, TowerArchetype,
+    Command, DayLength, EntityKind, Event, ForestDensity, ForestRegrowth, GameError, GameState,
+    PersonState, RaidEconomy, RaidSize, RaidTiming, RaiderStrength, ResourceKind,
+    SawmillThroughput, ScenarioOptions, StartingSupplies, TowerArchetype,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -32,6 +34,207 @@ impl RaidDefenseGame {
 
     pub fn checksum(&self) -> String {
         self.state.checksum().to_string()
+    }
+}
+
+#[wasm_bindgen]
+pub fn create_game(seed: u32, scenario_json: &str) -> Result<RaidDefenseGame, JsValue> {
+    let scenario = serde_json::from_str::<ScenarioOptionsDto>(scenario_json)
+        .map(ScenarioOptions::from)
+        .map_err(|_| JsValue::from_str("invalid_scenario_options"))?;
+    let rules = scenario
+        .into_rules()
+        .map_err(|_| JsValue::from_str("invalid_scenario_rules"))?;
+    let state = GameState::try_with_rules(u64::from(seed), rules)
+        .map_err(|_| JsValue::from_str("invalid_scenario_rules"))?;
+    Ok(RaidDefenseGame { state })
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum StartingSuppliesDto {
+    Lean,
+    Standard,
+    Rich,
+}
+
+impl From<StartingSuppliesDto> for StartingSupplies {
+    fn from(value: StartingSuppliesDto) -> Self {
+        match value {
+            StartingSuppliesDto::Lean => Self::Lean,
+            StartingSuppliesDto::Standard => Self::Standard,
+            StartingSuppliesDto::Rich => Self::Rich,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ForestDensityDto {
+    Sparse,
+    Standard,
+    Dense,
+}
+
+impl From<ForestDensityDto> for ForestDensity {
+    fn from(value: ForestDensityDto) -> Self {
+        match value {
+            ForestDensityDto::Sparse => Self::Sparse,
+            ForestDensityDto::Standard => Self::Standard,
+            ForestDensityDto::Dense => Self::Dense,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ForestRegrowthDto {
+    Slow,
+    Standard,
+    Fast,
+}
+
+impl From<ForestRegrowthDto> for ForestRegrowth {
+    fn from(value: ForestRegrowthDto) -> Self {
+        match value {
+            ForestRegrowthDto::Slow => Self::Slow,
+            ForestRegrowthDto::Standard => Self::Standard,
+            ForestRegrowthDto::Fast => Self::Fast,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SawmillThroughputDto {
+    Slow,
+    Standard,
+    Fast,
+}
+
+impl From<SawmillThroughputDto> for SawmillThroughput {
+    fn from(value: SawmillThroughputDto) -> Self {
+        match value {
+            SawmillThroughputDto::Slow => Self::Slow,
+            SawmillThroughputDto::Standard => Self::Standard,
+            SawmillThroughputDto::Fast => Self::Fast,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum RaidSizeDto {
+    Small,
+    Standard,
+    Large,
+}
+
+impl From<RaidSizeDto> for RaidSize {
+    fn from(value: RaidSizeDto) -> Self {
+        match value {
+            RaidSizeDto::Small => Self::Small,
+            RaidSizeDto::Standard => Self::Standard,
+            RaidSizeDto::Large => Self::Large,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum RaiderStrengthDto {
+    Gentle,
+    Standard,
+    Harsh,
+}
+
+impl From<RaiderStrengthDto> for RaiderStrength {
+    fn from(value: RaiderStrengthDto) -> Self {
+        match value {
+            RaiderStrengthDto::Gentle => Self::Gentle,
+            RaiderStrengthDto::Standard => Self::Standard,
+            RaiderStrengthDto::Harsh => Self::Harsh,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum DayLengthDto {
+    Short,
+    Standard,
+    Long,
+}
+
+impl From<DayLengthDto> for DayLength {
+    fn from(value: DayLengthDto) -> Self {
+        match value {
+            DayLengthDto::Short => Self::Short,
+            DayLengthDto::Standard => Self::Standard,
+            DayLengthDto::Long => Self::Long,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum RaidTimingDto {
+    Standard,
+    Manual,
+}
+
+impl From<RaidTimingDto> for RaidTiming {
+    fn from(value: RaidTimingDto) -> Self {
+        match value {
+            RaidTimingDto::Standard => Self::Standard,
+            RaidTimingDto::Manual => Self::Manual,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum RaidEconomyDto {
+    Standard,
+    Continuous,
+}
+
+impl From<RaidEconomyDto> for RaidEconomy {
+    fn from(value: RaidEconomyDto) -> Self {
+        match value {
+            RaidEconomyDto::Standard => Self::Standard,
+            RaidEconomyDto::Continuous => Self::Continuous,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ScenarioOptionsDto {
+    starting_supplies: StartingSuppliesDto,
+    forest_density: ForestDensityDto,
+    forest_regrowth: ForestRegrowthDto,
+    sawmill_throughput: SawmillThroughputDto,
+    raid_size: RaidSizeDto,
+    raider_strength: RaiderStrengthDto,
+    day_length: DayLengthDto,
+    raid_timing: RaidTimingDto,
+    raid_economy: RaidEconomyDto,
+}
+
+impl From<ScenarioOptionsDto> for ScenarioOptions {
+    fn from(value: ScenarioOptionsDto) -> Self {
+        Self {
+            starting_supplies: value.starting_supplies.into(),
+            forest_density: value.forest_density.into(),
+            forest_regrowth: value.forest_regrowth.into(),
+            sawmill_throughput: value.sawmill_throughput.into(),
+            raid_size: value.raid_size.into(),
+            raider_strength: value.raider_strength.into(),
+            day_length: value.day_length.into(),
+            raid_timing: value.raid_timing.into(),
+            raid_economy: value.raid_economy.into(),
+        }
     }
 }
 
@@ -501,7 +704,7 @@ fn serialize<T: Serialize>(value: &T) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use raid_defense_core::Cell;
+    use raid_defense_core::{Cell, STANDARD_RULES};
     use serde_json::Value;
 
     fn checksum_from_response(response: &str) -> String {
@@ -552,6 +755,51 @@ mod tests {
                 .iter()
                 .any(|entity| entity.kind == "forest")
         );
+    }
+
+    #[test]
+    fn scenario_contract_maps_named_modifiers_to_authoritative_rules() {
+        let dto: ScenarioOptionsDto = serde_json::from_str(
+            r#"{
+                "starting_supplies":"rich",
+                "forest_density":"dense",
+                "forest_regrowth":"fast",
+                "sawmill_throughput":"fast",
+                "raid_size":"large",
+                "raider_strength":"harsh",
+                "day_length":"long",
+                "raid_timing":"manual",
+                "raid_economy":"continuous"
+            }"#,
+        )
+        .expect("scenario JSON should parse");
+        let rules = ScenarioOptions::from(dto)
+            .into_rules()
+            .expect("scenario rules should validate");
+
+        assert!(rules.economy.starting_wood > STANDARD_RULES.economy.starting_wood);
+        assert!(rules.economy.forest_tile_count > STANDARD_RULES.economy.forest_tile_count);
+        assert!(rules.raids.raiders_per_wave > STANDARD_RULES.raids.raiders_per_wave);
+        assert!(!rules.cycle.automatic_raids);
+        assert!(!rules.cycle.pause_economy_during_raids);
+    }
+
+    #[test]
+    fn malformed_scenario_contract_is_rejected() {
+        let parsed = serde_json::from_str::<ScenarioOptionsDto>(
+            r#"{
+                "starting_supplies":"unlimited",
+                "forest_density":"standard",
+                "forest_regrowth":"standard",
+                "sawmill_throughput":"standard",
+                "raid_size":"standard",
+                "raider_strength":"standard",
+                "day_length":"standard",
+                "raid_timing":"standard",
+                "raid_economy":"standard"
+            }"#,
+        );
+        assert!(parsed.is_err());
     }
 
     #[test]
