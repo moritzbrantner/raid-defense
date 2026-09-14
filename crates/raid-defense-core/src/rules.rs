@@ -24,6 +24,7 @@ pub enum RulesError {
     InvalidTowerLevelCount,
     NegativeTowerRange,
     ZeroRaidersPerWave,
+    ZeroRaidSpawnInterval,
     ZeroRaidDamageInterval,
     ZeroDayLength,
 }
@@ -67,6 +68,9 @@ impl GameRules {
         }
         if self.raids.raiders_per_wave == 0 {
             return Err(RulesError::ZeroRaidersPerWave);
+        }
+        if self.raids.spawn_interval_ticks == 0 {
+            return Err(RulesError::ZeroRaidSpawnInterval);
         }
         if self.raids.damage_increase_every_waves == 0 {
             return Err(RulesError::ZeroRaidDamageInterval);
@@ -159,6 +163,7 @@ impl GameRules {
         feed_tower(&mut hash, self.towers.cannon);
 
         feed_u16(&mut hash, self.raids.raiders_per_wave);
+        feed_u16(&mut hash, self.raids.spawn_interval_ticks);
         feed_u16(&mut hash, self.raids.base_health);
         feed_u16(&mut hash, self.raids.health_per_wave);
         feed_u16(&mut hash, self.raids.base_damage);
@@ -271,6 +276,7 @@ impl TowerLevelRules {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RaidRules {
     pub raiders_per_wave: u16,
+    pub spawn_interval_ticks: u16,
     pub base_health: u16,
     pub health_per_wave: u16,
     pub base_damage: u16,
@@ -583,10 +589,25 @@ mod tests {
     }
 
     #[test]
+    fn rejects_zero_raid_spawn_interval() {
+        let mut rules = STANDARD_RULES;
+        rules.raids.spawn_interval_ticks = 0;
+        assert_eq!(rules.validate(), Err(RulesError::ZeroRaidSpawnInterval));
+    }
+
+    #[test]
     fn resource_rules_participate_in_rule_identity() {
         let standard = STANDARD_RULES.fingerprint();
         let mut changed = STANDARD_RULES;
         changed.economy.forest_regrowth_interval_ticks += 1;
+        assert_ne!(standard, changed.fingerprint());
+    }
+
+    #[test]
+    fn raid_spawn_interval_participates_in_rule_identity() {
+        let standard = STANDARD_RULES.fingerprint();
+        let mut changed = STANDARD_RULES;
+        changed.raids.spawn_interval_ticks += 1;
         assert_ne!(standard, changed.fingerprint());
     }
 
