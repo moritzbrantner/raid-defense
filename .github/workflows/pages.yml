@@ -12,7 +12,8 @@ permissions:
   id-token: write
 
 env:
-  GH_PACKAGES_TOKEN: ${{ github.token }}
+  GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN || github.token }}
+  NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN || github.token }}
 
 concurrency:
   group: raid-defense-pages
