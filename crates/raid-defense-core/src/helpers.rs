@@ -150,6 +150,13 @@ const fn tower_archetype_code(archetype: TowerArchetype) -> u8 {
     }
 }
 
+const fn raider_archetype_code(archetype: RaiderArchetype) -> u8 {
+    match archetype {
+        RaiderArchetype::Basic => 0,
+        RaiderArchetype::Advanced => 1,
+    }
+}
+
 const fn resource_kind_code(resource: ResourceKind) -> u8 {
     match resource {
         ResourceKind::Wood => 0,
