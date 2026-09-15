@@ -402,6 +402,7 @@ impl GameState {
         )
     }
 
+    #[cfg(test)]
     pub(super) fn spawn_raider(&mut self, edge: Edge) {
         self.spawn_raider_as(edge, RaiderArchetype::Basic);
     }
