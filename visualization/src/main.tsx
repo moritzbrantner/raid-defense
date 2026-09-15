@@ -11,10 +11,10 @@ if (!rootElement) {
   throw new Error("Missing #root mount point");
 }
 
-async function bootstrap() {
+async function bootstrap(container: HTMLElement) {
   const { i18n } = await createRaidDefenseI18n();
 
-  createRoot(rootElement).render(
+  createRoot(container).render(
     <React.StrictMode>
       <LocalizationProvider fallbackLocale="en" i18n={i18n} supportedLocales={supportedLocales}>
         <RootApp />
@@ -23,4 +23,4 @@ async function bootstrap() {
   );
 }
 
-void bootstrap();
+void bootstrap(rootElement);
