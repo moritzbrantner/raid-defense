@@ -275,6 +275,20 @@ impl GameState {
         self.spend_settlement_wood(amount);
     }
 
+    fn wave_definition(&self, wave_number: u32) -> Result<(WaveRules, u16), GameError> {
+        if self.rules.raids.wave_plan.is_explicit() {
+            let wave = self
+                .rules
+                .raids
+                .wave_plan
+                .wave(wave_number)
+                .ok_or(GameError::ScenarioComplete)?;
+            Ok((wave, wave.total_raiders()))
+        } else {
+            Ok((WaveRules::EMPTY, self.rules.raids.raiders_per_wave))
+        }
+    }
+
     pub(super) fn start_wave(&mut self) -> Result<Event, GameError> {
         if self.town_health() == 0 {
             return Err(GameError::GameOver);
@@ -283,13 +297,15 @@ impl GameState {
             return Err(GameError::RaidersStillActive);
         }
 
+        let next_wave = self.wave.saturating_add(1);
+        let (_, raiders) = self.wave_definition(next_wave)?;
         self.day_ticks_remaining = 0;
         self.raid_rally_ticks_remaining = self.rules.cycle.raid_rally_ticks;
         self.recall_people_for_raid();
 
         Ok(Event::WaveStarted {
-            wave: self.wave.saturating_add(1),
-            raiders: self.rules.raids.raiders_per_wave,
+            wave: next_wave,
+            raiders,
             rally_ticks: self.rules.cycle.raid_rally_ticks,
         })
     }
@@ -297,12 +313,50 @@ impl GameState {
     fn begin_wave_after_rally(&mut self) {
         debug_assert_eq!(self.raid_rally_ticks_remaining, 0);
         debug_assert!(!self.is_night());
-        self.wave = self.wave.saturating_add(1);
+        let next_wave = self.wave.saturating_add(1);
+        let (wave, remaining_raiders) = self
+            .wave_definition(next_wave)
+            .expect("a rally can only begin for a validated next wave");
+        let remaining_in_group = wave.group(0).map_or(0, |group| group.count);
+        self.wave = next_wave;
         self.wave_schedule = WaveSchedule {
-            remaining_raiders: self.rules.raids.raiders_per_wave,
+            remaining_raiders,
             spawn_ticks_remaining: 0,
+            wave,
+            group_index: 0,
+            remaining_in_group,
         };
         self.spawn_next_scheduled_raider();
+    }
+
+    fn scheduled_wave_total(&self) -> u16 {
+        if self.wave_schedule.wave.group_count == 0 {
+            self.rules.raids.raiders_per_wave
+        } else {
+            self.wave_schedule.wave.total_raiders()
+        }
+    }
+
+    fn scheduled_raider_archetype(&self) -> RaiderArchetype {
+        self.wave_schedule
+            .wave
+            .group(usize::from(self.wave_schedule.group_index))
+            .map_or(RaiderArchetype::Basic, |group| group.archetype)
+    }
+
+    fn advance_explicit_wave_group(&mut self) {
+        if self.wave_schedule.wave.group_count == 0 || self.wave_schedule.remaining_in_group == 0 {
+            return;
+        }
+        self.wave_schedule.remaining_in_group -= 1;
+        if self.wave_schedule.remaining_in_group == 0 && self.wave_schedule.remaining_raiders > 0 {
+            self.wave_schedule.group_index = self.wave_schedule.group_index.saturating_add(1);
+            self.wave_schedule.remaining_in_group = self
+                .wave_schedule
+                .wave
+                .group(usize::from(self.wave_schedule.group_index))
+                .map_or(0, |group| group.count);
+        }
     }
 
     fn spawn_next_scheduled_raider(&mut self) {
@@ -312,14 +366,14 @@ impl GameState {
         }
 
         let spawned = self
-            .rules
-            .raids
-            .raiders_per_wave
+            .scheduled_wave_total()
             .saturating_sub(self.wave_schedule.remaining_raiders);
         let offset = (mix64(self.seed ^ u64::from(self.wave)) % 4) as usize;
         let edge = Edge::ALL[(usize::from(spawned) + offset) % Edge::ALL.len()];
-        self.spawn_raider(edge);
+        let archetype = self.scheduled_raider_archetype();
+        self.spawn_raider_as(edge, archetype);
         self.wave_schedule.remaining_raiders -= 1;
+        self.advance_explicit_wave_group();
         self.wave_schedule.spawn_ticks_remaining = if self.wave_schedule.remaining_raiders == 0 {
             0
         } else {
@@ -361,8 +415,10 @@ impl GameState {
         } else if !had_active_wave && self.rules.cycle.automatic_raids {
             self.day_ticks_remaining = self.day_ticks_remaining.saturating_sub(1);
             if self.day_ticks_remaining == 0 && self.town_health() > 0 {
-                self.start_wave()
-                    .expect("an expired peaceful day can always begin its raid rally");
+                match self.start_wave() {
+                    Ok(_) | Err(GameError::ScenarioComplete) => {}
+                    Err(error) => panic!("expired peaceful day could not begin its raid rally: {error:?}"),
+                }
             }
         } else if had_active_wave {
             self.advance_wave_spawn_schedule();
