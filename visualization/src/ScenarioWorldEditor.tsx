@@ -1,8 +1,4 @@
-import {
-  STANDARD_SCENARIO_WORLD,
-  type ScenarioOptions,
-  type ScenarioWorldRules,
-} from "./scenarioOptions";
+import type { ScenarioOptions, ScenarioWorldRules } from "./scenarioOptions";
 import "./ScenarioWorldEditor.css";
 
 type ScenarioWorldEditorProps = {
@@ -81,7 +77,17 @@ function ToggleField({
 }
 
 export function ScenarioWorldEditor({ scenario, onChange }: ScenarioWorldEditorProps) {
-  const world = scenario.world ?? STANDARD_SCENARIO_WORLD;
+  const world = scenario.world;
+
+  if (!world) {
+    return (
+      <div className="scenario-world-rule-stack" data-testid="scenario-world-editor">
+        <section className="scenario-rule-section">
+          <p>Loading authoritative world defaults from the Rust simulation…</p>
+        </section>
+      </div>
+    );
+  }
 
   function update<K extends keyof ScenarioWorldRules>(key: K, value: ScenarioWorldRules[K]) {
     onChange({
@@ -116,7 +122,7 @@ export function ScenarioWorldEditor({ scenario, onChange }: ScenarioWorldEditorP
             description="Exact number of renewable forest tiles seeded into the world."
             value={world.forest_tile_count}
             min={1}
-            max={27}
+            max={0xffff}
             onChange={(value) => update("forest_tile_count", value)}
             testId="scenario-forest-tile-count"
           />
