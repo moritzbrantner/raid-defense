@@ -4,6 +4,7 @@ export type CellView = {
 };
 
 export type TowerArchetype = "arrow" | "cannon";
+export type RaiderArchetype = "basic" | "advanced";
 export type ResourceKind = "wood";
 export type PersonState =
   | "idle_at_town_hall"
@@ -39,6 +40,7 @@ export type EntityView = {
   tower_archetype: TowerArchetype | null;
   tower_level: number;
   upgrade_cost: number | null;
+  raider_archetype: RaiderArchetype | null;
   projectile_target: number | null;
   stored_wood: number;
   wood_capacity: number;
@@ -54,7 +56,7 @@ export type EntityView = {
 };
 
 export type SnapshotView = {
-  contract_version: 9;
+  contract_version: 10;
   seed: string;
   tick: number;
   wood: number;
@@ -156,7 +158,7 @@ export type RaidDefenseEvent =
     };
 
 export type DispatchResponse = {
-  contract_version: 9;
+  contract_version: 10;
   ok: boolean;
   event: RaidDefenseEvent | null;
   error: { code: string } | null;

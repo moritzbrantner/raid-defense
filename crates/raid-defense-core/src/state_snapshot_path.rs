@@ -45,6 +45,7 @@ impl GameState {
                 tower_level: tower.map_or(0, |tower| tower.level),
                 upgrade_cost: tower
                     .and_then(|tower| self.rules.tower_upgrade_cost(tower.archetype, tower.level)),
+                raider_archetype: None,
                 projectile_target: None,
                 stored_wood: storage.wood,
                 wood_capacity: storage.wood_capacity,
@@ -78,6 +79,7 @@ impl GameState {
                 tower_archetype: None,
                 tower_level: 0,
                 upgrade_cost: None,
+                raider_archetype: None,
                 projectile_target: None,
                 stored_wood: 0,
                 wood_capacity: 0,
@@ -93,7 +95,7 @@ impl GameState {
             });
         }
 
-        if self.raiders.get(key).is_some() {
+        if let Some(raider) = self.raiders.get(key).copied() {
             let movement = self.movements.get(key)?;
             return Some(EntitySnapshot {
                 id: entity,
@@ -108,6 +110,7 @@ impl GameState {
                 tower_archetype: None,
                 tower_level: 0,
                 upgrade_cost: None,
+                raider_archetype: Some(raider.archetype),
                 projectile_target: None,
                 stored_wood: 0,
                 wood_capacity: 0,
@@ -137,6 +140,7 @@ impl GameState {
             tower_archetype: Some(projectile.archetype),
             tower_level: 0,
             upgrade_cost: None,
+            raider_archetype: None,
             projectile_target: Some(projectile.target),
             stored_wood: 0,
             wood_capacity: 0,

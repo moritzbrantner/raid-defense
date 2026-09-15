@@ -4,8 +4,8 @@ import type {
   SnapshotView,
 } from "./simulationTypes";
 import {
+  createStandardScenarioOptions,
   isScenarioOptions,
-  STANDARD_SCENARIO_OPTIONS,
   type ScenarioOptions,
 } from "./scenarioOptions";
 
@@ -47,7 +47,7 @@ export type SavedGameSummary = Pick<
 
 const SAVE_KEY = "raid-defense.save.v2";
 const LEGACY_SAVE_KEY = "raid-defense.save.v1";
-const WASM_CONTRACT_VERSION = 9;
+const WASM_CONTRACT_VERSION = 10;
 const SAVE_CONTRACT_VERSION = 10;
 const TICKS_PER_PERSIST = 10;
 
@@ -236,6 +236,10 @@ function seedFromUrl(fallback: number) {
   return Number.isInteger(value) && value >= 0 && value <= 0xffff_ffff ? value : fallback;
 }
 
+function cloneScenario(scenario: ScenarioOptions): ScenarioOptions {
+  return JSON.parse(JSON.stringify(scenario)) as ScenarioOptions;
+}
+
 function createScenarioEngine(module: WasmModule, seed: number, scenario: ScenarioOptions) {
   return module.create_game(seed, JSON.stringify(scenario));
 }
@@ -251,10 +255,10 @@ function installFlushListeners() {
 
 export function prepareNewGame(
   seed: number,
-  scenario: ScenarioOptions = STANDARD_SCENARIO_OPTIONS,
+  scenario: ScenarioOptions = createStandardScenarioOptions(),
 ) {
   clearSavedGame();
-  pendingSession = { kind: "new", seed: seed >>> 0, scenario: { ...scenario } };
+  pendingSession = { kind: "new", seed: seed >>> 0, scenario: cloneScenario(scenario) };
 }
 
 export function prepareResume() {
@@ -316,14 +320,14 @@ export class RaidDefenseSimulationClient {
     }
 
     const seed = intent?.kind === "new" ? intent.seed : seedFromUrl(fallbackSeed);
-    const scenario = intent?.kind === "new" ? intent.scenario : STANDARD_SCENARIO_OPTIONS;
+    const scenario = intent?.kind === "new" ? intent.scenario : createStandardScenarioOptions();
     const engine = createScenarioEngine(module, seed, scenario);
     const snapshot = parseSnapshot(engine.snapshot());
     const save: SavedGameV2 = {
       version: 2,
       contract_version: SAVE_CONTRACT_VERSION,
       seed,
-      scenario: { ...scenario },
+      scenario: cloneScenario(scenario),
       entries: [],
       checksum: snapshot.checksum,
       tick: snapshot.tick,

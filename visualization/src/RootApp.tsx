@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import App from "./App";
 import { GameWiki } from "./GameWiki";
+import { ScenarioEditor } from "./ScenarioEditor";
 import {
-  STANDARD_SCENARIO_OPTIONS,
+  createStandardScenarioOptions,
   type ScenarioOptions,
 } from "./scenarioOptions";
 import {
@@ -22,15 +23,6 @@ type PresentationSettings = {
   showTouchHints: boolean;
   reduceUiMotion: boolean;
   compactStatus: boolean;
-};
-
-type ScenarioSelectProps = {
-  label: string;
-  description: string;
-  value: string;
-  options: readonly { value: string; label: string }[];
-  onChange: (value: string) => void;
-  testId: string;
 };
 
 const SETTINGS_KEY = "raid-defense.settings.v1";
@@ -81,31 +73,6 @@ function saveDescription(save: SavedGameSummary) {
   return `${progress} · tick ${save.tick}`;
 }
 
-function ScenarioSelect({
-  label,
-  description,
-  value,
-  options,
-  onChange,
-  testId,
-}: ScenarioSelectProps) {
-  return (
-    <label className="setting-row scenario-setting-row">
-      <span>
-        <strong>{label}</strong>
-        <small>{description}</small>
-      </span>
-      <select value={value} onChange={(event) => onChange(event.target.value)} data-testid={testId}>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
 export default function RootApp() {
   const [screen, setScreen] = useState<Screen>(() => readScreen());
   const [settingsSection, setSettingsSection] = useState<SettingsSection>(() => readSettingsSection());
@@ -113,7 +80,7 @@ export default function RootApp() {
     readSavedGameSummary(),
   );
   const [settings, setSettings] = useState<PresentationSettings>(() => readSettings());
-  const [scenario, setScenario] = useState<ScenarioOptions>(() => ({ ...STANDARD_SCENARIO_OPTIONS }));
+  const [scenario, setScenario] = useState<ScenarioOptions>(() => createStandardScenarioOptions());
   const [confirmNew, setConfirmNew] = useState(false);
 
   useEffect(() => {
@@ -148,7 +115,10 @@ export default function RootApp() {
     url.searchParams.set("screen", next);
     url.searchParams.delete("new");
     url.searchParams.delete("seed");
-    if (next !== "settings") url.searchParams.delete("section");
+    if (next !== "settings") {
+      url.searchParams.delete("section");
+      url.searchParams.delete("scenarioView");
+    }
     window.history.pushState({}, "", url);
     setConfirmNew(false);
     setScreen(next);
@@ -160,14 +130,11 @@ export default function RootApp() {
     url.searchParams.set("section", section);
     url.searchParams.delete("new");
     url.searchParams.delete("seed");
+    if (section !== "scenario") url.searchParams.delete("scenarioView");
     window.history.pushState({}, "", url);
     setConfirmNew(false);
     setSettingsSection(section);
     setScreen("settings");
-  }
-
-  function updateScenario<K extends keyof ScenarioOptions>(key: K, value: ScenarioOptions[K]) {
-    setScenario((current) => ({ ...current, [key]: value }));
   }
 
   function startNewGame() {
@@ -232,7 +199,7 @@ export default function RootApp() {
               onClick={() => openSettingsSection("scenario")}
               data-testid="settings-scenario-tab"
             >
-              Scenario options
+              Scenario editor
             </button>
           </nav>
 
@@ -289,129 +256,7 @@ export default function RootApp() {
             </div>
           ) : (
             <div data-testid="scenario-settings">
-              <p className="menu-copy">
-                Tune the next new game without changing the simulation authority. The chosen scenario is saved with
-                that run, and Resume always reconstructs the same rules.
-              </p>
-
-              <ScenarioSelect
-                label="Starting supplies"
-                description="Begin with lean, standard, or rich Town Hall reserves."
-                value={scenario.starting_supplies}
-                options={[
-                  { value: "lean", label: "Lean" },
-                  { value: "standard", label: "Standard" },
-                  { value: "rich", label: "Rich" },
-                ]}
-                onChange={(value) => updateScenario("starting_supplies", value as ScenarioOptions["starting_supplies"])}
-                testId="scenario-starting-supplies"
-              />
-
-              <ScenarioSelect
-                label="Forest coverage"
-                description="Change how sparse or dense the seeded renewable forest is."
-                value={scenario.forest_density}
-                options={[
-                  { value: "sparse", label: "Sparse" },
-                  { value: "standard", label: "Standard" },
-                  { value: "dense", label: "Dense" },
-                ]}
-                onChange={(value) => updateScenario("forest_density", value as ScenarioOptions["forest_density"])}
-                testId="scenario-forest-density"
-              />
-
-              <ScenarioSelect
-                label="Forest regrowth"
-                description="Change how quickly depleted forest stock grows back."
-                value={scenario.forest_regrowth}
-                options={[
-                  { value: "slow", label: "Slow" },
-                  { value: "standard", label: "Standard" },
-                  { value: "fast", label: "Fast" },
-                ]}
-                onChange={(value) => updateScenario("forest_regrowth", value as ScenarioOptions["forest_regrowth"])}
-                testId="scenario-forest-regrowth"
-              />
-
-              <ScenarioSelect
-                label="Sawmill throughput"
-                description="Change how much wood a production cycle can harvest."
-                value={scenario.sawmill_throughput}
-                options={[
-                  { value: "slow", label: "Low" },
-                  { value: "standard", label: "Standard" },
-                  { value: "fast", label: "High" },
-                ]}
-                onChange={(value) => updateScenario("sawmill_throughput", value as ScenarioOptions["sawmill_throughput"])}
-                testId="scenario-sawmill-throughput"
-              />
-
-              <ScenarioSelect
-                label="Raid size"
-                description="Change how many raiders enter each wave."
-                value={scenario.raid_size}
-                options={[
-                  { value: "small", label: "Small" },
-                  { value: "standard", label: "Standard" },
-                  { value: "large", label: "Large" },
-                ]}
-                onChange={(value) => updateScenario("raid_size", value as ScenarioOptions["raid_size"])}
-                testId="scenario-raid-size"
-              />
-
-              <ScenarioSelect
-                label="Raider strength"
-                description="Change raider health, damage, and their wave-to-wave growth."
-                value={scenario.raider_strength}
-                options={[
-                  { value: "gentle", label: "Gentle" },
-                  { value: "standard", label: "Standard" },
-                  { value: "harsh", label: "Harsh" },
-                ]}
-                onChange={(value) => updateScenario("raider_strength", value as ScenarioOptions["raider_strength"])}
-                testId="scenario-raider-strength"
-              />
-
-              <ScenarioSelect
-                label="Day length"
-                description="Change the peaceful build-up time between automatic raids."
-                value={scenario.day_length}
-                options={[
-                  { value: "short", label: "Short" },
-                  { value: "standard", label: "Standard" },
-                  { value: "long", label: "Long" },
-                ]}
-                onChange={(value) => updateScenario("day_length", value as ScenarioOptions["day_length"])}
-                testId="scenario-day-length"
-              />
-
-              <ScenarioSelect
-                label="Raid timing"
-                description="Use the standard automatic cadence or start every raid manually."
-                value={scenario.raid_timing}
-                options={[
-                  { value: "standard", label: "Automatic" },
-                  { value: "manual", label: "Manual" },
-                ]}
-                onChange={(value) => updateScenario("raid_timing", value as ScenarioOptions["raid_timing"])}
-                testId="scenario-raid-timing"
-              />
-
-              <ScenarioSelect
-                label="Economy during raids"
-                description="Keep the standard pause or let production and logistics continue during combat."
-                value={scenario.raid_economy}
-                options={[
-                  { value: "standard", label: "Pause" },
-                  { value: "continuous", label: "Continue" },
-                ]}
-                onChange={(value) => updateScenario("raid_economy", value as ScenarioOptions["raid_economy"])}
-                testId="scenario-raid-economy"
-              />
-
-              {saveSummary ? (
-                <p className="scenario-note">These choices affect the next new game only. The current save keeps its original scenario.</p>
-              ) : null}
+              <ScenarioEditor scenario={scenario} onChange={setScenario} hasSave={Boolean(saveSummary)} />
             </div>
           )}
 
@@ -425,7 +270,7 @@ export default function RootApp() {
               onClick={() =>
                 settingsSection === "presentation"
                   ? setSettings(DEFAULT_SETTINGS)
-                  : setScenario({ ...STANDARD_SCENARIO_OPTIONS })
+                  : setScenario(createStandardScenarioOptions())
               }
             >
               {settingsSection === "presentation" ? "Reset presentation" : "Reset scenario"}

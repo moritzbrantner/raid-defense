@@ -1,7 +1,7 @@
 use crate::rules::{
     BuildingRules, CycleRules, EconomyRules, GameRules, HouseRules, PopulationRules, RaidRules,
-    SawmillRules, StorageHouseRules, TowerArchetypeRules, TowerLevelRules, TowerRules,
-    TownHallRules,
+    RaiderArchetypeRules, SawmillRules, StorageHouseRules, TowerArchetypeRules, TowerLevelRules,
+    TowerRules, TownHallRules, WavePlanRules,
 };
 
 /// The standard Raid Defense balance profile.
@@ -113,6 +113,19 @@ pub const STANDARD_RULES: GameRules = GameRules {
         speed_milli: 250,
         base_wood_steal: 15,
         wood_steal_per_wave: 2,
+        basic: RaiderArchetypeRules {
+            health: 30,
+            damage: 10,
+            speed_milli: 250,
+            wood_steal: 15,
+        },
+        advanced: RaiderArchetypeRules {
+            health: 60,
+            damage: 18,
+            speed_milli: 220,
+            wood_steal: 25,
+        },
+        wave_plan: WavePlanRules::EMPTY,
     },
     cycle: CycleRules {
         day_length_ticks: 600,

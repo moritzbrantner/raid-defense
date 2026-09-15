@@ -1,5 +1,8 @@
 use crate::{TowerArchetype, TowerStats};
 
+pub const MAX_SCENARIO_WAVES: usize = 64;
+pub const MAX_WAVE_GROUPS: usize = 8;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GameRules {
     pub economy: EconomyRules,
@@ -26,6 +29,14 @@ pub enum RulesError {
     ZeroRaidersPerWave,
     ZeroRaidSpawnInterval,
     ZeroRaidDamageInterval,
+    ZeroRaiderHealth,
+    ZeroRaiderDamage,
+    ZeroRaiderSpeed,
+    ZeroRaiderSteal,
+    InvalidWaveCount,
+    InvalidWaveGroupCount,
+    ZeroWaveGroupRaiders,
+    TooManyRaidersInWave,
     ZeroRaidRally,
     ZeroDayLength,
 }
@@ -76,6 +87,42 @@ impl GameRules {
         if self.raids.damage_increase_every_waves == 0 {
             return Err(RulesError::ZeroRaidDamageInterval);
         }
+        if self.raids.basic.health == 0 || self.raids.advanced.health == 0 {
+            return Err(RulesError::ZeroRaiderHealth);
+        }
+        if self.raids.basic.damage == 0 || self.raids.advanced.damage == 0 {
+            return Err(RulesError::ZeroRaiderDamage);
+        }
+        if self.raids.basic.speed_milli == 0 || self.raids.advanced.speed_milli == 0 {
+            return Err(RulesError::ZeroRaiderSpeed);
+        }
+        if self.raids.basic.wood_steal == 0 || self.raids.advanced.wood_steal == 0 {
+            return Err(RulesError::ZeroRaiderSteal);
+        }
+        if self.raids.wave_plan.wave_count as usize > MAX_SCENARIO_WAVES {
+            return Err(RulesError::InvalidWaveCount);
+        }
+        let mut wave_index = 0_usize;
+        while wave_index < self.raids.wave_plan.wave_count as usize {
+            let wave = self.raids.wave_plan.waves[wave_index];
+            if wave.group_count == 0 || wave.group_count as usize > MAX_WAVE_GROUPS {
+                return Err(RulesError::InvalidWaveGroupCount);
+            }
+            let mut group_index = 0_usize;
+            let mut total = 0_u32;
+            while group_index < wave.group_count as usize {
+                let group = wave.groups[group_index];
+                if group.count == 0 {
+                    return Err(RulesError::ZeroWaveGroupRaiders);
+                }
+                total = total.saturating_add(group.count as u32);
+                group_index += 1;
+            }
+            if total > u16::MAX as u32 {
+                return Err(RulesError::TooManyRaidersInWave);
+            }
+            wave_index += 1;
+        }
         if self.cycle.raid_rally_ticks == 0 {
             return Err(RulesError::ZeroRaidRally);
         }
@@ -109,6 +156,14 @@ impl GameRules {
             return None;
         }
         self.tower_level(archetype, level).upgrade_cost
+    }
+
+    #[must_use]
+    pub const fn raider(self, archetype: RaiderArchetype) -> RaiderArchetypeRules {
+        match archetype {
+            RaiderArchetype::Basic => self.raids.basic,
+            RaiderArchetype::Advanced => self.raids.advanced,
+        }
     }
 
     #[must_use]
@@ -176,6 +231,24 @@ impl GameRules {
         feed_u16(&mut hash, self.raids.speed_milli);
         feed_u64(&mut hash, u64::from(self.raids.base_wood_steal));
         feed_u64(&mut hash, u64::from(self.raids.wood_steal_per_wave));
+        feed_raider(&mut hash, self.raids.basic);
+        feed_raider(&mut hash, self.raids.advanced);
+        feed_byte(&mut hash, self.raids.wave_plan.wave_count);
+        for wave_index in 0..self.raids.wave_plan.wave_count as usize {
+            let wave = self.raids.wave_plan.waves[wave_index];
+            feed_byte(&mut hash, wave.group_count);
+            for group_index in 0..wave.group_count as usize {
+                let group = wave.groups[group_index];
+                feed_byte(
+                    &mut hash,
+                    match group.archetype {
+                        RaiderArchetype::Basic => 0,
+                        RaiderArchetype::Advanced => 1,
+                    },
+                );
+                feed_u16(&mut hash, group.count);
+            }
+        }
 
         feed_u16(&mut hash, self.cycle.day_length_ticks);
         feed_u16(&mut hash, self.cycle.raid_rally_ticks);
@@ -281,17 +354,117 @@ impl TowerLevelRules {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RaiderArchetype {
+    Basic,
+    Advanced,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RaiderArchetypeRules {
+    pub health: u16,
+    pub damage: u16,
+    pub speed_milli: u16,
+    pub wood_steal: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RaiderCatalogRules {
+    pub basic: RaiderArchetypeRules,
+    pub advanced: RaiderArchetypeRules,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WaveGroupRules {
+    pub archetype: RaiderArchetype,
+    pub count: u16,
+}
+
+impl WaveGroupRules {
+    pub const EMPTY: Self = Self {
+        archetype: RaiderArchetype::Basic,
+        count: 0,
+    };
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WaveRules {
+    pub groups: [WaveGroupRules; MAX_WAVE_GROUPS],
+    pub group_count: u8,
+}
+
+impl WaveRules {
+    pub const EMPTY: Self = Self {
+        groups: [WaveGroupRules::EMPTY; MAX_WAVE_GROUPS],
+        group_count: 0,
+    };
+
+    #[must_use]
+    pub fn total_raiders(self) -> u16 {
+        self.groups[..self.group_count as usize]
+            .iter()
+            .fold(0_u16, |total, group| total.saturating_add(group.count))
+    }
+
+    #[must_use]
+    pub fn group(self, index: usize) -> Option<WaveGroupRules> {
+        (index < self.group_count as usize).then_some(self.groups[index])
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WavePlanRules {
+    pub waves: [WaveRules; MAX_SCENARIO_WAVES],
+    pub wave_count: u8,
+}
+
+impl WavePlanRules {
+    pub const EMPTY: Self = Self {
+        waves: [WaveRules::EMPTY; MAX_SCENARIO_WAVES],
+        wave_count: 0,
+    };
+
+    #[must_use]
+    pub const fn is_explicit(self) -> bool {
+        self.wave_count != 0
+    }
+
+    #[must_use]
+    pub fn wave(self, wave_number: u32) -> Option<WaveRules> {
+        let index = usize::try_from(wave_number.checked_sub(1)?).ok()?;
+        (index < self.wave_count as usize).then_some(self.waves[index])
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RaidRules {
+    /// Legacy generated-wave count used when `wave_plan` is empty.
     pub raiders_per_wave: u16,
     pub spawn_interval_ticks: u16,
+    /// Legacy generated-wave health baseline used when `wave_plan` is empty.
     pub base_health: u16,
     pub health_per_wave: u16,
+    /// Legacy generated-wave damage baseline used when `wave_plan` is empty.
     pub base_damage: u16,
     pub damage_increase_every_waves: u32,
     pub damage_increase_amount: u16,
+    /// Legacy generated-wave movement speed used when `wave_plan` is empty.
     pub speed_milli: u16,
+    /// Legacy generated-wave theft used when `wave_plan` is empty.
     pub base_wood_steal: u32,
     pub wood_steal_per_wave: u32,
+    pub basic: RaiderArchetypeRules,
+    pub advanced: RaiderArchetypeRules,
+    pub wave_plan: WavePlanRules,
+}
+
+impl RaidRules {
+    #[must_use]
+    pub const fn catalog(self) -> RaiderCatalogRules {
+        RaiderCatalogRules {
+            basic: self.basic,
+            advanced: self.advanced,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -369,11 +542,16 @@ pub struct ScenarioOptions {
     pub forest_density: ForestDensity,
     pub forest_regrowth: ForestRegrowth,
     pub sawmill_throughput: SawmillThroughput,
+    /// Compatibility modifier for generated waves. Explicit wave plans do not use it.
     pub raid_size: RaidSize,
+    /// Compatibility modifier for generated waves. Explicit raid units do not use it.
     pub raider_strength: RaiderStrength,
     pub day_length: DayLength,
     pub raid_timing: RaidTiming,
     pub raid_economy: RaidEconomy,
+    pub raiders: RaiderCatalogRules,
+    pub wave_plan: WavePlanRules,
+    pub towers: TowerRules,
 }
 
 impl ScenarioOptions {
@@ -389,6 +567,9 @@ impl ScenarioOptions {
             day_length: DayLength::Standard,
             raid_timing: RaidTiming::Standard,
             raid_economy: RaidEconomy::Standard,
+            raiders: crate::STANDARD_RULES.raids.catalog(),
+            wave_plan: crate::STANDARD_RULES.raids.wave_plan,
+            towers: crate::STANDARD_RULES.towers,
         }
     }
 
@@ -486,6 +667,11 @@ impl ScenarioOptions {
             rules.cycle.pause_economy_during_raids = false;
         }
 
+        rules.raids.basic = self.raiders.basic;
+        rules.raids.advanced = self.raiders.advanced;
+        rules.raids.wave_plan = self.wave_plan;
+        rules.towers = self.towers;
+
         rules.validate()?;
         Ok(rules)
     }
@@ -535,6 +721,13 @@ fn feed_tower(hash: &mut u64, tower: TowerArchetypeRules) {
             None => feed_byte(hash, 0),
         }
     }
+}
+
+fn feed_raider(hash: &mut u64, raider: RaiderArchetypeRules) {
+    feed_u16(hash, raider.health);
+    feed_u16(hash, raider.damage);
+    feed_u16(hash, raider.speed_milli);
+    feed_u64(hash, u64::from(raider.wood_steal));
 }
 
 fn feed_bool(hash: &mut u64, value: bool) {
@@ -643,6 +836,31 @@ mod tests {
     }
 
     #[test]
+    fn explicit_wave_composition_participates_in_rule_identity() {
+        let standard = STANDARD_RULES.fingerprint();
+        let mut changed = STANDARD_RULES;
+        changed.raids.wave_plan.wave_count = 1;
+        changed.raids.wave_plan.waves[0].group_count = 2;
+        changed.raids.wave_plan.waves[0].groups[0] = WaveGroupRules {
+            archetype: RaiderArchetype::Basic,
+            count: 2,
+        };
+        changed.raids.wave_plan.waves[0].groups[1] = WaveGroupRules {
+            archetype: RaiderArchetype::Advanced,
+            count: 1,
+        };
+        assert_ne!(standard, changed.fingerprint());
+        assert_eq!(changed.validate(), Ok(()));
+    }
+
+    #[test]
+    fn rejects_empty_explicit_wave() {
+        let mut rules = STANDARD_RULES;
+        rules.raids.wave_plan.wave_count = 1;
+        assert_eq!(rules.validate(), Err(RulesError::InvalidWaveGroupCount));
+    }
+
+    #[test]
     fn standard_scenario_is_exact_standard_rules() {
         assert_eq!(
             ScenarioOptions::standard()
@@ -664,6 +882,7 @@ mod tests {
             day_length: DayLength::Long,
             raid_timing: RaidTiming::Manual,
             raid_economy: RaidEconomy::Continuous,
+            ..ScenarioOptions::standard()
         };
         let rules = scenario.into_rules().expect("scenario must validate");
 
