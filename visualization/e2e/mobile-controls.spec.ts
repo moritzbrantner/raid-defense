@@ -79,19 +79,65 @@ test("keeps all scenario controls reachable and touch-sized on a phone", async (
   await page.goto("/?screen=settings&section=scenario");
   await expect(page.getByTestId("scenario-settings")).toBeVisible();
 
-  const scenarioControls = [
+  const tabs = [
+    page.getByTestId("scenario-waves-tab"),
+    page.getByTestId("scenario-units-tab"),
+    page.getByTestId("scenario-towers-tab"),
+    page.getByTestId("scenario-world-tab"),
+  ];
+  for (const tab of tabs) {
+    const box = await tab.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+  }
+
+  await page.getByTestId("scenario-wave-5").click();
+  for (const control of [
+    page.getByTestId("scenario-wave-group-type-0"),
+    page.getByTestId("scenario-wave-group-count-0"),
+    page.getByTestId("scenario-wave-group-type-1"),
+    page.getByTestId("scenario-wave-group-count-1"),
+  ]) {
+    await control.scrollIntoViewIfNeeded();
+    const box = await control.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+  }
+
+  await page.getByTestId("scenario-units-tab").click();
+  const unitInputs = page.getByTestId("scenario-unit-editor").locator("input");
+  for (let index = 0; index < (await unitInputs.count()); index += 1) {
+    const input = unitInputs.nth(index);
+    await input.scrollIntoViewIfNeeded();
+    const box = await input.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  }
+
+  await page.getByTestId("scenario-towers-tab").click();
+  const towerInputs = page.getByTestId("scenario-tower-editor").locator("input");
+  for (let index = 0; index < (await towerInputs.count()); index += 1) {
+    const input = towerInputs.nth(index);
+    await input.scrollIntoViewIfNeeded();
+    const box = await input.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  }
+
+  await page.getByTestId("scenario-world-tab").click();
+  const worldControls = [
     ["scenario-starting-supplies", "rich"],
     ["scenario-forest-density", "dense"],
     ["scenario-forest-regrowth", "fast"],
     ["scenario-sawmill-throughput", "fast"],
-    ["scenario-raid-size", "large"],
-    ["scenario-raider-strength", "harsh"],
     ["scenario-day-length", "long"],
     ["scenario-raid-timing", "manual"],
     ["scenario-raid-economy", "continuous"],
   ] as const;
 
-  for (const [testId, value] of scenarioControls) {
+  for (const [testId, value] of worldControls) {
     const control = page.getByTestId(testId);
     await control.scrollIntoViewIfNeeded();
     await expect(control).toBeVisible();
