@@ -8,6 +8,10 @@ on:
 
 permissions:
   contents: read
+  packages: read
+
+env:
+  GH_PACKAGES_TOKEN: ${{ github.token }}
 
 jobs:
   fast:
