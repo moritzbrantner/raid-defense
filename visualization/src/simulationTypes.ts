@@ -89,6 +89,8 @@ export type SnapshotView = {
   house_population_capacity: number;
   person_carry_capacity: number;
   raid_rally_ticks: number;
+  automatic_raids: boolean;
+  pause_economy_during_raids: boolean;
   arrow_tower_cost: number;
   cannon_tower_cost: number;
   max_tower_level: number;
