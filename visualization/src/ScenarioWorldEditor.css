@@ -1,0 +1,98 @@
+.scenario-world-rule-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.world-field-grid,
+.world-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.world-number-field,
+.world-toggle-field {
+  border: 1px solid #30372e;
+  border-radius: 4px;
+  background: rgb(14 19 14 / 54%);
+}
+
+.world-number-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(110px, 160px);
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+}
+
+.world-number-field > span,
+.world-toggle-field > span {
+  display: grid;
+  gap: 4px;
+}
+
+.world-number-field strong,
+.world-toggle-field strong {
+  color: #d7d0bd;
+  font-size: 0.73rem;
+}
+
+.world-number-field small,
+.world-toggle-field small {
+  color: #7f877b;
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.world-number-field input[type="number"] {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid #4f584a;
+  border-radius: 4px;
+  background: #141a13;
+  color: #ddd6c2;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.world-number-field input:focus-visible,
+.world-toggle-field input:focus-visible {
+  outline: 2px solid #d1af63;
+  outline-offset: 2px;
+}
+
+.world-toggle-grid {
+  margin-top: 10px;
+}
+
+.world-toggle-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+  min-height: 58px;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.world-toggle-field input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: #d1af63;
+}
+
+@media (max-width: 760px) {
+  .world-field-grid,
+  .world-toggle-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .world-number-field {
+    grid-template-columns: 1fr;
+  }
+}
