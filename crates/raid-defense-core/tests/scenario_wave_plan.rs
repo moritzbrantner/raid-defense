@@ -1,6 +1,6 @@
 use raid_defense_core::{
-    Command, EntityKind, GameError, GameState, RaiderArchetype, WaveGroupRules, WaveRules,
-    STANDARD_RULES,
+    Command, EntityKind, GameError, GameState, RaiderArchetype, STANDARD_RULES, WaveGroupRules,
+    WaveRules,
 };
 
 fn explicit_rules() -> raid_defense_core::GameRules {
@@ -81,6 +81,9 @@ fn scenario_complete_is_fail_closed_without_starting_an_invented_wave() {
     }
     assert_eq!(state.completed_waves(), 1);
     let before = state.checksum();
-    assert_eq!(state.apply(Command::StartWave), Err(GameError::ScenarioComplete));
+    assert_eq!(
+        state.apply(Command::StartWave),
+        Err(GameError::ScenarioComplete)
+    );
     assert_eq!(state.checksum(), before);
 }

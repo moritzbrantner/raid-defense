@@ -1,7 +1,7 @@
 use crate::rules::{
-    BuildingRules, CycleRules, EconomyRules, GameRules, HouseRules, PopulationRules,
-    RaidRules, RaiderArchetypeRules, SawmillRules, StorageHouseRules, TowerArchetypeRules,
-    TowerLevelRules, TowerRules, TownHallRules, WavePlanRules,
+    BuildingRules, CycleRules, EconomyRules, GameRules, HouseRules, PopulationRules, RaidRules,
+    RaiderArchetypeRules, SawmillRules, StorageHouseRules, TowerArchetypeRules, TowerLevelRules,
+    TowerRules, TownHallRules, WavePlanRules,
 };
 
 /// The standard Raid Defense balance profile.

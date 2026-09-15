@@ -417,7 +417,9 @@ impl GameState {
             if self.day_ticks_remaining == 0 && self.town_health() > 0 {
                 match self.start_wave() {
                     Ok(_) | Err(GameError::ScenarioComplete) => {}
-                    Err(error) => panic!("expired peaceful day could not begin its raid rally: {error:?}"),
+                    Err(error) => {
+                        panic!("expired peaceful day could not begin its raid rally: {error:?}")
+                    }
                 }
             }
         } else if had_active_wave {

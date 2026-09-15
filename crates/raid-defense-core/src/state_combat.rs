@@ -264,10 +264,8 @@ impl GameState {
                     .expect("raider ids come from the raider store");
 
                 if self.storage_reached(raider.target_storage, movement.from) {
-                    let stolen = self.take_wood_at(
-                        raider.target_storage,
-                        self.raider_wood_steal_amount(entity),
-                    );
+                    let stolen = self
+                        .take_wood_at(raider.target_storage, self.raider_wood_steal_amount(entity));
                     if stolen > 0 {
                         wood_stolen =
                             wood_stolen.saturating_add(u16::try_from(stolen).unwrap_or(u16::MAX));
