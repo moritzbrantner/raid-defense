@@ -450,9 +450,7 @@ impl GameState {
     }
 
     fn best_forest_for_person(&self, start: Cell) -> Option<EntityId> {
-        if self.nearest_sawmill_with_capacity(start).is_none() {
-            return None;
-        }
+        self.nearest_sawmill_with_capacity(start)?;
         let mut candidates = self
             .buildings
             .iter()
