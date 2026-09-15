@@ -22,7 +22,11 @@ impl GameState {
             }
 
             if person.state == PersonState::HarvestingForest {
-                let remaining = self.work_ticks.get(entity_key(entity)).copied().unwrap_or(0);
+                let remaining = self
+                    .work_ticks
+                    .get(entity_key(entity))
+                    .copied()
+                    .unwrap_or(0);
                 if remaining > 1 {
                     self.work_ticks.insert(entity_key(entity), remaining - 1);
                     continue;
@@ -35,7 +39,8 @@ impl GameState {
                     self.people.insert(entity_key(entity), person);
                     continue;
                 };
-                let amount = u32::from(person.cargo_capacity.min(self.rules.economy.sawmill_output));
+                let amount =
+                    u32::from(person.cargo_capacity.min(self.rules.economy.sawmill_output));
                 let gathered = self.take_wood_at(forest, amount);
                 let gathered_u16 = u16::try_from(gathered).unwrap_or(u16::MAX);
                 if gathered_u16 == 0 {
@@ -107,7 +112,9 @@ impl GameState {
                         self.route_person_to_goals(entity, movement.from, &goals);
                     }
                 }
-                PersonState::HarvestingForest => unreachable!("harvesting is handled before movement"),
+                PersonState::HarvestingForest => {
+                    unreachable!("harvesting is handled before movement")
+                }
                 PersonState::ToSawmill => {
                     let Some(target) = person.target_entity else {
                         self.movements.remove(entity_key(entity));
@@ -303,8 +310,10 @@ impl GameState {
                 person.state,
                 PersonState::ToSawmill | PersonState::ToStorage | PersonState::ToConstructionSite
             ) && person.cargo_wood > 0;
-            if matches!(person.state, PersonState::IdleAtTownHall | PersonState::ToTownHall)
-                || should_finish_delivery
+            if matches!(
+                person.state,
+                PersonState::IdleAtTownHall | PersonState::ToTownHall
+            ) || should_finish_delivery
             {
                 continue;
             }
@@ -563,7 +572,9 @@ impl GameState {
             PersonState::ToConstructionStorage => {
                 person.target_entity.map_or_else(Vec::new, |site| {
                     self.nearest_storage_with_wood_for_site(site, start)
-                        .map_or_else(Vec::new, |storage| self.storage_goal_cells(storage, None))
+                        .map_or_else(Vec::new, |storage| {
+                            self.storage_goal_cells(storage, None)
+                        })
                 })
             }
             PersonState::ToConstructionSite => person
