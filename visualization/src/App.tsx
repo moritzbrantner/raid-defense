@@ -14,8 +14,21 @@ import type {
 const DEFAULT_SEED = 0x5eed;
 const TICK_INTERVAL_MS = 100;
 
+type PlacementChoice =
+  | { kind: "sawmill" }
+  | { kind: "storage_house" }
+  | { kind: "house" }
+  | { kind: "tower"; archetype: TowerArchetype };
+
 function towerName(archetype: TowerArchetype) {
   return archetype === "arrow" ? "Arrow tower" : "Cannon tower";
+}
+
+function placementName(placement: PlacementChoice) {
+  if (placement.kind === "tower") return towerName(placement.archetype);
+  if (placement.kind === "storage_house") return "Storage house";
+  if (placement.kind === "house") return "House";
+  return "Sawmill";
 }
 
 function formatCycleTimer(ticks: number) {
@@ -34,7 +47,7 @@ function describeEvent(event: RaidDefenseEvent | null) {
     case "tower_construction_started":
       return `${towerName(event.archetype)} construction started at ${event.cell.x}, ${event.cell.z}. Workers must haul ${event.wood_required} wood to the site.`;
     case "sawmill_built":
-      return `Sawmill built at ${event.cell.x}, ${event.cell.z}. It harvests the nearest reachable stocked forest; workers haul the wood into settlement storage.`;
+      return `Sawmill built at ${event.cell.x}, ${event.cell.z}. People now gather wood from forests, carry it to the sawmill, then haul the mill stock into settlement storage.`;
     case "storage_house_built":
       return `Storage house built at ${event.cell.x}, ${event.cell.z} with capacity for ${event.wood_capacity} wood.`;
     case "house_built":
@@ -42,9 +55,10 @@ function describeEvent(event: RaidDefenseEvent | null) {
     case "tower_upgraded":
       return `${towerName(event.archetype)} upgraded to level ${event.level} for ${event.wood_cost} wood.`;
     case "wave_started":
-      return `Wave ${event.wave} started. Raiders are targeting the nearest storage with wood.`;
+      return `Wave ${event.wave} called. Workers have ${formatCycleTimer(event.rally_ticks)} to finish carrying materials and return to the Town Hall before raiders enter.`;
     case "tick_advanced": {
       const consequences = [
+        event.wood_produced > 0 ? `${event.wood_produced} wood gathered from forests` : null,
         event.wood_delivered > 0 ? `${event.wood_delivered} wood delivered` : null,
         event.towers_completed > 0
           ? `${event.towers_completed} tower${event.towers_completed === 1 ? "" : "s"} completed`
@@ -72,7 +86,7 @@ function describeError(code: string) {
     house_locked: "Houses unlock after you complete the first 10 waves.",
     no_tower: "There is no completed tower on the selected cell to upgrade.",
     max_tower_level: "That tower is already at the maximum level.",
-    raiders_still_active: "Finish the current raid before starting another one.",
+    raiders_still_active: "Finish the current raid or rally before starting another one.",
     game_over: "The Town Hall has fallen.",
     invalid_command_json: "The browser produced an invalid command envelope.",
   };
@@ -179,13 +193,15 @@ function GroundTile({
   snapshot,
   selected,
   occupied,
-  onSelectCell,
+  onHoverCell,
+  onActivateCell,
 }: {
   cell: CellView;
   snapshot: SnapshotView;
   selected: boolean;
   occupied: boolean;
-  onSelectCell: (cell: CellView) => void;
+  onHoverCell: (cell: CellView) => void;
+  onActivateCell: (cell: CellView) => void;
 }) {
   const protectedCell = isTownCell(cell, snapshot) || isGateCell(cell, snapshot);
   const base = protectedCell ? "#384238" : occupied ? "#3f372e" : "#263129";
@@ -196,16 +212,84 @@ function GroundTile({
         -0.08,
         worldZ(cell.z + 0.5, snapshot.grid_height),
       ]}
+      onPointerMove={(event) => {
+        event.stopPropagation();
+        onHoverCell(cell);
+      }}
+      onPointerOver={(event) => {
+        event.stopPropagation();
+        onHoverCell(cell);
+      }}
       onClick={(event) => {
         event.stopPropagation();
         if (event.delta > 6) return;
-        onSelectCell(cell);
+        onActivateCell(cell);
       }}
       receiveShadow
     >
       <boxGeometry args={[0.94, 0.12, 0.94]} />
       <meshStandardMaterial color={selected ? "#d1af63" : base} roughness={0.92} />
     </mesh>
+  );
+}
+
+function PlacementGhost({
+  placement,
+  cell,
+  snapshot,
+}: {
+  placement: PlacementChoice;
+  cell: CellView;
+  snapshot: SnapshotView;
+}) {
+  const position: [number, number, number] = [
+    worldX(cell.x + 0.5, snapshot.grid_width),
+    0,
+    worldZ(cell.z + 0.5, snapshot.grid_height),
+  ];
+  const material = <meshStandardMaterial color="#d8cfac" transparent opacity={0.42} depthWrite={false} />;
+
+  if (placement.kind === "tower") {
+    return (
+      <group position={position}>
+        <mesh position={[0, 0.28, 0]} raycast={() => undefined}>
+          <cylinderGeometry args={[0.42, 0.48, 0.54, 8]} />
+          {material}
+        </mesh>
+        <mesh position={[0, 0.82, 0]} raycast={() => undefined}>
+          <boxGeometry args={[0.56, 0.58, 0.56]} />
+          {material}
+        </mesh>
+      </group>
+    );
+  }
+
+  if (placement.kind === "sawmill") {
+    return (
+      <group position={position}>
+        <mesh position={[0, 0.3, 0]} raycast={() => undefined}>
+          <boxGeometry args={[0.8, 0.54, 0.76]} />
+          {material}
+        </mesh>
+        <mesh position={[0.43, 0.42, 0]} rotation={[Math.PI / 2, 0, 0]} raycast={() => undefined}>
+          <cylinderGeometry args={[0.24, 0.24, 0.08, 16]} />
+          {material}
+        </mesh>
+      </group>
+    );
+  }
+
+  return (
+    <group position={position}>
+      <mesh position={[0, 0.32, 0]} raycast={() => undefined}>
+        <boxGeometry args={[placement.kind === "storage_house" ? 0.9 : 0.82, 0.6, 0.78]} />
+        {material}
+      </mesh>
+      <mesh position={[0, 0.78, 0]} rotation={[0, Math.PI / 4, 0]} raycast={() => undefined}>
+        <coneGeometry args={[0.64, 0.5, 4]} />
+        {material}
+      </mesh>
+    </group>
   );
 }
 
@@ -441,12 +525,21 @@ function GateMarker({ cell, snapshot }: { cell: CellView; snapshot: SnapshotView
 function GameWorld({
   snapshot,
   selectedCell,
+  placement,
   onSelectCell,
+  onPlace,
 }: {
   snapshot: SnapshotView;
-  selectedCell: CellView;
+  selectedCell: CellView | null;
+  placement: PlacementChoice | null;
   onSelectCell: (cell: CellView) => void;
+  onPlace: (cell: CellView) => void;
 }) {
+  const [hoveredCell, setHoveredCell] = useState<CellView | null>(null);
+  useEffect(() => {
+    if (!placement) setHoveredCell(null);
+  }, [placement]);
+
   const cells = useMemo(() => {
     const result: CellView[] = [];
     for (let z = 0; z < snapshot.grid_height; z += 1) {
@@ -490,11 +583,15 @@ function GameWorld({
           key={`${cell.x}:${cell.z}`}
           cell={cell}
           snapshot={snapshot}
-          selected={cell.x === selectedCell.x && cell.z === selectedCell.z}
+          selected={selectedCell !== null && cell.x === selectedCell.x && cell.z === selectedCell.z}
           occupied={occupied.has(`${cell.x}:${cell.z}`)}
-          onSelectCell={onSelectCell}
+          onHoverCell={setHoveredCell}
+          onActivateCell={placement ? onPlace : onSelectCell}
         />
       ))}
+      {placement && hoveredCell && (
+        <PlacementGhost placement={placement} cell={hoveredCell} snapshot={snapshot} />
+      )}
       {gates.map((cell) => (
         <GateMarker key={`gate-${cell.x}:${cell.z}`} cell={cell} snapshot={snapshot} />
       ))}
@@ -528,7 +625,8 @@ function GameWorld({
 function App() {
   const [client, setClient] = useState<RaidDefenseSimulationClient | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotView | null>(null);
-  const [selectedCell, setSelectedCell] = useState<CellView>({ x: 2, z: 2 });
+  const [selectedCell, setSelectedCell] = useState<CellView | null>(null);
+  const [placement, setPlacement] = useState<PlacementChoice | null>(null);
   const [feedback, setFeedback] = useState("Initializing deterministic defense grid…");
 
   useEffect(() => {
@@ -540,7 +638,7 @@ function App() {
         setClient(simulation);
         setSnapshot(initial);
         setFeedback(
-          "Forests regrow over time. Sawmills harvest the nearest reachable stocked forest, workers move wood between stores, and tower sites need physical deliveries.",
+          "People gather trees, carry raw wood to sawmills, haul mill stock into settlement storage, and physically deliver tower materials.",
         );
       })
       .catch((error: unknown) => {
@@ -553,13 +651,51 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!placement) return;
+    const cancelPlacement = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setPlacement(null);
+      setFeedback("Building placement cancelled.");
+    };
+    window.addEventListener("keydown", cancelPlacement);
+    return () => window.removeEventListener("keydown", cancelPlacement);
+  }, [placement]);
+
   const townHealth = snapshot?.town_health;
 
   function issue(command: RaidDefenseCommand) {
-    if (!client) return;
+    if (!client) return null;
     const response = client.dispatch(command);
     setSnapshot(response.snapshot);
     setFeedback(response.ok ? describeEvent(response.event) : describeError(response.error?.code ?? "unknown_error"));
+    return response;
+  }
+
+  function beginPlacement(nextPlacement: PlacementChoice) {
+    setPlacement(nextPlacement);
+    setSelectedCell(null);
+    setFeedback(`${placementName(nextPlacement)} selected. Move over the battlefield and click or tap the tile where it should be placed. Press Escape to cancel.`);
+  }
+
+  function placeAt(cell: CellView) {
+    if (!placement) {
+      setSelectedCell(cell);
+      return;
+    }
+    const command: RaidDefenseCommand =
+      placement.kind === "tower"
+        ? { type: "place_tower", x: cell.x, z: cell.z, archetype: placement.archetype }
+        : placement.kind === "sawmill"
+          ? { type: "place_sawmill", x: cell.x, z: cell.z }
+          : placement.kind === "storage_house"
+            ? { type: "place_storage_house", x: cell.x, z: cell.z }
+            : { type: "place_house", x: cell.x, z: cell.z };
+    const response = issue(command);
+    if (response?.ok) {
+      setPlacement(null);
+      setSelectedCell(cell);
+    }
   }
 
   useEffect(() => {
@@ -573,7 +709,8 @@ function App() {
       }
       if (
         response.event?.type === "tick_advanced" &&
-        (response.event.wood_delivered > 0 ||
+        (response.event.wood_produced > 0 ||
+          response.event.wood_delivered > 0 ||
           response.event.towers_completed > 0 ||
           response.event.wood_stolen > 0 ||
           response.event.kills > 0 ||
@@ -605,25 +742,30 @@ function App() {
   const people = snapshot.entities.filter((entity) => entity.kind === "person");
   const raiderCount = snapshot.entities.filter((entity) => entity.kind === "raider").length;
   const projectileCount = snapshot.entities.filter((entity) => entity.kind === "projectile").length;
-  const selectedTower = towerEntities.find(
-    (entity) => entity.cell.x === selectedCell.x && entity.cell.z === selectedCell.z,
-  );
-  const selectedSawmill = sawmills.find(
-    (entity) => entity.cell.x === selectedCell.x && entity.cell.z === selectedCell.z,
-  );
-  const selectedStorage = storageHouses.find(
-    (entity) => entity.cell.x === selectedCell.x && entity.cell.z === selectedCell.z,
-  );
-  const selectedForest = forests.find(
-    (entity) => entity.cell.x === selectedCell.x && entity.cell.z === selectedCell.z,
-  );
-  const selectedHouse = houses.find(
-    (entity) => entity.cell.x === selectedCell.x && entity.cell.z === selectedCell.z,
-  );
+  const selectedTower = selectedCell
+    ? towerEntities.find(
+        (entity) => entity.cell.x === selectedCell.x && entity.cell.z === selectedCell.z,
+      )
+    : undefined;
+  const selectedSawmill = selectedCell
+    ? sawmills.find((entity) => entity.cell.x === selectedCell.x && entity.cell.z === selectedCell.z)
+    : undefined;
+  const selectedStorage = selectedCell
+    ? storageHouses.find(
+        (entity) => entity.cell.x === selectedCell.x && entity.cell.z === selectedCell.z,
+      )
+    : undefined;
+  const selectedForest = selectedCell
+    ? forests.find((entity) => entity.cell.x === selectedCell.x && entity.cell.z === selectedCell.z)
+    : undefined;
+  const selectedHouse = selectedCell
+    ? houses.find((entity) => entity.cell.x === selectedCell.x && entity.cell.z === selectedCell.z)
+    : undefined;
   const townPercent = Math.max(0, Math.min(100, (snapshot.town_health / snapshot.town_max_health) * 100));
   const woodPercent = Math.max(0, Math.min(100, (snapshot.wood / snapshot.wood_capacity) * 100));
-  const canStartWave = !snapshot.is_night && snapshot.town_health > 0;
+  const canStartWave = !snapshot.is_night && !snapshot.is_rallying && snapshot.town_health > 0;
   const canUpgrade =
+    selectedCell !== null &&
     selectedTower !== undefined &&
     selectedTower.tower_level > 0 &&
     selectedTower.upgrade_cost !== null &&
@@ -633,19 +775,29 @@ function App() {
     snapshot.houses_unlocked && snapshot.town_health > 0 && snapshot.wood >= snapshot.house_cost;
   const carryingPeople = people.filter((person) => person.cargo_wood > 0).length;
 
-  const selectedDescription = selectedTower?.tower_archetype
-    ? selectedTower.tower_level === 0
-      ? `${towerName(selectedTower.tower_archetype)} construction · ${selectedTower.stored_wood}/${selectedTower.wood_capacity} wood delivered`
-      : `${towerName(selectedTower.tower_archetype)} · L${selectedTower.tower_level} · ${selectedTower.attack_damage} dmg`
-    : selectedSawmill
-      ? `Sawmill · local wood ${selectedSawmill.stored_wood}/${selectedSawmill.wood_capacity}`
-      : selectedStorage
-        ? `Storage house · ${selectedStorage.stored_wood}/${selectedStorage.wood_capacity} wood`
-        : selectedForest
-          ? `Forest · ${selectedForest.stored_wood}/${selectedForest.wood_capacity} wood · regrows +${snapshot.forest_regrowth_amount} every ${snapshot.forest_regrowth_interval_ticks} ticks`
-          : selectedHouse
-            ? `House · +${selectedHouse.housing_capacity} population capacity`
-            : "Empty build cell";
+  const selectedDescription = placement
+    ? `Placing ${placementName(placement)} · choose a tile on the battlefield`
+    : selectedTower?.tower_archetype
+      ? selectedTower.tower_level === 0
+        ? `${towerName(selectedTower.tower_archetype)} construction · ${selectedTower.stored_wood}/${selectedTower.wood_capacity} wood delivered`
+        : `${towerName(selectedTower.tower_archetype)} · L${selectedTower.tower_level} · ${selectedTower.attack_damage} dmg`
+      : selectedSawmill
+        ? `Sawmill · gathered wood waiting ${selectedSawmill.stored_wood}/${selectedSawmill.wood_capacity}`
+        : selectedStorage
+          ? `Storage house · ${selectedStorage.stored_wood}/${selectedStorage.wood_capacity} wood`
+          : selectedForest
+            ? `Forest · ${selectedForest.stored_wood}/${selectedForest.wood_capacity} wood · regrows +${snapshot.forest_regrowth_amount} every ${snapshot.forest_regrowth_interval_ticks} ticks`
+            : selectedHouse
+              ? `House · +${selectedHouse.housing_capacity} population capacity`
+              : selectedCell
+                ? "Empty build cell"
+                : "No tile selected";
+
+  const cycleLabel = snapshot.is_night
+    ? `Night · Wave ${snapshot.wave}`
+    : snapshot.is_rallying
+      ? `Rally · ${formatCycleTimer(snapshot.raid_rally_ticks_remaining)}`
+      : `Day · ${formatCycleTimer(snapshot.day_ticks_remaining)}`;
 
   return (
     <main className="game-shell" data-testid="raid-defense-game">
@@ -658,7 +810,7 @@ function App() {
           <div><dt>Wood</dt><dd data-testid="wood-value">{snapshot.wood}</dd></div>
           <div><dt>People</dt><dd data-testid="people-value">{snapshot.people}/{snapshot.population_capacity}</dd></div>
           <div><dt>Hauling</dt><dd data-testid="hauling-value">{carryingPeople}</dd></div>
-          <div><dt>Cycle</dt><dd data-testid="cycle-timer">{snapshot.is_night ? `Night · Wave ${snapshot.wave}` : `Day · ${formatCycleTimer(snapshot.day_ticks_remaining)}`}</dd></div>
+          <div><dt>Cycle</dt><dd data-testid="cycle-timer">{cycleLabel}</dd></div>
           <div><dt>Wave</dt><dd data-testid="wave-value">{snapshot.wave}</dd></div>
           <div><dt>Cleared</dt><dd data-testid="completed-waves-value">{snapshot.completed_waves}</dd></div>
           <div><dt>Raiders</dt><dd data-testid="raider-count">{raiderCount}</dd></div>
@@ -669,12 +821,18 @@ function App() {
           <div><dt>Towers</dt><dd data-testid="tower-count">{towers.length}</dd></div>
         </dl>
         <button className="wave-button" type="button" disabled={!canStartWave} onClick={() => issue({ type: "start_wave" })} data-testid="start-wave">
-          Start raid
+          {snapshot.is_rallying ? `Raid in ${formatCycleTimer(snapshot.raid_rally_ticks_remaining)}` : "Start raid"}
         </button>
       </header>
 
       <section className="battlefield" data-testid="world-3d" aria-label="3D defense grid">
-        <GameWorld snapshot={snapshot} selectedCell={selectedCell} onSelectCell={setSelectedCell} />
+        <GameWorld
+          snapshot={snapshot}
+          selectedCell={selectedCell}
+          placement={placement}
+          onSelectCell={setSelectedCell}
+          onPlace={placeAt}
+        />
         <div className="town-health" aria-label="Settlement status">
           <span>Town Hall {snapshot.town_health}/{snapshot.town_max_health}</span>
           <span className="health-track" aria-hidden="true"><span style={{ width: `${townPercent}%` }} /></span>
@@ -687,71 +845,87 @@ function App() {
           </span>
         </div>
         <p className="mobile-world-hint" data-testid="mobile-world-hint">
-          Tap a tile to select · drag to orbit · pinch to zoom
+          {placement
+            ? `Tap a tile to place ${placementName(placement)} · drag to orbit · pinch to zoom`
+            : "Tap a tile to inspect · drag to orbit · pinch to zoom"}
         </p>
       </section>
 
       <section className="build-bar" aria-label="Build controls" data-testid="mobile-command-dock">
         <div className="cell-controls">
-          <span className="eyebrow">Selected grid cell</span>
-          <div className="coordinate-inputs">
-            <label>
-              X
-              <input
-                data-testid="cell-x"
-                type="number"
-                min={0}
-                max={snapshot.grid_width - 1}
-                value={selectedCell.x}
-                onChange={(event) =>
-                  setSelectedCell((current) => ({
-                    ...current,
-                    x: clampCellCoordinate(Number(event.target.value), snapshot.grid_width),
-                  }))
-                }
+          <span className="eyebrow">{placement ? "Placement mode" : "Selected grid cell"}</span>
+          {selectedCell ? (
+            <>
+              <div className="coordinate-inputs">
+                <label>
+                  X
+                  <input
+                    data-testid="cell-x"
+                    type="number"
+                    min={0}
+                    max={snapshot.grid_width - 1}
+                    value={selectedCell.x}
+                    onChange={(event) =>
+                      setSelectedCell((current) =>
+                        current
+                          ? {
+                              ...current,
+                              x: clampCellCoordinate(Number(event.target.value), snapshot.grid_width),
+                            }
+                          : current,
+                      )
+                    }
+                  />
+                </label>
+                <label>
+                  Z
+                  <input
+                    data-testid="cell-z"
+                    type="number"
+                    min={0}
+                    max={snapshot.grid_height - 1}
+                    value={selectedCell.z}
+                    onChange={(event) =>
+                      setSelectedCell((current) =>
+                        current
+                          ? {
+                              ...current,
+                              z: clampCellCoordinate(Number(event.target.value), snapshot.grid_height),
+                            }
+                          : current,
+                      )
+                    }
+                  />
+                </label>
+              </div>
+              <MobileCellNudge
+                selectedCell={selectedCell}
+                snapshot={snapshot}
+                onSelectCell={setSelectedCell}
               />
-            </label>
-            <label>
-              Z
-              <input
-                data-testid="cell-z"
-                type="number"
-                min={0}
-                max={snapshot.grid_height - 1}
-                value={selectedCell.z}
-                onChange={(event) =>
-                  setSelectedCell((current) => ({
-                    ...current,
-                    z: clampCellCoordinate(Number(event.target.value), snapshot.grid_height),
-                  }))
-                }
-              />
-            </label>
-          </div>
-          <MobileCellNudge
-            selectedCell={selectedCell}
-            snapshot={snapshot}
-            onSelectCell={setSelectedCell}
-          />
+            </>
+          ) : (
+            <span className="selected-tower" data-testid="mobile-selected-cell">No tile selected</span>
+          )}
           <span className="selected-tower" data-testid="selected-building">{selectedDescription}</span>
         </div>
         <div className="tower-actions">
-          <button className="build-button economy-button" type="button" disabled={snapshot.town_health === 0 || snapshot.wood < snapshot.sawmill_cost} onClick={() => issue({ type: "place_sawmill", x: selectedCell.x, z: selectedCell.z })} data-testid="build-sawmill">
+          <button className="build-button economy-button" type="button" aria-pressed={placement?.kind === "sawmill"} disabled={snapshot.town_health === 0 || snapshot.wood < snapshot.sawmill_cost} onClick={() => beginPlacement({ kind: "sawmill" })} data-testid="build-sawmill">
             Sawmill · {snapshot.sawmill_cost}w
           </button>
-          <button className="build-button economy-button" type="button" disabled={snapshot.town_health === 0 || snapshot.wood < snapshot.storage_house_cost} onClick={() => issue({ type: "place_storage_house", x: selectedCell.x, z: selectedCell.z })} data-testid="build-storage-house">
+          <button className="build-button economy-button" type="button" aria-pressed={placement?.kind === "storage_house"} disabled={snapshot.town_health === 0 || snapshot.wood < snapshot.storage_house_cost} onClick={() => beginPlacement({ kind: "storage_house" })} data-testid="build-storage-house">
             Storage · {snapshot.storage_house_cost}w
           </button>
-          <button className="build-button economy-button" type="button" disabled={!canBuildHouse} onClick={() => issue({ type: "place_house", x: selectedCell.x, z: selectedCell.z })} data-testid="build-house">
+          <button className="build-button economy-button" type="button" aria-pressed={placement?.kind === "house"} disabled={!canBuildHouse} onClick={() => beginPlacement({ kind: "house" })} data-testid="build-house">
             {snapshot.houses_unlocked ? `House · ${snapshot.house_cost}w` : `House · unlocks after ${snapshot.house_unlock_completed_waves} waves`}
           </button>
-          <button className="build-button" type="button" disabled={snapshot.town_health === 0 || snapshot.wood < snapshot.arrow_tower_cost} onClick={() => issue({ type: "place_tower", x: selectedCell.x, z: selectedCell.z, archetype: "arrow" })} data-testid="build-arrow-tower">
+          <button className="build-button" type="button" aria-pressed={placement?.kind === "tower" && placement.archetype === "arrow"} disabled={snapshot.town_health === 0 || snapshot.wood < snapshot.arrow_tower_cost} onClick={() => beginPlacement({ kind: "tower", archetype: "arrow" })} data-testid="build-arrow-tower">
             Arrow · {snapshot.arrow_tower_cost}w
           </button>
-          <button className="build-button" type="button" disabled={snapshot.town_health === 0 || snapshot.wood < snapshot.cannon_tower_cost} onClick={() => issue({ type: "place_tower", x: selectedCell.x, z: selectedCell.z, archetype: "cannon" })} data-testid="build-cannon-tower">
+          <button className="build-button" type="button" aria-pressed={placement?.kind === "tower" && placement.archetype === "cannon"} disabled={snapshot.town_health === 0 || snapshot.wood < snapshot.cannon_tower_cost} onClick={() => beginPlacement({ kind: "tower", archetype: "cannon" })} data-testid="build-cannon-tower">
             Cannon · {snapshot.cannon_tower_cost}w
           </button>
-          <button className="build-button upgrade-button" type="button" disabled={!canUpgrade} onClick={() => issue({ type: "upgrade_tower", x: selectedCell.x, z: selectedCell.z })} data-testid="upgrade-tower">
+          <button className="build-button upgrade-button" type="button" disabled={!canUpgrade || selectedCell === null} onClick={() => selectedCell && issue({ type: "upgrade_tower", x: selectedCell.x, z: selectedCell.z })} data-testid="upgrade-tower">
             {selectedTower?.tower_level === 0
               ? "Awaiting materials"
               : selectedTower?.upgrade_cost === null
