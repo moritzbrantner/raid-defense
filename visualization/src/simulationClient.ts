@@ -112,7 +112,9 @@ function parseSnapshotValue(value: unknown): SnapshotView {
     typeof value.raid_rally_ticks_remaining !== "number" ||
     typeof value.raid_rally_ticks !== "number" ||
     typeof value.is_rallying !== "boolean" ||
-    typeof value.is_night !== "boolean"
+    typeof value.is_night !== "boolean" ||
+    typeof value.automatic_raids !== "boolean" ||
+    typeof value.pause_economy_during_raids !== "boolean"
   ) {
     throw new Error("snapshot day, rally, and raid state must be authoritative and typed");
   }
@@ -135,23 +137,25 @@ function parseSnapshot(json: string) {
 export async function loadStandardScenarioWorld(): Promise<ScenarioWorldRules> {
   const module = await loadWasmModule();
   const engine = new module.RaidDefenseGame(0);
-  const snapshot = parseSnapshot(engine.snapshot());
-  const standard = createStandardScenarioOptions();
-
-  return {
-    starting_wood: snapshot.wood,
-    forest_tile_count: snapshot.forest_tile_count,
-    forest_tile_wood: snapshot.forest_tile_wood,
-    forest_regrowth_amount: snapshot.forest_regrowth_amount,
-    forest_regrowth_interval_ticks: snapshot.forest_regrowth_interval_ticks,
-    sawmill_output: snapshot.sawmill_output,
-    sawmill_interval_ticks: snapshot.sawmill_interval_ticks,
-    sawmill_local_wood_capacity: snapshot.sawmill_local_wood_capacity,
-    day_length_ticks: snapshot.day_ticks_remaining,
-    raid_rally_ticks: snapshot.raid_rally_ticks,
-    automatic_raids: standard.raid_timing === "standard",
-    pause_economy_during_raids: standard.raid_economy === "standard",
-  };
+  try {
+    const snapshot = parseSnapshot(engine.snapshot());
+    return {
+      starting_wood: snapshot.wood,
+      forest_tile_count: snapshot.forest_tile_count,
+      forest_tile_wood: snapshot.forest_tile_wood,
+      forest_regrowth_amount: snapshot.forest_regrowth_amount,
+      forest_regrowth_interval_ticks: snapshot.forest_regrowth_interval_ticks,
+      sawmill_output: snapshot.sawmill_output,
+      sawmill_interval_ticks: snapshot.sawmill_interval_ticks,
+      sawmill_local_wood_capacity: snapshot.sawmill_local_wood_capacity,
+      day_length_ticks: snapshot.day_ticks_remaining,
+      raid_rally_ticks: snapshot.raid_rally_ticks,
+      automatic_raids: snapshot.automatic_raids,
+      pause_economy_during_raids: snapshot.pause_economy_during_raids,
+    };
+  } finally {
+    engine.free();
+  }
 }
 
 function parseResponse(json: string): DispatchResponse {
