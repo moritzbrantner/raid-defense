@@ -116,6 +116,7 @@ export function ScenarioWorldEditor({ scenario, onChange }: ScenarioWorldEditorP
             description="Exact number of renewable forest tiles seeded into the world."
             value={world.forest_tile_count}
             min={1}
+            max={27}
             onChange={(value) => update("forest_tile_count", value)}
             testId="scenario-forest-tile-count"
           />
