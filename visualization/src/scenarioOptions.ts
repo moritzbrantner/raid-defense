@@ -41,7 +41,23 @@ export type ScenarioTowerRules = {
   cannon: TowerArchetypeRules;
 };
 
+export type ScenarioWorldRules = {
+  starting_wood: number;
+  forest_tile_count: number;
+  forest_tile_wood: number;
+  forest_regrowth_amount: number;
+  forest_regrowth_interval_ticks: number;
+  sawmill_output: number;
+  sawmill_interval_ticks: number;
+  sawmill_local_wood_capacity: number;
+  day_length_ticks: number;
+  raid_rally_ticks: number;
+  automatic_raids: boolean;
+  pause_economy_during_raids: boolean;
+};
+
 export type ScenarioOptions = {
+  /** Compatibility fields for callers that still use named world presets. Explicit world values win when present. */
   starting_supplies: "lean" | "standard" | "rich";
   forest_density: "sparse" | "standard" | "dense";
   forest_regrowth: "slow" | "standard" | "fast";
@@ -52,6 +68,7 @@ export type ScenarioOptions = {
   day_length: "short" | "standard" | "long";
   raid_timing: "standard" | "manual";
   raid_economy: "standard" | "continuous";
+  world?: ScenarioWorldRules;
   raiders: RaiderCatalog;
   waves: ScenarioWave[];
   towers: ScenarioTowerRules;
@@ -70,6 +87,21 @@ const defaultTowerLevels = {
   ],
 } as const;
 
+export const STANDARD_SCENARIO_WORLD: ScenarioWorldRules = {
+  starting_wood: 120,
+  forest_tile_count: 18,
+  forest_tile_wood: 80,
+  forest_regrowth_amount: 1,
+  forest_regrowth_interval_ticks: 20,
+  sawmill_output: 4,
+  sawmill_interval_ticks: 10,
+  sawmill_local_wood_capacity: 24,
+  day_length_ticks: 600,
+  raid_rally_ticks: 50,
+  automatic_raids: true,
+  pause_economy_during_raids: true,
+};
+
 export const STANDARD_SCENARIO_OPTIONS: ScenarioOptions = {
   starting_supplies: "standard",
   forest_density: "standard",
@@ -80,6 +112,7 @@ export const STANDARD_SCENARIO_OPTIONS: ScenarioOptions = {
   day_length: "standard",
   raid_timing: "standard",
   raid_economy: "standard",
+  world: { ...STANDARD_SCENARIO_WORLD },
   raiders: {
     basic: { health: 30, damage: 10, speed_milli: 250, wood_steal: 15 },
     advanced: { health: 60, damage: 18, speed_milli: 220, wood_steal: 25 },
@@ -115,6 +148,7 @@ export const STANDARD_SCENARIO_OPTIONS: ScenarioOptions = {
 export function createStandardScenarioOptions(): ScenarioOptions {
   return {
     ...STANDARD_SCENARIO_OPTIONS,
+    world: { ...STANDARD_SCENARIO_WORLD },
     raiders: {
       basic: { ...STANDARD_SCENARIO_OPTIONS.raiders.basic },
       advanced: { ...STANDARD_SCENARIO_OPTIONS.raiders.advanced },
@@ -201,10 +235,29 @@ function isTowerRules(value: unknown): value is ScenarioTowerRules {
   );
 }
 
+function isWorldRules(value: unknown): value is ScenarioWorldRules {
+  if (!isObject(value)) return false;
+  return (
+    isInteger(value.starting_wood, 0, 500) &&
+    isInteger(value.forest_tile_count, 1, 0xffff) &&
+    isInteger(value.forest_tile_wood, 1, 0xffff_ffff) &&
+    isInteger(value.forest_regrowth_amount, 1, 0xffff) &&
+    isInteger(value.forest_regrowth_interval_ticks, 1, 0xffff) &&
+    isInteger(value.sawmill_output, 1, 0xffff) &&
+    isInteger(value.sawmill_interval_ticks, 1, 0xffff) &&
+    isInteger(value.sawmill_local_wood_capacity, 1, 0xffff_ffff) &&
+    isInteger(value.day_length_ticks, 1, 0xffff) &&
+    isInteger(value.raid_rally_ticks, 1, 0xffff) &&
+    typeof value.automatic_raids === "boolean" &&
+    typeof value.pause_economy_during_raids === "boolean"
+  );
+}
+
 export function isScenarioOptions(value: unknown): value is ScenarioOptions {
   if (!isObject(value)) return false;
   if (!isObject(value.raiders)) return false;
   if (!Array.isArray(value.waves) || value.waves.length < 1 || value.waves.length > 64) return false;
+  if (value.world !== undefined && !isWorldRules(value.world)) return false;
   return (
     isOneOf(value.starting_supplies, ["lean", "standard", "rich"] as const) &&
     isOneOf(value.forest_density, ["sparse", "standard", "dense"] as const) &&
