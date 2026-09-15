@@ -9,6 +9,7 @@ import {
 import {
   clearSavedGame,
   flushActiveSession,
+  loadStandardScenarioWorld,
   prepareNewGame,
   prepareResume,
   readSavedGameSummary,
@@ -103,6 +104,20 @@ export default function RootApp() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    void loadStandardScenarioWorld()
+      .then((world) => {
+        if (!cancelled) {
+          setScenario((current) => current.world ? current : { ...current, world });
+        }
+      })
+      .catch((error) => console.error("Unable to load authoritative world defaults", error));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     const root = document.documentElement;
     root.classList.toggle("hide-touch-hints", !settings.showTouchHints);
@@ -158,6 +173,16 @@ export default function RootApp() {
     clearSavedGame();
     setSaveSummary(null);
     setConfirmNew(false);
+  }
+
+  function resetScenario() {
+    const reset = createStandardScenarioOptions();
+    setScenario(reset);
+    void loadStandardScenarioWorld()
+      .then((world) => {
+        setScenario((current) => current === reset ? { ...reset, world } : current);
+      })
+      .catch((error) => console.error("Unable to reset authoritative world defaults", error));
   }
 
   if (screen === "game") {
@@ -270,7 +295,7 @@ export default function RootApp() {
               onClick={() =>
                 settingsSection === "presentation"
                   ? setSettings(DEFAULT_SETTINGS)
-                  : setScenario(createStandardScenarioOptions())
+                  : resetScenario()
               }
             >
               {settingsSection === "presentation" ? "Reset presentation" : "Reset scenario"}
