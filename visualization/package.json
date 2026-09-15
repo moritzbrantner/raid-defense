@@ -10,11 +10,13 @@
     "dev": "vite --host 127.0.0.1 --port 5173",
     "build": "bun run build:wasm && bun run typecheck && vite build",
     "typecheck": "tsc --noEmit",
-    "lint": "bunx oxlint@1.80.0 src e2e --format=github",
+    "i18n:check": "bun src/localization.check.ts",
+    "lint": "bun run i18n:check && bunx oxlint@1.80.0 src e2e --format=github",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@moritzbrantner/i18n": "^0.1.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.0",
     "react": "^19.2.0",
