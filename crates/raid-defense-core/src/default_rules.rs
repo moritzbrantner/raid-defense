@@ -116,6 +116,7 @@ pub const STANDARD_RULES: GameRules = GameRules {
     },
     cycle: CycleRules {
         day_length_ticks: 600,
+        raid_rally_ticks: 50,
         automatic_raids: true,
         pause_economy_during_raids: true,
     },
