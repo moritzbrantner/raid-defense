@@ -572,9 +572,7 @@ impl GameState {
             PersonState::ToConstructionStorage => {
                 person.target_entity.map_or_else(Vec::new, |site| {
                     self.nearest_storage_with_wood_for_site(site, start)
-                        .map_or_else(Vec::new, |storage| {
-                            self.storage_goal_cells(storage, None)
-                        })
+                        .map_or_else(Vec::new, |storage| self.storage_goal_cells(storage, None))
                 })
             }
             PersonState::ToConstructionSite => person
