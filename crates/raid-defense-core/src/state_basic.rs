@@ -260,6 +260,8 @@ impl GameState {
         feed_u16(&mut hash, self.raid_rally_ticks_remaining);
         feed_u16(&mut hash, self.wave_schedule.remaining_raiders);
         feed_u16(&mut hash, self.wave_schedule.spawn_ticks_remaining);
+        feed_byte(&mut hash, self.wave_schedule.group_index);
+        feed_u16(&mut hash, self.wave_schedule.remaining_in_group);
         feed_u64(&mut hash, u64::from(self.next_entity));
 
         for entity in &self.snapshot().entities {
@@ -318,6 +320,7 @@ impl GameState {
 
             if let Some(raider) = self.raiders.get(entity_key(entity.id)) {
                 feed_byte(&mut hash, 1);
+                feed_byte(&mut hash, raider_archetype_code(raider.archetype));
                 feed_byte(
                     &mut hash,
                     match raider.edge {
