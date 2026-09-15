@@ -239,7 +239,7 @@ function isWorldRules(value: unknown): value is ScenarioWorldRules {
   if (!isObject(value)) return false;
   return (
     isInteger(value.starting_wood, 0, 500) &&
-    isInteger(value.forest_tile_count, 1, 0xffff) &&
+    isInteger(value.forest_tile_count, 1, 27) &&
     isInteger(value.forest_tile_wood, 1, 0xffff_ffff) &&
     isInteger(value.forest_regrowth_amount, 1, 0xffff) &&
     isInteger(value.forest_regrowth_interval_ticks, 1, 0xffff) &&
