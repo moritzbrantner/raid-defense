@@ -2,6 +2,7 @@ use crate::{TowerArchetype, TowerStats};
 
 pub const MAX_SCENARIO_WAVES: usize = 64;
 pub const MAX_WAVE_GROUPS: usize = 8;
+pub const MAX_SEEDED_FOREST_TILES: u16 = 27;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GameRules {
@@ -19,6 +20,7 @@ pub enum RulesError {
     StartingWoodExceedsCapacity,
     HousePopulationExceedsCapacity,
     ZeroForestCount,
+    ForestCountExceedsLayoutCapacity,
     ZeroForestWood,
     ZeroForestRegrowthAmount,
     ZeroForestRegrowthInterval,
@@ -54,6 +56,9 @@ impl GameRules {
         }
         if self.economy.forest_tile_count == 0 {
             return Err(RulesError::ZeroForestCount);
+        }
+        if self.economy.forest_tile_count > MAX_SEEDED_FOREST_TILES {
+            return Err(RulesError::ForestCountExceedsLayoutCapacity);
         }
         if self.economy.forest_tile_wood == 0 {
             return Err(RulesError::ZeroForestWood);
@@ -779,6 +784,16 @@ mod tests {
         assert_eq!(
             rules.validate(),
             Err(RulesError::HousePopulationExceedsCapacity)
+        );
+    }
+
+    #[test]
+    fn rejects_forest_count_above_seeded_layout_capacity() {
+        let mut rules = STANDARD_RULES;
+        rules.economy.forest_tile_count = MAX_SEEDED_FOREST_TILES + 1;
+        assert_eq!(
+            rules.validate(),
+            Err(RulesError::ForestCountExceedsLayoutCapacity)
         );
     }
 
