@@ -1003,7 +1003,10 @@ mod tests {
         assert!(snapshot.forest_regrowth_amount > 0);
         assert!(snapshot.forest_regrowth_interval_ticks > 0);
         assert!(snapshot.raid_rally_ticks > 0);
-        assert_eq!(snapshot.automatic_raids, STANDARD_RULES.cycle.automatic_raids);
+        assert_eq!(
+            snapshot.automatic_raids,
+            STANDARD_RULES.cycle.automatic_raids
+        );
         assert_eq!(
             snapshot.pause_economy_during_raids,
             STANDARD_RULES.cycle.pause_economy_during_raids
