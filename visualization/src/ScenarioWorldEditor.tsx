@@ -89,11 +89,13 @@ export function ScenarioWorldEditor({ scenario, onChange }: ScenarioWorldEditorP
     );
   }
 
+  const explicitWorld = world;
+
   function update<K extends keyof ScenarioWorldRules>(key: K, value: ScenarioWorldRules[K]) {
     onChange({
       ...scenario,
       world: {
-        ...world,
+        ...explicitWorld,
         [key]: value,
       },
     });
