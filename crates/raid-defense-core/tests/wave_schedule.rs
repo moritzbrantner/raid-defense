@@ -8,7 +8,11 @@ fn finish_rally(state: &mut GameState, rally_ticks: u16) {
             .apply(Command::AdvanceTick)
             .expect("rally tick should advance");
         if tick + 1 < rally_ticks {
-            assert_eq!(state.raider_count(), 0, "raiders must wait for the full rally");
+            assert_eq!(
+                state.raider_count(),
+                0,
+                "raiders must wait for the full rally"
+            );
             assert!(state.is_rallying());
         }
     }
@@ -25,8 +29,14 @@ fn wave_spawns_raiders_after_authoritative_rally_and_then_at_interval() {
     rules.raids.speed_milli = 1;
     let mut state = GameState::with_rules(SEED, rules);
 
-    let event = state.apply(Command::StartWave).expect("wave rally should start");
-    assert_eq!(state.raider_count(), 0, "no raider spawns when the rally is called");
+    let event = state
+        .apply(Command::StartWave)
+        .expect("wave rally should start");
+    assert_eq!(
+        state.raider_count(),
+        0,
+        "no raider spawns when the rally is called"
+    );
     assert!(state.is_rallying());
     assert!(!state.is_night());
     assert!(matches!(
@@ -39,7 +49,11 @@ fn wave_spawns_raiders_after_authoritative_rally_and_then_at_interval() {
     ));
 
     finish_rally(&mut state, rules.cycle.raid_rally_ticks);
-    assert_eq!(state.raider_count(), 1, "the first raider spawns when rally time expires");
+    assert_eq!(
+        state.raider_count(),
+        1,
+        "the first raider spawns when rally time expires"
+    );
     assert!(state.is_night());
 
     for expected_count in 2..=4 {
@@ -74,7 +88,9 @@ fn raid_stays_active_between_scheduled_spawns() {
     rules.raids.speed_milli = 1_000;
     let mut state = GameState::with_rules(SEED, rules);
 
-    state.apply(Command::StartWave).expect("wave rally should start");
+    state
+        .apply(Command::StartWave)
+        .expect("wave rally should start");
     finish_rally(&mut state, rules.cycle.raid_rally_ticks);
     assert_eq!(state.raider_count(), 1);
 
@@ -126,7 +142,9 @@ fn rally_rejects_duplicate_start_commands() {
     rules.cycle.automatic_raids = false;
     let mut state = GameState::with_rules(SEED, rules);
 
-    state.apply(Command::StartWave).expect("rally should start");
+    state
+        .apply(Command::StartWave)
+        .expect("rally should start");
     assert!(state.is_rallying());
     assert_eq!(
         state.apply(Command::StartWave),
