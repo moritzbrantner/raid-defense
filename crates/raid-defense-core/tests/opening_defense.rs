@@ -68,7 +68,7 @@ fn opening_trace() -> Vec<Command> {
 
     state
         .apply(Command::StartWave)
-        .expect("wave should start after construction");
+        .expect("wave rally should start after construction");
     commands.push(Command::StartWave);
     for _ in 0..60 {
         state
@@ -97,7 +97,7 @@ fn opening_economy_defense_trace_is_replayable_with_seeded_logistics() {
 }
 
 #[test]
-fn sawmill_requires_people_to_deliver_harvested_wood_to_storage() {
+fn sawmill_requires_people_to_gather_and_deliver_wood() {
     let mut state = GameState::new(SEED);
     let cell = first_accepted_cell(&state, |cell| Command::PlaceSawmill {
         x: cell.x,
@@ -108,10 +108,10 @@ fn sawmill_requires_people_to_deliver_harvested_wood_to_storage() {
             x: cell.x,
             z: cell.z,
         })
-        .expect("sawmill should build beside a seeded forest");
+        .expect("sawmill should build on a valid worker route");
     let after_build = state.wood();
 
-    for _ in 0..160 {
+    for _ in 0..300 {
         state
             .apply(Command::AdvanceTick)
             .expect("economy tick should advance");
@@ -122,7 +122,7 @@ fn sawmill_requires_people_to_deliver_harvested_wood_to_storage() {
 
     assert!(
         state.wood() > after_build,
-        "a carrier should eventually deliver harvested wood"
+        "a person should eventually gather forest wood, deliver it to the sawmill, and haul it into settlement storage"
     );
     assert_eq!(state.people_count(), 2);
 }
@@ -248,17 +248,19 @@ fn ending_a_wave_does_not_leave_orphaned_projectiles() {
         }
     }
     assert_eq!(state.tower_count(), 1);
-    state.apply(Command::StartWave).expect("wave should start");
+    state.apply(Command::StartWave).expect("wave rally should start");
 
-    for _ in 0..200 {
+    for _ in 0..300 {
         state
             .apply(Command::AdvanceTick)
             .expect("wave tick should advance");
-        if !state.is_night() {
+        if state.wave() == 1 && !state.is_rallying() && !state.is_night() {
             break;
         }
     }
 
+    assert_eq!(state.wave(), 1, "the rally must actually enter wave one");
+    assert!(!state.is_rallying());
     assert!(!state.is_night(), "wave should eventually end");
     assert_eq!(
         state.raider_count(),
