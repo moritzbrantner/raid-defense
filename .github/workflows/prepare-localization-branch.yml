@@ -1,0 +1,55 @@
+name: Prepare localization consumer branch
+
+on:
+  push:
+    branches:
+      - feature/pages-localization
+
+permissions:
+  contents: write
+  packages: read
+
+env:
+  GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN || github.token }}
+  NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN || github.token }}
+
+jobs:
+  prepare:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+          ref: feature/pages-localization
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Install browser dependencies and refresh lockfile
+        working-directory: visualization
+        run: bun install
+
+      - name: Validate translation resources
+        working-directory: visualization
+        run: bun run i18n:check
+
+      - name: Typecheck browser boundary
+        working-directory: visualization
+        run: bun run typecheck
+
+      - name: Lint browser boundary
+        working-directory: visualization
+        run: bun run lint
+
+      - name: Commit generated lockfile
+        run: |
+          if git diff --quiet -- visualization/bun.lock; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add visualization/bun.lock
+          git commit -m "Lock shared i18n dependency"
+          git push origin HEAD:feature/pages-localization
