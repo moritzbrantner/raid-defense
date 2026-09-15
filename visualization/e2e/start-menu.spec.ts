@@ -74,13 +74,18 @@ test("starts and resumes a game with authoritative scenario options", async ({ p
   await page.getByTestId("scenario-tower-editor").getByLabel("Build cost").fill("30");
 
   await page.getByTestId("scenario-world-tab").click();
-  await page.getByTestId("scenario-starting-supplies").selectOption("rich");
-  await page.getByTestId("scenario-forest-density").selectOption("dense");
-  await page.getByTestId("scenario-forest-regrowth").selectOption("fast");
-  await page.getByTestId("scenario-sawmill-throughput").selectOption("fast");
-  await page.getByTestId("scenario-day-length").selectOption("long");
-  await page.getByTestId("scenario-raid-timing").selectOption("manual");
-  await page.getByTestId("scenario-raid-economy").selectOption("continuous");
+  await page.getByTestId("scenario-starting-wood").fill("240");
+  await page.getByTestId("scenario-forest-tile-count").fill("24");
+  await page.getByTestId("scenario-forest-tile-wood").fill("95");
+  await page.getByTestId("scenario-forest-regrowth-amount").fill("2");
+  await page.getByTestId("scenario-forest-regrowth-interval").fill("11");
+  await page.getByTestId("scenario-sawmill-output").fill("7");
+  await page.getByTestId("scenario-sawmill-interval").fill("8");
+  await page.getByTestId("scenario-sawmill-capacity").fill("31");
+  await page.getByTestId("scenario-day-length-ticks").fill("875");
+  await page.getByTestId("scenario-raid-rally-ticks").fill("43");
+  await page.getByTestId("scenario-automatic-raids").uncheck();
+  await page.getByTestId("scenario-pause-economy").uncheck();
 
   await page.getByRole("button", { name: "Back" }).click();
   await expect(page.getByTestId("start-menu")).toBeVisible();
@@ -94,30 +99,27 @@ test("starts and resumes a game with authoritative scenario options", async ({ p
     const scenario = (JSON.parse(raw) as { scenario?: Record<string, any> }).scenario;
     if (!scenario) return null;
     return {
-      starting_supplies: scenario.starting_supplies,
-      forest_density: scenario.forest_density,
-      forest_regrowth: scenario.forest_regrowth,
-      sawmill_throughput: scenario.sawmill_throughput,
-      raid_size: scenario.raid_size,
-      raider_strength: scenario.raider_strength,
-      day_length: scenario.day_length,
-      raid_timing: scenario.raid_timing,
-      raid_economy: scenario.raid_economy,
+      world: scenario.world,
       wave5: scenario.waves?.[4],
       advanced_health: scenario.raiders?.advanced?.health,
       arrow_build_cost: scenario.towers?.arrow?.build_cost,
     };
   });
   expect(savedScenario).toEqual({
-    starting_supplies: "rich",
-    forest_density: "dense",
-    forest_regrowth: "fast",
-    sawmill_throughput: "fast",
-    raid_size: "standard",
-    raider_strength: "standard",
-    day_length: "long",
-    raid_timing: "manual",
-    raid_economy: "continuous",
+    world: {
+      starting_wood: 240,
+      forest_tile_count: 24,
+      forest_tile_wood: 95,
+      forest_regrowth_amount: 2,
+      forest_regrowth_interval_ticks: 11,
+      sawmill_output: 7,
+      sawmill_interval_ticks: 8,
+      sawmill_local_wood_capacity: 31,
+      day_length_ticks: 875,
+      raid_rally_ticks: 43,
+      automatic_raids: false,
+      pause_economy_during_raids: false,
+    },
     wave5: {
       groups: [
         { archetype: "basic", count: 3 },
