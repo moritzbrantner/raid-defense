@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 
 use raid_defense_core::{
-    Command, DayLength, EntityKind, Event, ForestDensity, ForestRegrowth, GameError, GameState,
-    MAX_SCENARIO_WAVES, MAX_WAVE_GROUPS, PersonState, RaidEconomy, RaidSize, RaidTiming,
+    Command, DayLength, EntityKind, Event, ForestDensity, ForestRegrowth, GameError, GameRules,
+    GameState, MAX_SCENARIO_WAVES, MAX_WAVE_GROUPS, PersonState, RaidEconomy, RaidSize, RaidTiming,
     RaiderArchetype, RaiderArchetypeRules, RaiderCatalogRules, RaiderStrength, ResourceKind,
     SawmillThroughput, ScenarioOptions, StartingSupplies, TowerArchetype, TowerArchetypeRules,
     TowerLevelRules, TowerRules, WaveGroupRules, WavePlanRules, WaveRules,
@@ -43,11 +43,17 @@ impl RaidDefenseGame {
 pub fn create_game(seed: u32, scenario_json: &str) -> Result<RaidDefenseGame, JsValue> {
     let dto = serde_json::from_str::<ScenarioOptionsDto>(scenario_json)
         .map_err(|_| JsValue::from_str("invalid_scenario_options"))?;
+    let world = dto.world;
     let scenario = ScenarioOptions::try_from(dto)
         .map_err(|_| JsValue::from_str("invalid_scenario_options"))?;
-    let rules = scenario
+    let mut rules = scenario
         .into_rules()
         .map_err(|_| JsValue::from_str("invalid_scenario_rules"))?;
+    if let Some(world) = world {
+        rules = world
+            .apply(rules)
+            .map_err(|_| JsValue::from_str("invalid_scenario_rules"))?;
+    }
     let state = GameState::try_with_rules(u64::from(seed), rules)
         .map_err(|_| JsValue::from_str("invalid_scenario_rules"))?;
     Ok(RaidDefenseGame { state })
@@ -334,6 +340,55 @@ impl From<TowerRulesDto> for TowerRules {
     }
 }
 
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ScenarioWorldRulesDto {
+    starting_wood: u32,
+    forest_tile_count: u16,
+    forest_tile_wood: u32,
+    forest_regrowth_amount: u16,
+    forest_regrowth_interval_ticks: u16,
+    sawmill_output: u16,
+    sawmill_interval_ticks: u16,
+    sawmill_local_wood_capacity: u32,
+    day_length_ticks: u16,
+    raid_rally_ticks: u16,
+    automatic_raids: bool,
+    pause_economy_during_raids: bool,
+}
+
+impl ScenarioWorldRulesDto {
+    fn apply(self, mut rules: GameRules) -> Result<GameRules, ()> {
+        if self.forest_tile_count == 0
+            || self.forest_tile_wood == 0
+            || self.forest_regrowth_amount == 0
+            || self.forest_regrowth_interval_ticks == 0
+            || self.sawmill_output == 0
+            || self.sawmill_interval_ticks == 0
+            || self.sawmill_local_wood_capacity == 0
+            || self.day_length_ticks == 0
+            || self.raid_rally_ticks == 0
+        {
+            return Err(());
+        }
+
+        rules.economy.starting_wood = self.starting_wood;
+        rules.economy.forest_tile_count = self.forest_tile_count;
+        rules.economy.forest_tile_wood = self.forest_tile_wood;
+        rules.economy.forest_regrowth_amount = self.forest_regrowth_amount;
+        rules.economy.forest_regrowth_interval_ticks = self.forest_regrowth_interval_ticks;
+        rules.economy.sawmill_output = self.sawmill_output;
+        rules.economy.sawmill_interval_ticks = self.sawmill_interval_ticks;
+        rules.economy.sawmill_local_wood_capacity = self.sawmill_local_wood_capacity;
+        rules.cycle.day_length_ticks = self.day_length_ticks;
+        rules.cycle.raid_rally_ticks = self.raid_rally_ticks;
+        rules.cycle.automatic_raids = self.automatic_raids;
+        rules.cycle.pause_economy_during_raids = self.pause_economy_during_raids;
+        rules.validate().map_err(|_| ())?;
+        Ok(rules)
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ScenarioOptionsDto {
@@ -346,6 +401,7 @@ struct ScenarioOptionsDto {
     day_length: DayLengthDto,
     raid_timing: RaidTimingDto,
     raid_economy: RaidEconomyDto,
+    world: Option<ScenarioWorldRulesDto>,
     raiders: Option<RaiderCatalogRulesDto>,
     waves: Option<Vec<WaveRulesDto>>,
     towers: Option<TowerRulesDto>,
@@ -678,6 +734,8 @@ struct SnapshotDto {
     house_population_capacity: u16,
     person_carry_capacity: u16,
     raid_rally_ticks: u16,
+    automatic_raids: bool,
+    pause_economy_during_raids: bool,
     arrow_tower_cost: u32,
     cannon_tower_cost: u32,
     max_tower_level: u8,
@@ -723,6 +781,8 @@ impl From<&GameState> for SnapshotDto {
             house_population_capacity: rules.buildings.house.population_capacity,
             person_carry_capacity: rules.population.carry_capacity,
             raid_rally_ticks: rules.cycle.raid_rally_ticks,
+            automatic_raids: rules.cycle.automatic_raids,
+            pause_economy_during_raids: rules.cycle.pause_economy_during_raids,
             arrow_tower_cost: rules.towers.arrow.build_cost,
             cannon_tower_cost: rules.towers.cannon.build_cost,
             max_tower_level: rules.towers.max_level,
@@ -943,6 +1003,14 @@ mod tests {
         assert!(snapshot.forest_regrowth_amount > 0);
         assert!(snapshot.forest_regrowth_interval_ticks > 0);
         assert!(snapshot.raid_rally_ticks > 0);
+        assert_eq!(
+            snapshot.automatic_raids,
+            STANDARD_RULES.cycle.automatic_raids
+        );
+        assert_eq!(
+            snapshot.pause_economy_during_raids,
+            STANDARD_RULES.cycle.pause_economy_during_raids
+        );
         assert!(
             snapshot
                 .entities
@@ -975,6 +1043,57 @@ mod tests {
         assert!(rules.economy.starting_wood > STANDARD_RULES.economy.starting_wood);
         assert!(rules.economy.forest_tile_count > STANDARD_RULES.economy.forest_tile_count);
         assert!(rules.raids.raiders_per_wave > STANDARD_RULES.raids.raiders_per_wave);
+        assert!(!rules.cycle.automatic_raids);
+        assert!(!rules.cycle.pause_economy_during_raids);
+    }
+
+    #[test]
+    fn explicit_world_contract_maps_numbers_without_presets() {
+        let dto: ScenarioOptionsDto = serde_json::from_str(
+            r#"{
+                "starting_supplies":"standard",
+                "forest_density":"standard",
+                "forest_regrowth":"standard",
+                "sawmill_throughput":"standard",
+                "raid_size":"standard",
+                "raider_strength":"standard",
+                "day_length":"standard",
+                "raid_timing":"standard",
+                "raid_economy":"standard",
+                "world":{
+                    "starting_wood":240,
+                    "forest_tile_count":24,
+                    "forest_tile_wood":95,
+                    "forest_regrowth_amount":2,
+                    "forest_regrowth_interval_ticks":11,
+                    "sawmill_output":7,
+                    "sawmill_interval_ticks":8,
+                    "sawmill_local_wood_capacity":31,
+                    "day_length_ticks":875,
+                    "raid_rally_ticks":43,
+                    "automatic_raids":false,
+                    "pause_economy_during_raids":false
+                }
+            }"#,
+        )
+        .expect("explicit world JSON should parse");
+        let world = dto.world.expect("world rules should be present");
+        let rules = ScenarioOptions::try_from(dto)
+            .expect("scenario DTO should map")
+            .into_rules()
+            .expect("base scenario rules should validate");
+        let rules = world.apply(rules).expect("world rules should validate");
+
+        assert_eq!(rules.economy.starting_wood, 240);
+        assert_eq!(rules.economy.forest_tile_count, 24);
+        assert_eq!(rules.economy.forest_tile_wood, 95);
+        assert_eq!(rules.economy.forest_regrowth_amount, 2);
+        assert_eq!(rules.economy.forest_regrowth_interval_ticks, 11);
+        assert_eq!(rules.economy.sawmill_output, 7);
+        assert_eq!(rules.economy.sawmill_interval_ticks, 8);
+        assert_eq!(rules.economy.sawmill_local_wood_capacity, 31);
+        assert_eq!(rules.cycle.day_length_ticks, 875);
+        assert_eq!(rules.cycle.raid_rally_ticks, 43);
         assert!(!rules.cycle.automatic_raids);
         assert!(!rules.cycle.pause_economy_during_raids);
     }

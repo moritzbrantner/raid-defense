@@ -40,13 +40,29 @@ test("scenario editor exposes unit and tower rules instead of difficulty presets
   await expect(page.getByTestId("scenario-settings")).not.toContainText("Raider strength");
 });
 
-test("world scenario controls remain separate from combat composition", async ({ page }) => {
+test("world scenario controls expose explicit values instead of presets", async ({ page }) => {
   await openScenarioEditor(page);
 
   await page.getByTestId("scenario-world-tab").click();
-  await page.getByTestId("scenario-starting-supplies").selectOption("rich");
-  await page.getByTestId("scenario-raid-timing").selectOption("manual");
+  const worldEditor = page.getByTestId("scenario-world-editor");
+  await expect(worldEditor.locator("select")).toHaveCount(0);
 
-  await expect(page.getByTestId("scenario-starting-supplies")).toHaveValue("rich");
-  await expect(page.getByTestId("scenario-raid-timing")).toHaveValue("manual");
+  const startingWood = page.getByTestId("scenario-starting-wood");
+  const regrowthInterval = page.getByTestId("scenario-forest-regrowth-interval");
+  const dayLength = page.getByTestId("scenario-day-length-ticks");
+  await expect(startingWood).toHaveValue("120");
+  await expect(regrowthInterval).toHaveValue("20");
+  await expect(dayLength).toHaveValue("600");
+
+  await startingWood.fill("240");
+  await regrowthInterval.fill("11");
+  await dayLength.fill("875");
+  await expect(startingWood).toHaveValue("240");
+  await expect(regrowthInterval).toHaveValue("11");
+  await expect(dayLength).toHaveValue("875");
+
+  const automaticRaids = page.getByTestId("scenario-automatic-raids");
+  await expect(automaticRaids).toBeChecked();
+  await automaticRaids.uncheck();
+  await expect(automaticRaids).not.toBeChecked();
 });
