@@ -1,0 +1,291 @@
+.scenario-editor {
+  width: min(920px, 100%);
+}
+
+.scenario-editor-tabs,
+.tower-kind-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 18px;
+}
+
+.scenario-editor-tabs button,
+.tower-kind-tabs button,
+.wave-actions button,
+.scenario-inline-button,
+.row-remove {
+  min-height: 44px;
+  border: 1px solid #465043;
+  border-radius: 4px;
+  background: #141a13;
+  color: #aaa99e;
+  padding: 9px 13px;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.scenario-editor-tabs button.active,
+.tower-kind-tabs button.active,
+.scenario-editor-tabs button:hover,
+.tower-kind-tabs button:hover,
+.wave-actions button:hover,
+.scenario-inline-button:hover,
+.row-remove:hover:not(:disabled) {
+  border-color: #927e50;
+  background: #20281e;
+  color: #f0e4c6;
+}
+
+.scenario-editor button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.wave-editor {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.wave-list {
+  max-height: 560px;
+  display: grid;
+  gap: 6px;
+  overflow: auto;
+  padding-right: 5px;
+}
+
+.wave-list > button {
+  min-height: 50px;
+  display: grid;
+  gap: 3px;
+  border: 1px solid #343d32;
+  border-radius: 4px;
+  background: #111711;
+  color: #bdb8aa;
+  padding: 9px 11px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.wave-list > button span {
+  color: #788074;
+  font-family: "DM Mono", monospace;
+  font-size: 0.64rem;
+}
+
+.wave-list > button.active,
+.wave-list > button:hover:not(:disabled) {
+  border-color: #927e50;
+  background: #20281e;
+  color: #f0e4c6;
+}
+
+.wave-list > button.wave-add {
+  place-items: center;
+  min-height: 44px;
+  border-style: dashed;
+  color: #9d957e;
+  text-align: center;
+}
+
+.wave-detail,
+.scenario-rule-section {
+  border-top: 1px solid #313930;
+  padding-top: 14px;
+}
+
+.wave-detail > header,
+.scenario-rule-section > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 16px;
+}
+
+.wave-detail h3,
+.scenario-rule-section h3 {
+  margin: 2px 0 0;
+  color: #e7dfca;
+  font-size: 1.05rem;
+}
+
+.scenario-rule-section header p {
+  max-width: 54ch;
+  margin: 4px 0 0;
+  color: #858b80;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.scenario-eyebrow {
+  color: #868d80;
+  font-family: "DM Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wave-actions {
+  display: flex;
+  gap: 7px;
+}
+
+.wave-actions button {
+  min-height: 40px;
+  padding: 8px 11px;
+}
+
+.wave-groups,
+.scenario-rule-stack,
+.tower-levels {
+  display: grid;
+  gap: 10px;
+}
+
+.wave-group-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(100px, 140px) auto;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid #30372e;
+  border-radius: 4px;
+  background: rgb(14 19 14 / 54%);
+}
+
+.wave-group-row label,
+.scenario-number-field {
+  display: grid;
+  gap: 6px;
+  color: #92998d;
+  font-size: 0.68rem;
+}
+
+.wave-group-row select,
+.scenario-number-field input {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid #4f584a;
+  border-radius: 4px;
+  background: #141a13;
+  color: #ddd6c2;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.wave-group-row select:focus-visible,
+.scenario-number-field input:focus-visible,
+.scenario-editor button:focus-visible {
+  outline: 2px solid #d1af63;
+  outline-offset: 2px;
+}
+
+.row-remove {
+  min-width: 78px;
+}
+
+.scenario-inline-button {
+  margin-top: 10px;
+  background: transparent;
+}
+
+.scenario-rule-section {
+  padding-bottom: 18px;
+}
+
+.scenario-rule-section + .scenario-rule-section {
+  margin-top: 10px;
+}
+
+.scenario-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tower-global-rules {
+  margin-bottom: 18px;
+}
+
+.tower-levels {
+  margin-top: 16px;
+}
+
+.tower-level-editor {
+  margin: 0;
+  border: 1px solid #30372e;
+  border-radius: 4px;
+  padding: 12px;
+}
+
+.tower-level-editor legend {
+  padding: 0 7px;
+  color: #bcb4a0;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .wave-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .wave-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: 220px;
+  }
+
+  .wave-list > button.wave-add {
+    grid-column: 1 / -1;
+  }
+
+  .wave-group-row {
+    grid-template-columns: minmax(0, 1fr) 110px;
+  }
+
+  .row-remove {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 520px) {
+  .scenario-editor-tabs,
+  .tower-kind-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .wave-list {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .wave-detail > header,
+  .scenario-rule-section > header {
+    display: grid;
+  }
+
+  .wave-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .wave-group-row,
+  .scenario-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .row-remove {
+    grid-column: auto;
+  }
+}
