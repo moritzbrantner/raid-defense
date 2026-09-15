@@ -415,6 +415,5 @@ impl GameState {
 fn cell_distance_sq(a: Cell, b: Cell) -> i32 {
     let dx = i32::from(a.x - b.x);
     let dz = i32::from(a.z - b.z);
-    dx.saturating_mul(dx)
-        .saturating_add(dz.saturating_mul(dz))
+    dx.saturating_mul(dx).saturating_add(dz.saturating_mul(dz))
 }
