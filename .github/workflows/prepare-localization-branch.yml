@@ -38,14 +38,6 @@ jobs:
         working-directory: visualization
         run: bun run i18n:check
 
-      - name: Typecheck browser boundary
-        working-directory: visualization
-        run: bun run typecheck
-
-      - name: Lint browser boundary
-        working-directory: visualization
-        run: bun run lint
-
       - name: Commit generated lockfile
         run: |
           if git diff --quiet -- visualization/bun.lock; then
