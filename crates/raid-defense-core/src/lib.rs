@@ -187,14 +187,30 @@ pub struct TowerStats {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Raider {
+    pub archetype: RaiderArchetype,
     pub edge: Edge,
     pub target_storage: EntityId,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct WaveSchedule {
     remaining_raiders: u16,
     spawn_ticks_remaining: u16,
+    wave: WaveRules,
+    group_index: u8,
+    remaining_in_group: u16,
+}
+
+impl Default for WaveSchedule {
+    fn default() -> Self {
+        Self {
+            remaining_raiders: 0,
+            spawn_ticks_remaining: 0,
+            wave: WaveRules::EMPTY,
+            group_index: 0,
+            remaining_in_group: 0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -326,6 +342,7 @@ pub enum GameError {
     NoTower,
     MaxTowerLevel,
     RaidersStillActive,
+    ScenarioComplete,
     GameOver,
 }
 
@@ -356,6 +373,7 @@ pub struct EntitySnapshot {
     pub tower_archetype: Option<TowerArchetype>,
     pub tower_level: u8,
     pub upgrade_cost: Option<u32>,
+    pub raider_archetype: Option<RaiderArchetype>,
     pub projectile_target: Option<EntityId>,
     pub stored_wood: u32,
     pub wood_capacity: u32,
