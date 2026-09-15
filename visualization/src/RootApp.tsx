@@ -1,3 +1,4 @@
+import { useLocale, useTranslation } from "@moritzbrantner/i18n/react";
 import { useEffect, useState } from "react";
 import App from "./App";
 import { GameWiki } from "./GameWiki";
@@ -15,6 +16,7 @@ import {
   readSavedGameSummary,
   type SavedGameSummary,
 } from "./simulationClient";
+import type { AppLocale } from "./translations";
 import "./StartMenu.css";
 
 type Screen = "menu" | "game" | "settings";
@@ -65,16 +67,9 @@ function createSeed() {
   return values[0] ?? 0x5eed;
 }
 
-function saveDescription(save: SavedGameSummary) {
-  const progress = save.completed_waves > 0
-    ? `${save.completed_waves} wave${save.completed_waves === 1 ? "" : "s"} cleared`
-    : save.wave > 0
-      ? `Wave ${save.wave}`
-      : "Opening settlement";
-  return `${progress} · tick ${save.tick}`;
-}
-
 export default function RootApp() {
+  const { t } = useTranslation();
+  const { locale, setLocale } = useLocale<AppLocale>();
   const [screen, setScreen] = useState<Screen>(() => readScreen());
   const [settingsSection, setSettingsSection] = useState<SettingsSection>(() => readSettingsSection());
   const [saveSummary, setSaveSummary] = useState<SavedGameSummary | null>(() =>
@@ -185,6 +180,16 @@ export default function RootApp() {
       .catch((error) => console.error("Unable to reset authoritative world defaults", error));
   }
 
+  function describeSave(save: SavedGameSummary) {
+    const progress =
+      save.completed_waves > 0
+        ? t("menu.save.wavesCleared", { count: save.completed_waves })
+        : save.wave > 0
+          ? t("menu.save.wave", { wave: save.wave })
+          : t("menu.save.openingSettlement");
+    return t("menu.save.summary", { progress, tick: save.tick });
+  }
+
   if (screen === "game") {
     return (
       <>
@@ -196,7 +201,7 @@ export default function RootApp() {
           onClick={returnToMenu}
           data-testid="return-to-menu"
         >
-          Menu
+          {t("game.menu")}
         </button>
       </>
     );
@@ -207,16 +212,16 @@ export default function RootApp() {
       <main className="front-door-shell settings-shell" data-testid="settings-screen">
         <section className="settings-panel" aria-labelledby="settings-title">
           <span className="menu-kicker">Raid Defense</span>
-          <h1 id="settings-title">Settings</h1>
+          <h1 id="settings-title">{t("settings.title")}</h1>
 
-          <nav className="settings-sections" aria-label="Settings sections">
+          <nav className="settings-sections" aria-label={t("settings.sectionsLabel")}>
             <button
               type="button"
               className={settingsSection === "presentation" ? "active" : ""}
               onClick={() => openSettingsSection("presentation")}
               data-testid="settings-presentation-tab"
             >
-              Presentation
+              {t("settings.presentation")}
             </button>
             <button
               type="button"
@@ -224,20 +229,33 @@ export default function RootApp() {
               onClick={() => openSettingsSection("scenario")}
               data-testid="settings-scenario-tab"
             >
-              Scenario editor
+              {t("settings.scenarioEditor")}
             </button>
           </nav>
 
           {settingsSection === "presentation" ? (
             <div data-testid="presentation-settings">
-              <p className="menu-copy">
-                Presentation preferences stay outside the authoritative simulation and can be changed at any time.
-              </p>
+              <p className="menu-copy">{t("settings.intro")}</p>
 
               <label className="setting-row">
                 <span>
-                  <strong>Touch guidance</strong>
-                  <small>Show the tap, drag, and pinch hint over the battlefield on phones.</small>
+                  <strong>{t("settings.language.title")}</strong>
+                  <small>{t("settings.language.description")}</small>
+                </span>
+                <select
+                  value={locale}
+                  onChange={(event) => void setLocale(event.target.value as AppLocale)}
+                  data-testid="setting-language"
+                >
+                  <option value="en">{t("settings.language.english")}</option>
+                  <option value="de">{t("settings.language.german")}</option>
+                </select>
+              </label>
+
+              <label className="setting-row">
+                <span>
+                  <strong>{t("settings.touchGuidance.title")}</strong>
+                  <small>{t("settings.touchGuidance.description")}</small>
                 </span>
                 <input
                   type="checkbox"
@@ -251,8 +269,8 @@ export default function RootApp() {
 
               <label className="setting-row">
                 <span>
-                  <strong>Reduce UI motion</strong>
-                  <small>Disable decorative UI transitions while keeping simulation timing unchanged.</small>
+                  <strong>{t("settings.reduceMotion.title")}</strong>
+                  <small>{t("settings.reduceMotion.description")}</small>
                 </span>
                 <input
                   type="checkbox"
@@ -266,8 +284,8 @@ export default function RootApp() {
 
               <label className="setting-row">
                 <span>
-                  <strong>Compact status strip</strong>
-                  <small>Use tighter spacing for settlement status information.</small>
+                  <strong>{t("settings.compactStatus.title")}</strong>
+                  <small>{t("settings.compactStatus.description")}</small>
                 </span>
                 <input
                   type="checkbox"
@@ -286,8 +304,13 @@ export default function RootApp() {
           )}
 
           <div className="settings-actions">
-            <button type="button" className="menu-button primary" onClick={() => navigate("menu")}>
-              Back
+            <button
+              type="button"
+              className="menu-button primary"
+              onClick={() => navigate("menu")}
+              data-testid="settings-back"
+            >
+              {t("settings.actions.back")}
             </button>
             <button
               type="button"
@@ -298,11 +321,13 @@ export default function RootApp() {
                   : resetScenario()
               }
             >
-              {settingsSection === "presentation" ? "Reset presentation" : "Reset scenario"}
+              {settingsSection === "presentation"
+                ? t("settings.actions.resetPresentation")
+                : t("settings.actions.resetScenario")}
             </button>
             {saveSummary ? (
               <button type="button" className="menu-button danger" onClick={deleteSave}>
-                Delete saved game
+                {t("settings.actions.deleteSavedGame")}
               </button>
             ) : null}
           </div>
@@ -314,12 +339,9 @@ export default function RootApp() {
   return (
     <main className="front-door-shell" data-testid="start-menu">
       <section className="start-menu" aria-labelledby="start-menu-title">
-        <span className="menu-kicker">Deterministic settlement defense</span>
-        <h1 id="start-menu-title">Raid Defense</h1>
-        <p className="menu-copy">
-          Build the supply chain before the raiders arrive. Forests, workers, storage, construction,
-          and combat all run through the authoritative Rust simulation.
-        </p>
+        <span className="menu-kicker">{t("menu.kicker")}</span>
+        <h1 id="start-menu-title">{t("menu.title")}</h1>
+        <p className="menu-copy">{t("menu.description")}</p>
 
         <div className="menu-actions">
           <button
@@ -329,9 +351,9 @@ export default function RootApp() {
             onClick={resumeGame}
             data-testid="resume-game"
           >
-            Resume
+            {t("menu.resume")}
           </button>
-          {saveSummary ? <p className="save-summary">{saveDescription(saveSummary)}</p> : null}
+          {saveSummary ? <p className="save-summary">{describeSave(saveSummary)}</p> : null}
 
           {!confirmNew ? (
             <button
@@ -340,17 +362,17 @@ export default function RootApp() {
               onClick={() => (saveSummary ? setConfirmNew(true) : startNewGame())}
               data-testid="new-game"
             >
-              New game
+              {t("menu.newGame")}
             </button>
           ) : (
             <div className="new-game-confirm" data-testid="new-game-confirmation">
-              <p>Starting a new game replaces the current saved run.</p>
+              <p>{t("menu.replaceWarning")}</p>
               <div>
                 <button type="button" className="menu-button danger" onClick={startNewGame}>
-                  Replace and start
+                  {t("menu.replaceAndStart")}
                 </button>
                 <button type="button" className="menu-button subtle" onClick={() => setConfirmNew(false)}>
-                  Cancel
+                  {t("menu.cancel")}
                 </button>
               </div>
             </div>
@@ -362,7 +384,7 @@ export default function RootApp() {
             onClick={() => openSettingsSection("presentation")}
             data-testid="open-settings"
           >
-            Settings
+            {t("menu.settings")}
           </button>
         </div>
       </section>
