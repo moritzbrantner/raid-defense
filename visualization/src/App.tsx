@@ -20,6 +20,11 @@ type PlacementChoice =
   | { kind: "house" }
   | { kind: "tower"; archetype: TowerArchetype };
 
+type CoordinateDraft = {
+  x: string;
+  z: string;
+};
+
 function towerName(archetype: TowerArchetype) {
   return archetype === "arrow" ? "Arrow tower" : "Cannon tower";
 }
@@ -233,6 +238,17 @@ function GroundTile({
   );
 }
 
+function GhostMaterial() {
+  return (
+    <meshStandardMaterial
+      color="#d8cfac"
+      transparent
+      opacity={0.42}
+      depthWrite={false}
+    />
+  );
+}
+
 function PlacementGhost({
   placement,
   cell,
@@ -247,18 +263,17 @@ function PlacementGhost({
     0,
     worldZ(cell.z + 0.5, snapshot.grid_height),
   ];
-  const material = <meshStandardMaterial color="#d8cfac" transparent opacity={0.42} depthWrite={false} />;
 
   if (placement.kind === "tower") {
     return (
       <group position={position}>
         <mesh position={[0, 0.28, 0]} raycast={() => undefined}>
           <cylinderGeometry args={[0.42, 0.48, 0.54, 8]} />
-          {material}
+          <GhostMaterial />
         </mesh>
         <mesh position={[0, 0.82, 0]} raycast={() => undefined}>
           <boxGeometry args={[0.56, 0.58, 0.56]} />
-          {material}
+          <GhostMaterial />
         </mesh>
       </group>
     );
@@ -269,11 +284,11 @@ function PlacementGhost({
       <group position={position}>
         <mesh position={[0, 0.3, 0]} raycast={() => undefined}>
           <boxGeometry args={[0.8, 0.54, 0.76]} />
-          {material}
+          <GhostMaterial />
         </mesh>
         <mesh position={[0.43, 0.42, 0]} rotation={[Math.PI / 2, 0, 0]} raycast={() => undefined}>
           <cylinderGeometry args={[0.24, 0.24, 0.08, 16]} />
-          {material}
+          <GhostMaterial />
         </mesh>
       </group>
     );
@@ -283,11 +298,11 @@ function PlacementGhost({
     <group position={position}>
       <mesh position={[0, 0.32, 0]} raycast={() => undefined}>
         <boxGeometry args={[placement.kind === "storage_house" ? 0.9 : 0.82, 0.6, 0.78]} />
-        {material}
+        <GhostMaterial />
       </mesh>
       <mesh position={[0, 0.78, 0]} rotation={[0, Math.PI / 4, 0]} raycast={() => undefined}>
         <coneGeometry args={[0.64, 0.5, 4]} />
-        {material}
+        <GhostMaterial />
       </mesh>
     </group>
   );
@@ -537,7 +552,7 @@ function GameWorld({
 }) {
   const [hoveredCell, setHoveredCell] = useState<CellView | null>(null);
   useEffect(() => {
-    if (!placement) setHoveredCell(null);
+    setHoveredCell(null);
   }, [placement]);
 
   const cells = useMemo(() => {
@@ -566,6 +581,7 @@ function GameWorld({
     { x: Math.floor(snapshot.grid_width / 2), z: snapshot.grid_height - 1 },
     { x: 0, z: Math.floor(snapshot.grid_height / 2) },
   ];
+  const ghostCell = hoveredCell ?? selectedCell;
 
   return (
     <Canvas
@@ -583,14 +599,19 @@ function GameWorld({
           key={`${cell.x}:${cell.z}`}
           cell={cell}
           snapshot={snapshot}
-          selected={selectedCell !== null && cell.x === selectedCell.x && cell.z === selectedCell.z}
+          selected={
+            placement === null &&
+            selectedCell !== null &&
+            cell.x === selectedCell.x &&
+            cell.z === selectedCell.z
+          }
           occupied={occupied.has(`${cell.x}:${cell.z}`)}
           onHoverCell={setHoveredCell}
           onActivateCell={placement ? onPlace : onSelectCell}
         />
       ))}
-      {placement && hoveredCell && (
-        <PlacementGhost placement={placement} cell={hoveredCell} snapshot={snapshot} />
+      {placement && ghostCell && (
+        <PlacementGhost placement={placement} cell={ghostCell} snapshot={snapshot} />
       )}
       {gates.map((cell) => (
         <GateMarker key={`gate-${cell.x}:${cell.z}`} cell={cell} snapshot={snapshot} />
@@ -617,7 +638,14 @@ function GameWorld({
             return <ProjectileModel key={entity.id} entity={entity} snapshot={snapshot} />;
         }
       })}
-      <OrbitControls makeDefault target={[0, 0.4, 0]} minDistance={9} maxDistance={42} maxPolarAngle={Math.PI * 0.47} enableDamping />
+      <OrbitControls
+        makeDefault
+        target={[0, 0.4, 0]}
+        minDistance={9}
+        maxDistance={42}
+        maxPolarAngle={Math.PI * 0.47}
+        enableDamping
+      />
     </Canvas>
   );
 }
@@ -626,6 +654,7 @@ function App() {
   const [client, setClient] = useState<RaidDefenseSimulationClient | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotView | null>(null);
   const [selectedCell, setSelectedCell] = useState<CellView | null>(null);
+  const [coordinateDraft, setCoordinateDraft] = useState<CoordinateDraft>({ x: "", z: "" });
   const [placement, setPlacement] = useState<PlacementChoice | null>(null);
   const [feedback, setFeedback] = useState("Initializing deterministic defense grid…");
 
@@ -656,6 +685,8 @@ function App() {
     const cancelPlacement = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setPlacement(null);
+      setSelectedCell(null);
+      setCoordinateDraft({ x: "", z: "" });
       setFeedback("Building placement cancelled.");
     };
     window.addEventListener("keydown", cancelPlacement);
@@ -668,19 +699,46 @@ function App() {
     if (!client) return null;
     const response = client.dispatch(command);
     setSnapshot(response.snapshot);
-    setFeedback(response.ok ? describeEvent(response.event) : describeError(response.error?.code ?? "unknown_error"));
+    setFeedback(
+      response.ok
+        ? describeEvent(response.event)
+        : describeError(response.error?.code ?? "unknown_error"),
+    );
     return response;
+  }
+
+  function setInspectedCell(cell: CellView) {
+    setSelectedCell(cell);
+    setCoordinateDraft({ x: String(cell.x), z: String(cell.z) });
+  }
+
+  function updateCoordinateDraft(axis: keyof CoordinateDraft, rawValue: string) {
+    const size = axis === "x" ? snapshot?.grid_width : snapshot?.grid_height;
+    const value =
+      rawValue === "" || size === undefined
+        ? rawValue
+        : String(clampCellCoordinate(Number(rawValue), size));
+    const next = { ...coordinateDraft, [axis]: value };
+    setCoordinateDraft(next);
+    if (next.x === "" || next.z === "") {
+      setSelectedCell(null);
+      return;
+    }
+    setSelectedCell({ x: Number(next.x), z: Number(next.z) });
   }
 
   function beginPlacement(nextPlacement: PlacementChoice) {
     setPlacement(nextPlacement);
     setSelectedCell(null);
-    setFeedback(`${placementName(nextPlacement)} selected. Move over the battlefield and click or tap the tile where it should be placed. Press Escape to cancel.`);
+    setCoordinateDraft({ x: "", z: "" });
+    setFeedback(
+      `${placementName(nextPlacement)} selected. Move over the battlefield and click or tap the tile where it should be placed. Press Escape to cancel.`,
+    );
   }
 
   function placeAt(cell: CellView) {
     if (!placement) {
-      setSelectedCell(cell);
+      setInspectedCell(cell);
       return;
     }
     const command: RaidDefenseCommand =
@@ -694,7 +752,7 @@ function App() {
     const response = issue(command);
     if (response?.ok) {
       setPlacement(null);
-      setSelectedCell(cell);
+      setInspectedCell(cell);
     }
   }
 
@@ -761,7 +819,10 @@ function App() {
   const selectedHouse = selectedCell
     ? houses.find((entity) => entity.cell.x === selectedCell.x && entity.cell.z === selectedCell.z)
     : undefined;
-  const townPercent = Math.max(0, Math.min(100, (snapshot.town_health / snapshot.town_max_health) * 100));
+  const townPercent = Math.max(
+    0,
+    Math.min(100, (snapshot.town_health / snapshot.town_max_health) * 100),
+  );
   const woodPercent = Math.max(0, Math.min(100, (snapshot.wood / snapshot.wood_capacity) * 100));
   const canStartWave = !snapshot.is_night && !snapshot.is_rallying && snapshot.town_health > 0;
   const canUpgrade =
@@ -807,21 +868,67 @@ function App() {
           <h1>Raid Defense</h1>
         </div>
         <dl className="status-strip" aria-label="Settlement status">
-          <div><dt>Wood</dt><dd data-testid="wood-value">{snapshot.wood}</dd></div>
-          <div><dt>People</dt><dd data-testid="people-value">{snapshot.people}/{snapshot.population_capacity}</dd></div>
-          <div><dt>Hauling</dt><dd data-testid="hauling-value">{carryingPeople}</dd></div>
-          <div><dt>Cycle</dt><dd data-testid="cycle-timer">{cycleLabel}</dd></div>
-          <div><dt>Wave</dt><dd data-testid="wave-value">{snapshot.wave}</dd></div>
-          <div><dt>Cleared</dt><dd data-testid="completed-waves-value">{snapshot.completed_waves}</dd></div>
-          <div><dt>Raiders</dt><dd data-testid="raider-count">{raiderCount}</dd></div>
-          <div><dt>Forests</dt><dd data-testid="forest-count">{forests.length}</dd></div>
-          <div><dt>Stores</dt><dd data-testid="storage-count">{storageHouses.length}</dd></div>
-          <div><dt>Sawmills</dt><dd data-testid="sawmill-count">{sawmills.length}</dd></div>
-          <div><dt>Building</dt><dd data-testid="construction-count">{constructionSites.length}</dd></div>
-          <div><dt>Towers</dt><dd data-testid="tower-count">{towers.length}</dd></div>
+          <div>
+            <dt>Wood</dt>
+            <dd data-testid="wood-value">{snapshot.wood}</dd>
+          </div>
+          <div>
+            <dt>People</dt>
+            <dd data-testid="people-value">
+              {snapshot.people}/{snapshot.population_capacity}
+            </dd>
+          </div>
+          <div>
+            <dt>Hauling</dt>
+            <dd data-testid="hauling-value">{carryingPeople}</dd>
+          </div>
+          <div>
+            <dt>Cycle</dt>
+            <dd data-testid="cycle-timer">{cycleLabel}</dd>
+          </div>
+          <div>
+            <dt>Wave</dt>
+            <dd data-testid="wave-value">{snapshot.wave}</dd>
+          </div>
+          <div>
+            <dt>Cleared</dt>
+            <dd data-testid="completed-waves-value">{snapshot.completed_waves}</dd>
+          </div>
+          <div>
+            <dt>Raiders</dt>
+            <dd data-testid="raider-count">{raiderCount}</dd>
+          </div>
+          <div>
+            <dt>Forests</dt>
+            <dd data-testid="forest-count">{forests.length}</dd>
+          </div>
+          <div>
+            <dt>Stores</dt>
+            <dd data-testid="storage-count">{storageHouses.length}</dd>
+          </div>
+          <div>
+            <dt>Sawmills</dt>
+            <dd data-testid="sawmill-count">{sawmills.length}</dd>
+          </div>
+          <div>
+            <dt>Building</dt>
+            <dd data-testid="construction-count">{constructionSites.length}</dd>
+          </div>
+          <div>
+            <dt>Towers</dt>
+            <dd data-testid="tower-count">{towers.length}</dd>
+          </div>
         </dl>
-        <button className="wave-button" type="button" disabled={!canStartWave} onClick={() => issue({ type: "start_wave" })} data-testid="start-wave">
-          {snapshot.is_rallying ? `Raid in ${formatCycleTimer(snapshot.raid_rally_ticks_remaining)}` : "Start raid"}
+        <button
+          className="wave-button"
+          type="button"
+          disabled={!canStartWave}
+          onClick={() => issue({ type: "start_wave" })}
+          data-testid="start-wave"
+        >
+          {snapshot.is_rallying
+            ? `Raid in ${formatCycleTimer(snapshot.raid_rally_ticks_remaining)}`
+            : "Start raid"}
         </button>
       </header>
 
@@ -830,14 +937,22 @@ function App() {
           snapshot={snapshot}
           selectedCell={selectedCell}
           placement={placement}
-          onSelectCell={setSelectedCell}
+          onSelectCell={setInspectedCell}
           onPlace={placeAt}
         />
         <div className="town-health" aria-label="Settlement status">
-          <span>Town Hall {snapshot.town_health}/{snapshot.town_max_health}</span>
-          <span className="health-track" aria-hidden="true"><span style={{ width: `${townPercent}%` }} /></span>
-          <span>Settlement wood {snapshot.wood}/{snapshot.wood_capacity}</span>
-          <span className="wood-track" aria-hidden="true"><span style={{ width: `${woodPercent}%` }} /></span>
+          <span>
+            Town Hall {snapshot.town_health}/{snapshot.town_max_health}
+          </span>
+          <span className="health-track" aria-hidden="true">
+            <span style={{ width: `${townPercent}%` }} />
+          </span>
+          <span>
+            Settlement wood {snapshot.wood}/{snapshot.wood_capacity}
+          </span>
+          <span className="wood-track" aria-hidden="true">
+            <span style={{ width: `${woodPercent}%` }} />
+          </span>
           <span data-testid="house-lock-state">
             {snapshot.houses_unlocked
               ? "Houses unlocked"
@@ -854,78 +969,119 @@ function App() {
       <section className="build-bar" aria-label="Build controls" data-testid="mobile-command-dock">
         <div className="cell-controls">
           <span className="eyebrow">{placement ? "Placement mode" : "Selected grid cell"}</span>
-          {selectedCell ? (
-            <>
-              <div className="coordinate-inputs">
-                <label>
-                  X
-                  <input
-                    data-testid="cell-x"
-                    type="number"
-                    min={0}
-                    max={snapshot.grid_width - 1}
-                    value={selectedCell.x}
-                    onChange={(event) =>
-                      setSelectedCell((current) =>
-                        current
-                          ? {
-                              ...current,
-                              x: clampCellCoordinate(Number(event.target.value), snapshot.grid_width),
-                            }
-                          : current,
-                      )
-                    }
-                  />
-                </label>
-                <label>
-                  Z
-                  <input
-                    data-testid="cell-z"
-                    type="number"
-                    min={0}
-                    max={snapshot.grid_height - 1}
-                    value={selectedCell.z}
-                    onChange={(event) =>
-                      setSelectedCell((current) =>
-                        current
-                          ? {
-                              ...current,
-                              z: clampCellCoordinate(Number(event.target.value), snapshot.grid_height),
-                            }
-                          : current,
-                      )
-                    }
-                  />
-                </label>
-              </div>
-              <MobileCellNudge
-                selectedCell={selectedCell}
-                snapshot={snapshot}
-                onSelectCell={setSelectedCell}
+          <div className="coordinate-inputs">
+            <label>
+              X
+              <input
+                data-testid="cell-x"
+                type="number"
+                min={0}
+                max={snapshot.grid_width - 1}
+                placeholder="–"
+                value={coordinateDraft.x}
+                onChange={(event) => updateCoordinateDraft("x", event.target.value)}
               />
-            </>
+            </label>
+            <label>
+              Z
+              <input
+                data-testid="cell-z"
+                type="number"
+                min={0}
+                max={snapshot.grid_height - 1}
+                placeholder="–"
+                value={coordinateDraft.z}
+                onChange={(event) => updateCoordinateDraft("z", event.target.value)}
+              />
+            </label>
+          </div>
+          {selectedCell ? (
+            <MobileCellNudge
+              selectedCell={selectedCell}
+              snapshot={snapshot}
+              onSelectCell={setInspectedCell}
+            />
           ) : (
-            <span className="selected-tower" data-testid="mobile-selected-cell">No tile selected</span>
+            <output className="selected-tower" data-testid="mobile-selected-cell">
+              No tile selected
+            </output>
           )}
-          <span className="selected-tower" data-testid="selected-building">{selectedDescription}</span>
+          {placement && selectedCell && (
+            <button
+              className="build-button precise-place-button"
+              type="button"
+              data-testid="place-selected-cell"
+              onClick={() => placeAt(selectedCell)}
+            >
+              Place at {selectedCell.x},{selectedCell.z}
+            </button>
+          )}
+          <span className="selected-tower" data-testid="selected-building">
+            {selectedDescription}
+          </span>
         </div>
         <div className="tower-actions">
-          <button className="build-button economy-button" type="button" aria-pressed={placement?.kind === "sawmill"} disabled={snapshot.town_health === 0 || snapshot.wood < snapshot.sawmill_cost} onClick={() => beginPlacement({ kind: "sawmill" })} data-testid="build-sawmill">
+          <button
+            className="build-button economy-button"
+            type="button"
+            aria-pressed={placement?.kind === "sawmill"}
+            disabled={snapshot.town_health === 0 || snapshot.wood < snapshot.sawmill_cost}
+            onClick={() => beginPlacement({ kind: "sawmill" })}
+            data-testid="build-sawmill"
+          >
             Sawmill · {snapshot.sawmill_cost}w
           </button>
-          <button className="build-button economy-button" type="button" aria-pressed={placement?.kind === "storage_house"} disabled={snapshot.town_health === 0 || snapshot.wood < snapshot.storage_house_cost} onClick={() => beginPlacement({ kind: "storage_house" })} data-testid="build-storage-house">
+          <button
+            className="build-button economy-button"
+            type="button"
+            aria-pressed={placement?.kind === "storage_house"}
+            disabled={snapshot.town_health === 0 || snapshot.wood < snapshot.storage_house_cost}
+            onClick={() => beginPlacement({ kind: "storage_house" })}
+            data-testid="build-storage-house"
+          >
             Storage · {snapshot.storage_house_cost}w
           </button>
-          <button className="build-button economy-button" type="button" aria-pressed={placement?.kind === "house"} disabled={!canBuildHouse} onClick={() => beginPlacement({ kind: "house" })} data-testid="build-house">
-            {snapshot.houses_unlocked ? `House · ${snapshot.house_cost}w` : `House · unlocks after ${snapshot.house_unlock_completed_waves} waves`}
+          <button
+            className="build-button economy-button"
+            type="button"
+            aria-pressed={placement?.kind === "house"}
+            disabled={!canBuildHouse}
+            onClick={() => beginPlacement({ kind: "house" })}
+            data-testid="build-house"
+          >
+            {snapshot.houses_unlocked
+              ? `House · ${snapshot.house_cost}w`
+              : `House · unlocks after ${snapshot.house_unlock_completed_waves} waves`}
           </button>
-          <button className="build-button" type="button" aria-pressed={placement?.kind === "tower" && placement.archetype === "arrow"} disabled={snapshot.town_health === 0 || snapshot.wood < snapshot.arrow_tower_cost} onClick={() => beginPlacement({ kind: "tower", archetype: "arrow" })} data-testid="build-arrow-tower">
+          <button
+            className="build-button"
+            type="button"
+            aria-pressed={placement?.kind === "tower" && placement.archetype === "arrow"}
+            disabled={snapshot.town_health === 0 || snapshot.wood < snapshot.arrow_tower_cost}
+            onClick={() => beginPlacement({ kind: "tower", archetype: "arrow" })}
+            data-testid="build-arrow-tower"
+          >
             Arrow · {snapshot.arrow_tower_cost}w
           </button>
-          <button className="build-button" type="button" aria-pressed={placement?.kind === "tower" && placement.archetype === "cannon"} disabled={snapshot.town_health === 0 || snapshot.wood < snapshot.cannon_tower_cost} onClick={() => beginPlacement({ kind: "tower", archetype: "cannon" })} data-testid="build-cannon-tower">
+          <button
+            className="build-button"
+            type="button"
+            aria-pressed={placement?.kind === "tower" && placement.archetype === "cannon"}
+            disabled={snapshot.town_health === 0 || snapshot.wood < snapshot.cannon_tower_cost}
+            onClick={() => beginPlacement({ kind: "tower", archetype: "cannon" })}
+            data-testid="build-cannon-tower"
+          >
             Cannon · {snapshot.cannon_tower_cost}w
           </button>
-          <button className="build-button upgrade-button" type="button" disabled={!canUpgrade || selectedCell === null} onClick={() => selectedCell && issue({ type: "upgrade_tower", x: selectedCell.x, z: selectedCell.z })} data-testid="upgrade-tower">
+          <button
+            className="build-button upgrade-button"
+            type="button"
+            disabled={!canUpgrade || selectedCell === null}
+            onClick={() =>
+              selectedCell && issue({ type: "upgrade_tower", x: selectedCell.x, z: selectedCell.z })
+            }
+            data-testid="upgrade-tower"
+          >
             {selectedTower?.tower_level === 0
               ? "Awaiting materials"
               : selectedTower?.upgrade_cost === null
@@ -933,12 +1089,21 @@ function App() {
                 : `Upgrade${selectedTower?.upgrade_cost ? ` · ${selectedTower.upgrade_cost}w` : ""}`}
           </button>
         </div>
-        <p className="feedback-line" role="status" aria-live="polite" data-testid="event-feedback">{feedback}</p>
+        <p
+          className="feedback-line"
+          role="status"
+          aria-live="polite"
+          data-testid="event-feedback"
+        >
+          {feedback}
+        </p>
       </section>
 
       <footer className="evidence-line">
         <span>Seed {snapshot.seed}</span>
-        <span>Map {snapshot.grid_width}×{snapshot.grid_height}</span>
+        <span>
+          Map {snapshot.grid_width}×{snapshot.grid_height}
+        </span>
         <span>Contract v{snapshot.contract_version}</span>
         <span data-testid="projectile-count">Projectiles {projectileCount}</span>
         <span data-testid="checksum">Checksum {snapshot.checksum}</span>
