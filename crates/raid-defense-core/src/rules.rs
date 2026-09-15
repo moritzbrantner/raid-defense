@@ -115,10 +115,10 @@ impl GameRules {
                 if group.count == 0 {
                     return Err(RulesError::ZeroWaveGroupRaiders);
                 }
-                total = total.saturating_add(u32::from(group.count));
+                total = total.saturating_add(group.count as u32);
                 group_index += 1;
             }
-            if total > u32::from(u16::MAX) {
+            if total > u16::MAX as u32 {
                 return Err(RulesError::TooManyRaidersInWave);
             }
             wave_index += 1;
