@@ -43,9 +43,7 @@ fn opening_trace() -> Vec<Command> {
         z: tower_cell.z,
         archetype: TowerArchetype::Arrow,
     };
-    state
-        .apply(tower)
-        .expect("tower construction should start");
+    state.apply(tower).expect("tower construction should start");
     commands.push(tower);
 
     for _ in 0..200 {
