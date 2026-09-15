@@ -159,52 +159,6 @@ impl GameState {
         }
     }
 
-    fn best_forest_for_cell(&self, cell: Cell) -> Option<EntityId> {
-        let sawmill_goals = self.adjacent_walkable_cells(cell, None);
-        if sawmill_goals.is_empty() {
-            return None;
-        }
-
-        let mut candidates = self
-            .buildings
-            .iter()
-            .filter_map(|(key, building)| {
-                if building.kind != BuildingKind::Forest {
-                    return None;
-                }
-                let entity = key_entity(key);
-                let storage = self.storage.get(key)?;
-                if storage.wood == 0 {
-                    return None;
-                }
-                let forest_goals = self.adjacent_walkable_cells(building.cell, None);
-                let distance = self.distance_between_goal_sets(&sawmill_goals, &forest_goals)?;
-                Some((distance, entity))
-            })
-            .collect::<Vec<_>>();
-        candidates.sort_unstable();
-        candidates.first().map(|(_, entity)| *entity)
-    }
-
-    pub(super) fn harvest_forest_for_sawmill(&mut self, sawmill: EntityId, amount: u32) -> u32 {
-        let Some(sawmill_cell) = self
-            .buildings
-            .get(entity_key(sawmill))
-            .map(|building| building.cell)
-        else {
-            return 0;
-        };
-        let Some(forest) = self.best_forest_for_cell(sawmill_cell) else {
-            return 0;
-        };
-        let Some(storage) = self.storage.get_mut(entity_key(forest)) else {
-            return 0;
-        };
-        let harvested = storage.wood.min(amount);
-        storage.wood -= harvested;
-        harvested
-    }
-
     pub(super) fn settlement_storage_ids(&self) -> Vec<EntityId> {
         let mut ids = self
             .buildings

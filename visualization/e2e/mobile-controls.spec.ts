@@ -16,28 +16,45 @@ test("keeps core controls reachable and touch-sized on a phone", async ({ page }
   await expect(dock).toBeVisible();
   await expect(dock).toHaveCSS("position", "fixed");
 
-  const touchTargets = [
+  const alwaysVisibleTouchTargets = [
     page.getByTestId("start-wave"),
-    page.getByTestId("cell-west"),
-    page.getByTestId("cell-north"),
-    page.getByTestId("cell-south"),
-    page.getByTestId("cell-east"),
     page.getByTestId("build-sawmill"),
     page.getByTestId("build-storage-house"),
     page.getByTestId("build-arrow-tower"),
   ];
-  for (const target of touchTargets) {
+  for (const target of alwaysVisibleTouchTargets) {
     const box = await target.boundingBox();
     expect(box).not.toBeNull();
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
   }
 
+  await expect(page.getByTestId("mobile-selected-cell")).toHaveText("No tile selected");
+  await page.getByTestId("build-storage-house").click();
+  await expect(page.getByTestId("storage-count")).toHaveText("0");
+  await expect(page.getByTestId("mobile-world-hint")).toContainText("Tap a tile to place Storage house");
+
+  await page.getByTestId("cell-x").fill("2");
+  await page.getByTestId("cell-z").fill("2");
   await expect(page.getByTestId("mobile-selected-cell")).toHaveText("2,2");
+
+  const precisePlacementTouchTargets = [
+    page.getByTestId("cell-west"),
+    page.getByTestId("cell-north"),
+    page.getByTestId("cell-south"),
+    page.getByTestId("cell-east"),
+    page.getByTestId("place-selected-cell"),
+  ];
+  for (const target of precisePlacementTouchTargets) {
+    const box = await target.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  }
+
   await page.getByTestId("cell-east").click();
   await expect(page.getByTestId("mobile-selected-cell")).toHaveText("3,2");
   await expect(page.getByTestId("cell-x")).toHaveValue("3");
 
-  await page.getByTestId("build-storage-house").click();
+  await page.getByTestId("place-selected-cell").click();
   await expect(page.getByTestId("storage-count")).toHaveText("1");
   await expect(page.getByTestId("event-feedback")).toContainText("Storage house built at 3, 2");
 

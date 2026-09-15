@@ -26,11 +26,12 @@
 - The Town Hall and Storage Houses are authoritative settlement storage nodes. `GameState::wood()` and capacity represent the aggregate authoritative settlement inventory; do not add browser/global shadow resource counters.
 - Settlement spending must operate on authoritative stored wood in a deterministic order. Tower upgrades and ordinary building purchases consume settlement storage through Rust commands.
 - Forest entities are persistent renewable resource nodes. Their stock regrows deterministically up to the configured per-tile capacity; depletion must not despawn or relocate the seeded forest tile.
-- Sawmills have no fixed forest harvest radius. Production selects the nearest reachable Forest with wood using authoritative path distance and stable entity-id tie-breaking, then places harvested wood into bounded **local** Sawmill storage.
-- People are real ECS entities with bounded cargo. They physically carry wood from Sawmills into reachable settlement storage before that wood becomes spendable.
+- Sawmills do **not** harvest or create wood autonomously. Their configured throughput describes worker forestry batch size/work duration and their bounded local storage.
+- Sawmills have no fixed forest harvest radius. Idle people may be assigned to a reachable stocked Forest only when a reachable Sawmill can accept the resulting batch. The person travels to the Forest, completes the authoritative forestry work interval, removes real Forest stock, and physically carries that raw wood to a Sawmill.
+- People are real ECS entities with bounded cargo. After raw wood reaches local Sawmill storage, people physically carry it from Sawmills into reachable settlement storage before that wood becomes spendable.
 - Tower placement creates an inactive construction site. Workers withdraw material from stocked settlement storage, haul it to the site, and only the Rust core activates the tower after the full build requirement has been delivered.
-- Forest regrowth, forest selection, storage selection, worker assignment, pathfinding, pickup, delivery, construction completion, and resource depletion are authoritative Rust/ECS behavior. Presentation may visualize them but must not predict or complete them independently.
-- Combat kills do not create wood. Production plus logistics remain the economic authority.
+- Forest regrowth, forest selection, storage selection, worker assignment, pathfinding, forestry work, pickup, delivery, construction completion, and resource depletion are authoritative Rust/ECS behavior. Presentation may visualize them but must not predict or complete them independently.
+- Combat kills do not create wood. Worker forestry plus logistics remain the economic authority.
 - Raiders target the nearest reachable settlement storage that currently contains wood. They may retarget as storage changes; the Town Hall remains the fallback target, and Town Hall damage occurs only through authoritative raid resolution.
 - Economic buildings participate in grid occupancy and path shaping just like defensive buildings.
 - Building placement must preserve required raider routes and worker access to active logistics/construction tasks.
@@ -46,12 +47,13 @@
 
 ## Day/night invariants
 
-- Day/night timing, raid spawn cadence, and automatic raid cadence are authoritative Rust rules, not browser timers.
-- The standard profile starts a raid after 600 peaceful simulation ticks. The first raider spawns immediately and the rest of the wave enter on the authoritative spawn schedule.
+- Day/night timing, raid rally timing, raid spawn cadence, and automatic raid cadence are authoritative Rust rules, not browser timers.
+- The standard profile reaches raid time after 600 peaceful simulation ticks, then enters a 50-tick rally (5 seconds at the browser's standard 100 ms tick cadence). Manual `StartWave` enters the same authoritative rally instead of spawning a raider immediately.
+- Starting a rally recalls people toward the Town Hall. No new jobs are assigned during rally; people already carrying material may finish their current delivery before returning. The first raider spawns only when the full rally expires, and the rest of the wave enter on the authoritative spawn schedule.
+- Rally is distinct from the active raid. The standard profile pauses production/carrier logistics only for the active raid schedule after rally; the rally itself remains live simulation so people can return. Natural forest regrowth remains authoritative world progression throughout.
 - A raid remains active while either live raiders or scheduled raiders remain. Zero-live-raider gaps must not complete the wave, permit another raid, or resume paused economy systems.
-- The standard profile pauses production and carrier logistics for the entire active raid schedule. Natural forest regrowth remains authoritative world progression and is not a Sawmill/carrier action.
 - The day resets only after the full scheduled wave has completed.
-- Presentation may display phase/countdown state but must not decide when a wave starts, when a scheduled raider appears, when a wave completes, or whether economic systems advance.
+- Presentation may display phase/countdown state but must not decide when rally starts or ends, when a wave starts, when a scheduled raider appears, when a wave completes, or whether economic systems advance.
 
 ## ECS and reuse
 
@@ -99,10 +101,12 @@
 - Keep economy/build/raid/progression controls and feedback close to the world state they affect.
 - Render people, cargo, forests, storage, construction sites, and buildings from authoritative snapshots rather than maintaining browser-owned substitutes.
 - Keep browser state interaction-focused; the Rust core remains the game-state authority.
+- Building buttons arm presentation-only placement intent; they must not issue a build command against a previously selected tile. A translucent building ghost follows the current battlefield target, and the authoritative placement command is dispatched only when the player activates that target tile.
+- A new game has no preselected build tile. Inspection selection and placement intent are separate presentation concepts; entering placement mode clears stale inspection selection rather than silently reusing it as the build location.
 - The default route is the start menu. Menu, game, and settings screens should be URL-addressable with query state rather than hidden SPA-only state.
 - `Resume` is available only when a compatible saved replay exists. `New game` must make replacing an existing save explicit rather than silently discarding it.
 - Settings must remain presentation-only unless a future setting is added to the typed authoritative `GameRules` model deliberately.
 - In-game wiki/help content is explanatory only. Do not encode legality or progression logic there, and do not duplicate tunable numeric rule values in static prose. Read live values from authoritative snapshots when a number is useful, or explain the mechanic without a number.
 - Mobile controls must not depend on hover, tiny coordinate fields, or pixel-precise taps. Keep primary touch targets at least 44 CSS pixels tall/wide, respect safe-area insets, and keep build/raid actions reachable without covering the battlefield unnecessarily.
-- The battlefield should support direct touch manipulation: tap selects, drag orbits, and pinch zooms. Camera gestures must not accidentally issue grid-selection or gameplay commands.
-- Preserve a precise mobile fallback for selecting a neighboring grid cell so players are not forced to hit a small 3D tile accurately.
+- The battlefield should support direct touch manipulation: tap selects or places the armed building, drag orbits, and pinch zooms. Camera gestures must not accidentally issue grid-selection or gameplay commands.
+- Preserve a precise mobile fallback for choosing a neighboring grid cell so players are not forced to hit a small 3D tile accurately. That fallback may preview/place the same armed ghost, but it must remain optional rather than restoring tile-first building placement.

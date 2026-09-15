@@ -159,11 +159,14 @@ const fn resource_kind_code(resource: ResourceKind) -> u8 {
 const fn person_state_code(state: PersonState) -> u8 {
     match state {
         PersonState::IdleAtTownHall => 0,
-        PersonState::ToSawmill => 1,
-        PersonState::ToStorage => 2,
-        PersonState::ToConstructionStorage => 3,
-        PersonState::ToConstructionSite => 4,
-        PersonState::ToTownHall => 5,
+        PersonState::ToForest => 1,
+        PersonState::HarvestingForest => 2,
+        PersonState::ToSawmill => 3,
+        PersonState::ToSawmillPickup => 4,
+        PersonState::ToStorage => 5,
+        PersonState::ToConstructionStorage => 6,
+        PersonState::ToConstructionSite => 7,
+        PersonState::ToTownHall => 8,
     }
 }
 

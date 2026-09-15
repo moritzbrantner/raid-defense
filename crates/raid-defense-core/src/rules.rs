@@ -26,6 +26,7 @@ pub enum RulesError {
     ZeroRaidersPerWave,
     ZeroRaidSpawnInterval,
     ZeroRaidDamageInterval,
+    ZeroRaidRally,
     ZeroDayLength,
 }
 
@@ -74,6 +75,9 @@ impl GameRules {
         }
         if self.raids.damage_increase_every_waves == 0 {
             return Err(RulesError::ZeroRaidDamageInterval);
+        }
+        if self.cycle.raid_rally_ticks == 0 {
+            return Err(RulesError::ZeroRaidRally);
         }
         if self.cycle.automatic_raids && self.cycle.day_length_ticks == 0 {
             return Err(RulesError::ZeroDayLength);
@@ -174,6 +178,7 @@ impl GameRules {
         feed_u64(&mut hash, u64::from(self.raids.wood_steal_per_wave));
 
         feed_u16(&mut hash, self.cycle.day_length_ticks);
+        feed_u16(&mut hash, self.cycle.raid_rally_ticks);
         feed_bool(&mut hash, self.cycle.automatic_raids);
         feed_bool(&mut hash, self.cycle.pause_economy_during_raids);
 
@@ -189,7 +194,9 @@ pub struct EconomyRules {
     pub forest_tile_wood: u32,
     pub forest_regrowth_amount: u16,
     pub forest_regrowth_interval_ticks: u16,
+    /// Wood a worker can cut in one completed forestry work cycle.
     pub sawmill_output: u16,
+    /// Ticks a worker spends gathering a batch of wood at a forest.
     pub sawmill_interval_ticks: u16,
     pub sawmill_local_wood_capacity: u32,
     pub storage_house_wood_capacity: u32,
@@ -290,6 +297,7 @@ pub struct RaidRules {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CycleRules {
     pub day_length_ticks: u16,
+    pub raid_rally_ticks: u16,
     pub automatic_raids: bool,
     pub pause_economy_during_raids: bool,
 }
@@ -596,6 +604,13 @@ mod tests {
     }
 
     #[test]
+    fn rejects_zero_raid_rally() {
+        let mut rules = STANDARD_RULES;
+        rules.cycle.raid_rally_ticks = 0;
+        assert_eq!(rules.validate(), Err(RulesError::ZeroRaidRally));
+    }
+
+    #[test]
     fn resource_rules_participate_in_rule_identity() {
         let standard = STANDARD_RULES.fingerprint();
         let mut changed = STANDARD_RULES;
@@ -608,6 +623,14 @@ mod tests {
         let standard = STANDARD_RULES.fingerprint();
         let mut changed = STANDARD_RULES;
         changed.raids.spawn_interval_ticks += 1;
+        assert_ne!(standard, changed.fingerprint());
+    }
+
+    #[test]
+    fn raid_rally_participates_in_rule_identity() {
+        let standard = STANDARD_RULES.fingerprint();
+        let mut changed = STANDARD_RULES;
+        changed.cycle.raid_rally_ticks += 1;
         assert_ne!(standard, changed.fingerprint());
     }
 

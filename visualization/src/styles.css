@@ -439,6 +439,34 @@ button:disabled {
     display: none;
   }
 
+  .cell-controls:has(+ .tower-actions [aria-pressed="true"]) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(5, auto);
+  }
+
+  .cell-controls:has(+ .tower-actions [aria-pressed="true"]) .coordinate-inputs {
+    grid-column: 1;
+    grid-row: 2;
+    display: flex;
+  }
+
+  .cell-controls:has(+ .tower-actions [aria-pressed="true"]) [data-testid="mobile-selected-cell"],
+  .cell-controls:has(+ .tower-actions [aria-pressed="true"]) .mobile-cell-nudge {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .cell-controls:has(+ .tower-actions [aria-pressed="true"]) .precise-place-button {
+    grid-column: 1;
+    grid-row: 4;
+    width: 100%;
+  }
+
+  .cell-controls:has(+ .tower-actions [aria-pressed="true"]) [data-testid="selected-building"] {
+    grid-column: 1;
+    grid-row: 5;
+  }
+
   .selected-tower {
     grid-column: 1;
     grid-row: 2;

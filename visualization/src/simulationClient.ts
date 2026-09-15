@@ -19,7 +19,7 @@ type ReplayEntry =
   | { kind: "command"; command: RaidDefenseCommand };
 
 type SavedGameBase = {
-  contract_version: 9;
+  contract_version: 10;
   seed: number;
   entries: ReplayEntry[];
   checksum: string;
@@ -47,8 +47,8 @@ export type SavedGameSummary = Pick<
 
 const SAVE_KEY = "raid-defense.save.v2";
 const LEGACY_SAVE_KEY = "raid-defense.save.v1";
-const WASM_CONTRACT_VERSION = 8;
-const SAVE_CONTRACT_VERSION = 9;
+const WASM_CONTRACT_VERSION = 9;
+const SAVE_CONTRACT_VERSION = 10;
 const TICKS_PER_PERSIST = 10;
 
 let wasmModulePromise: Promise<WasmModule> | null = null;
@@ -106,8 +106,14 @@ function parseSnapshotValue(value: unknown): SnapshotView {
   if (typeof value.houses_unlocked !== "boolean") {
     throw new Error("snapshot house unlock state must be boolean");
   }
-  if (typeof value.day_ticks_remaining !== "number" || typeof value.is_night !== "boolean") {
-    throw new Error("snapshot day/night state must be authoritative and typed");
+  if (
+    typeof value.day_ticks_remaining !== "number" ||
+    typeof value.raid_rally_ticks_remaining !== "number" ||
+    typeof value.raid_rally_ticks !== "number" ||
+    typeof value.is_rallying !== "boolean" ||
+    typeof value.is_night !== "boolean"
+  ) {
+    throw new Error("snapshot day, rally, and raid state must be authoritative and typed");
   }
   if (
     typeof value.forest_tile_count !== "number" ||

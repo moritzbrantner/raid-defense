@@ -85,8 +85,11 @@ mod tests {
     }
 
     #[test]
-    fn sawmill_harvests_forest_wood_before_creating_local_stock() {
-        let mut state = GameState::new(7);
+    fn sawmill_does_not_harvest_forest_without_worker_labor() {
+        let mut rules = STANDARD_RULES;
+        rules.economy.sawmill_interval_ticks = 50;
+        rules.economy.forest_regrowth_interval_ticks = u16::MAX;
+        let mut state = GameState::with_rules(7, rules);
         let cell = first_buildable_sawmill_cell(&state);
         state
             .apply(Command::PlaceSawmill {
@@ -101,9 +104,33 @@ mod tests {
             .filter(|entity| entity.kind == EntityKind::Forest)
             .map(|entity| entity.stored_wood)
             .sum();
-        for _ in 0..state.rules.economy.sawmill_interval_ticks {
-            state.advance_tick();
+
+        for _ in 0..10 {
+            let Event::TickAdvanced { wood_produced, .. } = state.advance_tick() else {
+                unreachable!("advance_tick always yields a tick event");
+            };
+            assert_eq!(wood_produced, 0, "the sawmill itself must never cut trees");
         }
+        let forest_before_worker_finishes: u32 = state
+            .snapshot()
+            .entities
+            .iter()
+            .filter(|entity| entity.kind == EntityKind::Forest)
+            .map(|entity| entity.stored_wood)
+            .sum();
+        assert_eq!(forest_before_worker_finishes, forest_before);
+
+        let mut gathered = 0_u16;
+        for _ in 0..400 {
+            let Event::TickAdvanced { wood_produced, .. } = state.advance_tick() else {
+                unreachable!("advance_tick always yields a tick event");
+            };
+            gathered = gathered.saturating_add(wood_produced);
+            if gathered > 0 {
+                break;
+            }
+        }
+        assert!(gathered > 0, "a person should eventually finish gathering a tree batch");
         let forest_after: u32 = state
             .snapshot()
             .entities
@@ -118,6 +145,8 @@ mod tests {
     fn sawmill_has_no_forest_range_gate() {
         let mut rules = STANDARD_RULES;
         rules.economy.forest_tile_count = 1;
+        rules.economy.sawmill_interval_ticks = 1;
+        rules.economy.forest_regrowth_interval_ticks = u16::MAX;
         let mut state = GameState::with_rules(7, rules);
         let forest = state
             .snapshot()
@@ -153,14 +182,17 @@ mod tests {
             .expect("forest distance must not reject a valid sawmill");
         assert_eq!(state.sawmill_count(), 1);
 
-        let mut produced = 0_u16;
-        for _ in 0..state.rules.economy.sawmill_interval_ticks {
+        let mut gathered = 0_u16;
+        for _ in 0..500 {
             let Event::TickAdvanced { wood_produced, .. } = state.advance_tick() else {
                 unreachable!("advance_tick always yields a tick event");
             };
-            produced = produced.saturating_add(wood_produced);
+            gathered = gathered.saturating_add(wood_produced);
+            if gathered > 0 {
+                break;
+            }
         }
-        assert_eq!(produced, state.rules.economy.sawmill_output);
+        assert!(gathered > 0, "workers should be able to service a distant sawmill");
         let forest_after = state
             .snapshot()
             .entities
@@ -168,10 +200,7 @@ mod tests {
             .find(|entity| entity.id == forest.id)
             .expect("forest must persist after harvesting")
             .stored_wood;
-        assert_eq!(
-            forest.stored_wood - forest_after,
-            u32::from(state.rules.economy.sawmill_output)
-        );
+        assert_eq!(forest.stored_wood - forest_after, u32::from(gathered));
     }
 
     #[test]

@@ -75,6 +75,8 @@ impl GameState {
                 cell,
             },
         );
+        // This component is the sawmill's forestry work profile. It no longer
+        // advances autonomously: people perform the actual forest harvest.
         self.producers.insert(
             entity_key(entity),
             ResourceProducer {
@@ -277,22 +279,30 @@ impl GameState {
         if self.town_health() == 0 {
             return Err(GameError::GameOver);
         }
-        if self.is_night() {
+        if self.is_night() || self.is_rallying() {
             return Err(GameError::RaidersStillActive);
         }
 
         self.day_ticks_remaining = 0;
+        self.raid_rally_ticks_remaining = self.rules.cycle.raid_rally_ticks;
+        self.recall_people_for_raid();
+
+        Ok(Event::WaveStarted {
+            wave: self.wave.saturating_add(1),
+            raiders: self.rules.raids.raiders_per_wave,
+            rally_ticks: self.rules.cycle.raid_rally_ticks,
+        })
+    }
+
+    fn begin_wave_after_rally(&mut self) {
+        debug_assert_eq!(self.raid_rally_ticks_remaining, 0);
+        debug_assert!(!self.is_night());
         self.wave = self.wave.saturating_add(1);
         self.wave_schedule = WaveSchedule {
             remaining_raiders: self.rules.raids.raiders_per_wave,
             spawn_ticks_remaining: 0,
         };
         self.spawn_next_scheduled_raider();
-
-        Ok(Event::WaveStarted {
-            wave: self.wave,
-            raiders: self.rules.raids.raiders_per_wave,
-        })
     }
 
     fn spawn_next_scheduled_raider(&mut self) {
@@ -332,29 +342,27 @@ impl GameState {
     pub(super) fn advance_tick(&mut self) -> Event {
         self.tick = self.tick.saturating_add(1);
         self.run_forest_regrowth_system();
+        let was_rallying = self.is_rallying();
         let had_active_wave = self.is_night();
         let economy_paused = had_active_wave && self.rules.cycle.pause_economy_during_raids;
         let (wood_produced, wood_picked_up, wood_delivered, towers_completed) = if economy_paused {
             (0, 0, 0, 0)
         } else {
-            let wood_produced = self.run_resource_production_system();
-            let (wood_picked_up, wood_delivered, towers_completed) =
-                self.run_person_logistics_system();
-            (
-                wood_produced,
-                wood_picked_up,
-                wood_delivered,
-                towers_completed,
-            )
+            self.run_person_logistics_system()
         };
 
         let mut wave_active_this_tick = had_active_wave;
-        if !had_active_wave && self.rules.cycle.automatic_raids {
+        if was_rallying {
+            self.raid_rally_ticks_remaining = self.raid_rally_ticks_remaining.saturating_sub(1);
+            if self.raid_rally_ticks_remaining == 0 && self.town_health() > 0 {
+                self.begin_wave_after_rally();
+                wave_active_this_tick = true;
+            }
+        } else if !had_active_wave && self.rules.cycle.automatic_raids {
             self.day_ticks_remaining = self.day_ticks_remaining.saturating_sub(1);
             if self.day_ticks_remaining == 0 && self.town_health() > 0 {
                 self.start_wave()
-                    .expect("an expired peaceful day can always begin its next wave");
-                wave_active_this_tick = true;
+                    .expect("an expired peaceful day can always begin its raid rally");
             }
         } else if had_active_wave {
             self.advance_wave_spawn_schedule();

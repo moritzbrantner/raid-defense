@@ -8,7 +8,7 @@ use raid_defense_core::{
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-const CONTRACT_VERSION: u8 = 8;
+const CONTRACT_VERSION: u8 = 9;
 
 #[wasm_bindgen]
 pub struct RaidDefenseGame {
@@ -350,6 +350,7 @@ enum EventDto {
     WaveStarted {
         wave: u32,
         raiders: u16,
+        rally_ticks: u16,
     },
     TickAdvanced {
         tick: u64,
@@ -424,7 +425,15 @@ impl From<Event> for EventDto {
                 level,
                 wood_cost,
             },
-            Event::WaveStarted { wave, raiders } => Self::WaveStarted { wave, raiders },
+            Event::WaveStarted {
+                wave,
+                raiders,
+                rally_ticks,
+            } => Self::WaveStarted {
+                wave,
+                raiders,
+                rally_ticks,
+            },
             Event::TickAdvanced {
                 tick,
                 shots,
@@ -479,6 +488,8 @@ struct SnapshotDto {
     wave: u32,
     completed_waves: u32,
     day_ticks_remaining: u16,
+    raid_rally_ticks_remaining: u16,
+    is_rallying: bool,
     is_night: bool,
     people: u16,
     population_capacity: u16,
@@ -501,6 +512,7 @@ struct SnapshotDto {
     house_unlock_completed_waves: u32,
     house_population_capacity: u16,
     person_carry_capacity: u16,
+    raid_rally_ticks: u16,
     arrow_tower_cost: u32,
     cannon_tower_cost: u32,
     max_tower_level: u8,
@@ -521,6 +533,8 @@ impl From<&GameState> for SnapshotDto {
             wave: snapshot.wave,
             completed_waves: snapshot.completed_waves,
             day_ticks_remaining: state.day_ticks_remaining(),
+            raid_rally_ticks_remaining: state.raid_rally_ticks_remaining(),
+            is_rallying: state.is_rallying(),
             is_night: state.is_night(),
             people: snapshot.people,
             population_capacity: snapshot.population_capacity,
@@ -543,6 +557,7 @@ impl From<&GameState> for SnapshotDto {
             house_unlock_completed_waves: rules.buildings.house.unlock_completed_waves,
             house_population_capacity: rules.buildings.house.population_capacity,
             person_carry_capacity: rules.population.carry_capacity,
+            raid_rally_ticks: rules.cycle.raid_rally_ticks,
             arrow_tower_cost: rules.towers.arrow.build_cost,
             cannon_tower_cost: rules.towers.cannon.build_cost,
             max_tower_level: rules.towers.max_level,
@@ -673,7 +688,10 @@ const fn resource_kind_label(resource: ResourceKind) -> &'static str {
 const fn person_state_label(state: PersonState) -> &'static str {
     match state {
         PersonState::IdleAtTownHall => "idle_at_town_hall",
+        PersonState::ToForest => "to_forest",
+        PersonState::HarvestingForest => "harvesting_forest",
         PersonState::ToSawmill => "to_sawmill",
+        PersonState::ToSawmillPickup => "to_sawmill_pickup",
         PersonState::ToStorage => "to_storage",
         PersonState::ToConstructionStorage => "to_construction_storage",
         PersonState::ToConstructionSite => "to_construction_site",
@@ -749,6 +767,7 @@ mod tests {
         assert_eq!(snapshot.people, 2);
         assert!(snapshot.forest_regrowth_amount > 0);
         assert!(snapshot.forest_regrowth_interval_ticks > 0);
+        assert!(snapshot.raid_rally_ticks > 0);
         assert!(
             snapshot
                 .entities
