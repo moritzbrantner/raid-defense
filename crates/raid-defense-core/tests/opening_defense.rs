@@ -43,7 +43,9 @@ fn opening_trace() -> Vec<Command> {
         z: tower_cell.z,
         archetype: TowerArchetype::Arrow,
     };
-    state.apply(tower).expect("tower construction should start");
+    state
+        .apply(tower)
+        .expect("tower construction should start");
     commands.push(tower);
 
     for _ in 0..200 {
@@ -248,7 +250,9 @@ fn ending_a_wave_does_not_leave_orphaned_projectiles() {
         }
     }
     assert_eq!(state.tower_count(), 1);
-    state.apply(Command::StartWave).expect("wave rally should start");
+    state
+        .apply(Command::StartWave)
+        .expect("wave rally should start");
 
     for _ in 0..300 {
         state
