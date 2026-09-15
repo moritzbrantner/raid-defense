@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 const CONTRACT_VERSION: u8 = 10;
-const MAX_EDITABLE_FOREST_TILES: u16 = 27;
 
 #[wasm_bindgen]
 pub struct RaidDefenseGame {
@@ -361,7 +360,6 @@ struct ScenarioWorldRulesDto {
 impl ScenarioWorldRulesDto {
     fn apply(self, mut rules: GameRules) -> Result<GameRules, ()> {
         if self.forest_tile_count == 0
-            || self.forest_tile_count > MAX_EDITABLE_FOREST_TILES
             || self.forest_tile_wood == 0
             || self.forest_regrowth_amount == 0
             || self.forest_regrowth_interval_ticks == 0
@@ -736,6 +734,8 @@ struct SnapshotDto {
     house_population_capacity: u16,
     person_carry_capacity: u16,
     raid_rally_ticks: u16,
+    automatic_raids: bool,
+    pause_economy_during_raids: bool,
     arrow_tower_cost: u32,
     cannon_tower_cost: u32,
     max_tower_level: u8,
@@ -781,6 +781,8 @@ impl From<&GameState> for SnapshotDto {
             house_population_capacity: rules.buildings.house.population_capacity,
             person_carry_capacity: rules.population.carry_capacity,
             raid_rally_ticks: rules.cycle.raid_rally_ticks,
+            automatic_raids: rules.cycle.automatic_raids,
+            pause_economy_during_raids: rules.cycle.pause_economy_during_raids,
             arrow_tower_cost: rules.towers.arrow.build_cost,
             cannon_tower_cost: rules.towers.cannon.build_cost,
             max_tower_level: rules.towers.max_level,
@@ -1001,6 +1003,11 @@ mod tests {
         assert!(snapshot.forest_regrowth_amount > 0);
         assert!(snapshot.forest_regrowth_interval_ticks > 0);
         assert!(snapshot.raid_rally_ticks > 0);
+        assert_eq!(snapshot.automatic_raids, STANDARD_RULES.cycle.automatic_raids);
+        assert_eq!(
+            snapshot.pause_economy_during_raids,
+            STANDARD_RULES.cycle.pause_economy_during_raids
+        );
         assert!(
             snapshot
                 .entities
