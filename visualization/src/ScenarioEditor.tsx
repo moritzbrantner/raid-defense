@@ -9,6 +9,7 @@ import type {
   TowerLevelRules,
   WaveGroup,
 } from "./scenarioOptions";
+import { ScenarioWorldEditor } from "./ScenarioWorldEditor";
 import "./ScenarioEditor.css";
 
 type EditorSection = "waves" | "units" | "towers" | "world";
@@ -32,38 +33,6 @@ function replaceAt<T>(values: T[], index: number, value: T) {
 function scenarioSectionFromUrl(): EditorSection {
   const value = new URLSearchParams(window.location.search).get("scenarioView");
   return value === "units" || value === "towers" || value === "world" ? value : "waves";
-}
-
-function WorldSelect<T extends string>({
-  label,
-  description,
-  value,
-  options,
-  onChange,
-  testId,
-}: {
-  label: string;
-  description: string;
-  value: T;
-  options: readonly { value: T; label: string }[];
-  onChange: (value: T) => void;
-  testId: string;
-}) {
-  return (
-    <label className="setting-row scenario-setting-row">
-      <span>
-        <strong>{label}</strong>
-        <small>{description}</small>
-      </span>
-      <select value={value} onChange={(event) => onChange(event.target.value as T)} data-testid={testId}>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
 }
 
 function NumberField({
@@ -326,8 +295,8 @@ export function ScenarioEditor({ scenario, onChange, hasSave }: ScenarioEditorPr
   return (
     <div className="scenario-editor" data-testid="scenario-editor">
       <p className="menu-copy">
-        Define the next run directly. Wave composition, unit stats, and tower rules are saved with the scenario and
-        consumed by the authoritative simulation; there is no hidden raid difficulty preset behind them.
+        Define the next run directly. Wave composition, unit stats, tower rules, and world values are saved with the
+        scenario and consumed by the authoritative simulation; there are no hidden difficulty presets behind the editor.
       </p>
 
       <nav className="scenario-editor-tabs" aria-label="Scenario editor sections">
@@ -478,92 +447,7 @@ export function ScenarioEditor({ scenario, onChange, hasSave }: ScenarioEditorPr
         </div>
       ) : null}
 
-      {section === "world" ? (
-        <div data-testid="scenario-world-editor">
-          <WorldSelect
-            label="Starting supplies"
-            description="Set the Town Hall reserve available at the start."
-            value={scenario.starting_supplies}
-            options={[
-              { value: "lean", label: "Lean" },
-              { value: "standard", label: "Standard" },
-              { value: "rich", label: "Rich" },
-            ]}
-            onChange={(value) => onChange({ ...scenario, starting_supplies: value })}
-            testId="scenario-starting-supplies"
-          />
-          <WorldSelect
-            label="Forest coverage"
-            description="Change how sparse or dense the seeded renewable forest is."
-            value={scenario.forest_density}
-            options={[
-              { value: "sparse", label: "Sparse" },
-              { value: "standard", label: "Standard" },
-              { value: "dense", label: "Dense" },
-            ]}
-            onChange={(value) => onChange({ ...scenario, forest_density: value })}
-            testId="scenario-forest-density"
-          />
-          <WorldSelect
-            label="Forest regrowth"
-            description="Change how quickly depleted forest stock grows back."
-            value={scenario.forest_regrowth}
-            options={[
-              { value: "slow", label: "Slow" },
-              { value: "standard", label: "Standard" },
-              { value: "fast", label: "Fast" },
-            ]}
-            onChange={(value) => onChange({ ...scenario, forest_regrowth: value })}
-            testId="scenario-forest-regrowth"
-          />
-          <WorldSelect
-            label="Sawmill throughput"
-            description="Change how much wood a completed forestry work cycle can harvest."
-            value={scenario.sawmill_throughput}
-            options={[
-              { value: "slow", label: "Low" },
-              { value: "standard", label: "Standard" },
-              { value: "fast", label: "High" },
-            ]}
-            onChange={(value) => onChange({ ...scenario, sawmill_throughput: value })}
-            testId="scenario-sawmill-throughput"
-          />
-          <WorldSelect
-            label="Day length"
-            description="Change the peaceful build-up time between automatic raids."
-            value={scenario.day_length}
-            options={[
-              { value: "short", label: "Short" },
-              { value: "standard", label: "Standard" },
-              { value: "long", label: "Long" },
-            ]}
-            onChange={(value) => onChange({ ...scenario, day_length: value })}
-            testId="scenario-day-length"
-          />
-          <WorldSelect
-            label="Raid timing"
-            description="Start configured waves automatically or trigger each one manually."
-            value={scenario.raid_timing}
-            options={[
-              { value: "standard", label: "Automatic" },
-              { value: "manual", label: "Manual" },
-            ]}
-            onChange={(value) => onChange({ ...scenario, raid_timing: value })}
-            testId="scenario-raid-timing"
-          />
-          <WorldSelect
-            label="Economy during raids"
-            description="Pause production and logistics during combat or allow them to continue."
-            value={scenario.raid_economy}
-            options={[
-              { value: "standard", label: "Pause" },
-              { value: "continuous", label: "Continue" },
-            ]}
-            onChange={(value) => onChange({ ...scenario, raid_economy: value })}
-            testId="scenario-raid-economy"
-          />
-        </div>
-      ) : null}
+      {section === "world" ? <ScenarioWorldEditor scenario={scenario} onChange={onChange} /> : null}
 
       {hasSave ? (
         <p className="scenario-note">These changes affect the next new game only. The current save keeps its recorded scenario.</p>
