@@ -127,17 +127,20 @@ test("keeps all scenario controls reachable and touch-sized on a phone", async (
   }
 
   await page.getByTestId("scenario-world-tab").click();
-  const worldControls = [
-    ["scenario-starting-supplies", "rich"],
-    ["scenario-forest-density", "dense"],
-    ["scenario-forest-regrowth", "fast"],
-    ["scenario-sawmill-throughput", "fast"],
-    ["scenario-day-length", "long"],
-    ["scenario-raid-timing", "manual"],
-    ["scenario-raid-economy", "continuous"],
+  const worldNumberControls = [
+    ["scenario-starting-wood", "240"],
+    ["scenario-forest-tile-count", "24"],
+    ["scenario-forest-tile-wood", "95"],
+    ["scenario-forest-regrowth-amount", "2"],
+    ["scenario-forest-regrowth-interval", "11"],
+    ["scenario-sawmill-output", "7"],
+    ["scenario-sawmill-interval", "8"],
+    ["scenario-sawmill-capacity", "31"],
+    ["scenario-day-length-ticks", "875"],
+    ["scenario-raid-rally-ticks", "43"],
   ] as const;
 
-  for (const [testId, value] of worldControls) {
+  for (const [testId, value] of worldNumberControls) {
     const control = page.getByTestId(testId);
     await control.scrollIntoViewIfNeeded();
     await expect(control).toBeVisible();
@@ -145,8 +148,21 @@ test("keeps all scenario controls reachable and touch-sized on a phone", async (
     expect(box).not.toBeNull();
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
     expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
-    await control.selectOption(value);
+    await control.fill(value);
     await expect(control).toHaveValue(value);
+  }
+
+  for (const testId of ["scenario-automatic-raids", "scenario-pause-economy"] as const) {
+    const control = page.getByTestId(testId);
+    await control.scrollIntoViewIfNeeded();
+    await expect(control).toBeVisible();
+    const label = control.locator("..");
+    const box = await label.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+    await control.uncheck();
+    await expect(control).not.toBeChecked();
   }
 
   const pageFitsViewport = await page.evaluate(
