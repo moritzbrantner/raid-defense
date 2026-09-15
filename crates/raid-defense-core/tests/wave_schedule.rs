@@ -142,9 +142,7 @@ fn rally_rejects_duplicate_start_commands() {
     rules.cycle.automatic_raids = false;
     let mut state = GameState::with_rules(SEED, rules);
 
-    state
-        .apply(Command::StartWave)
-        .expect("rally should start");
+    state.apply(Command::StartWave).expect("rally should start");
     assert!(state.is_rallying());
     assert_eq!(
         state.apply(Command::StartWave),
