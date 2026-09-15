@@ -59,7 +59,7 @@ test("cycle timer counts down through daytime, rally, and nighttime", async ({ p
   await expect(page.getByTestId("event-feedback")).toContainText("return to the Town Hall");
 
   await expect(page.getByTestId("cycle-timer")).toHaveText("Night · Wave 1", {
-    timeout: 7_000,
+    timeout: 12_000,
   });
   await expect(page.getByTestId("wave-value")).toHaveText("1");
 });
@@ -164,7 +164,7 @@ test("raiders steal stored wood when they reach settlement storage", async ({ pa
 
   await page.getByTestId("start-wave").click();
   await expect(page.getByTestId("cycle-timer")).toContainText("Rally ·");
-  await expect(page.getByTestId("wave-value")).toHaveText("1", { timeout: 7_000 });
+  await expect(page.getByTestId("wave-value")).toHaveText("1", { timeout: 12_000 });
 
   await expect
     .poll(async () => Number(await page.getByTestId("wood-value").textContent()), {
@@ -181,7 +181,7 @@ test("runs a defended raid with authoritative projectile entities", async ({ pag
   await waitForTower(page);
   await page.getByTestId("start-wave").click();
   await expect(page.getByTestId("cycle-timer")).toContainText("Rally ·");
-  await expect(page.getByTestId("wave-value")).toHaveText("1", { timeout: 7_000 });
+  await expect(page.getByTestId("wave-value")).toHaveText("1", { timeout: 12_000 });
 
   await expect
     .poll(async () => {

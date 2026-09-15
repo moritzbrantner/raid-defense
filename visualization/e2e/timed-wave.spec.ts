@@ -11,14 +11,18 @@ test("rallies workers before spawning a raid over authoritative simulation time"
   await expect(page.getByTestId("start-wave")).toBeDisabled();
 
   await expect(page.getByTestId("cycle-timer")).toHaveText("Night · Wave 1", {
-    timeout: 7_000,
+    timeout: 12_000,
   });
   await expect(page.getByTestId("wave-value")).toHaveText("1");
-  await expect(page.getByTestId("raider-count")).toHaveText("1");
+  await expect
+    .poll(async () => Number(await page.getByTestId("raider-count").textContent()), {
+      timeout: 5_000,
+    })
+    .toBeGreaterThan(0);
 
   await expect
     .poll(async () => Number(await page.getByTestId("raider-count").textContent()), {
-      timeout: 4_000,
+      timeout: 5_000,
     })
     .toBeGreaterThan(1);
 

@@ -10,8 +10,12 @@ test("starts a new game and resumes saved authoritative progress", async ({ page
   await expect(page.getByTestId("raid-defense-game")).toBeVisible();
 
   await page.getByTestId("start-wave").click();
+  await expect(page.getByTestId("cycle-timer")).toContainText("Rally ·");
+  await expect(page.getByTestId("wave-value")).toHaveText("0");
+  await expect(page.getByTestId("cycle-timer")).toHaveText("Night · Wave 1", {
+    timeout: 12_000,
+  });
   await expect(page.getByTestId("wave-value")).toHaveText("1");
-  await expect(page.getByTestId("cycle-timer")).toHaveText("Night · Wave 1");
 
   await page.getByTestId("return-to-menu").click();
   await expect(page.getByTestId("start-menu")).toBeVisible();
@@ -93,6 +97,11 @@ test("starts and resumes a game with authoritative scenario options", async ({ p
   });
 
   await page.getByTestId("start-wave").click();
+  await expect(page.getByTestId("cycle-timer")).toContainText("Rally ·");
+  await expect(page.getByTestId("wave-value")).toHaveText("0");
+  await expect(page.getByTestId("cycle-timer")).toHaveText("Night · Wave 1", {
+    timeout: 12_000,
+  });
   await expect(page.getByTestId("wave-value")).toHaveText("1");
   await page.getByTestId("return-to-menu").click();
   await expect(page.getByTestId("resume-game")).toBeEnabled();
