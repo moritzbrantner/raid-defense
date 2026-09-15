@@ -227,15 +227,15 @@ impl GameState {
             let goals = match person.state {
                 PersonState::IdleAtTownHall => return true,
                 PersonState::ToTownHall => town_goal_cells(),
-                PersonState::ToForest | PersonState::HarvestingForest => person
-                    .target_entity
-                    .map_or_else(Vec::new, |target| {
+                PersonState::ToForest | PersonState::HarvestingForest => {
+                    person.target_entity.map_or_else(Vec::new, |target| {
                         self.buildings
                             .get(entity_key(target))
                             .map_or_else(Vec::new, |building| {
                                 self.adjacent_walkable_cells(building.cell, extra_block)
                             })
-                    }),
+                    })
+                }
                 PersonState::ToSawmill | PersonState::ToSawmillPickup => {
                     person.target_entity.map_or_else(Vec::new, |target| {
                         self.sawmill_pickup_cells(target, extra_block)
