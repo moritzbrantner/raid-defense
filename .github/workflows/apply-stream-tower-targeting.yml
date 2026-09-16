@@ -17,175 +17,40 @@ jobs:
           ref: perf/stream-tower-targeting
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.98.0 --profile minimal --component rustfmt,clippy
-      - name: Apply targeting optimization and benchmark
+      - name: Apply targeting optimization
         shell: bash
         run: |
           python3 - <<'PY'
+          import base64
           from pathlib import Path
+          old = base64.b64decode('ICAgIHB1YihzdXBlcikgZm4gdGFyZ2V0X2Zvcl90b3dlcigmc2VsZiwgdG93ZXI6IEVudGl0eUlkLCByYW5nZV9taWxsaTogaTMyKSAtPiBPcHRpb248RW50aXR5SWQ+IHsKICAgICAgICBsZXQgdG93ZXJfcG9zaXRpb24gPSAqc2VsZi50cmFuc2Zvcm1zLmdldChlbnRpdHlfa2V5KHRvd2VyKSk/OwogICAgICAgIGxldCByYW5nZV9zcSA9IGk2NDo6ZnJvbShyYW5nZV9taWxsaSkgKiBpNjQ6OmZyb20ocmFuZ2VfbWlsbGkpOwogICAgICAgIGxldCBtdXQgY2FuZGlkYXRlcyA9IHNlbGYKICAgICAgICAgICAgLnJhaWRlcnMKICAgICAgICAgICAgLmtleXMoKQogICAgICAgICAgICAubWFwKGtleV9lbnRpdHkpCiAgICAgICAgICAgIC5maWx0ZXIofGVudGl0eXwgewogICAgICAgICAgICAgICAgc2VsZi5oZWFsdGgKICAgICAgICAgICAgICAgICAgICAuZ2V0KGVudGl0eV9rZXkoKmVudGl0eSkpCiAgICAgICAgICAgICAgICAgICAgLmlzX3NvbWVfYW5kKHxoZWFsdGh8IGhlYWx0aC5jdXJyZW50ID4gMCkKICAgICAgICAgICAgfSkKICAgICAgICAgICAgLmZpbHRlcl9tYXAofGVudGl0eXwgewogICAgICAgICAgICAgICAgbGV0IHBvc2l0aW9uID0gc2VsZi50cmFuc2Zvcm1zLmdldChlbnRpdHlfa2V5KGVudGl0eSkpPzsKICAgICAgICAgICAgICAgIGxldCBkeCA9IGk2NDo6ZnJvbShwb3NpdGlvbi54X21pbGxpIC0gdG93ZXJfcG9zaXRpb24ueF9taWxsaSk7CiAgICAgICAgICAgICAgICBsZXQgZHogPSBpNjQ6OmZyb20ocG9zaXRpb24uel9taWxsaSAtIHRvd2VyX3Bvc2l0aW9uLnpfbWlsbGkpOwogICAgICAgICAgICAgICAgbGV0IGRpc3RhbmNlX3NxID0gZHggKiBkeCArIGR6ICogZHo7CiAgICAgICAgICAgICAgICAoZGlzdGFuY2Vfc3EgPD0gcmFuZ2Vfc3EpLnRoZW5fc29tZSgoZGlzdGFuY2Vfc3EsIGVudGl0eSkpCiAgICAgICAgICAgIH0pCiAgICAgICAgICAgIC5jb2xsZWN0Ojo8VmVjPF8+PigpOwogICAgICAgIGNhbmRpZGF0ZXMuc29ydF91bnN0YWJsZSgpOwogICAgICAgIGNhbmRpZGF0ZXMuZmlyc3QoKS5tYXAofChfLCBlbnRpdHkpfCAqZW50aXR5KQogICAgfQo=').decode()
+          new = base64.b64decode('ICAgIHB1YihzdXBlcikgZm4gdGFyZ2V0X2Zvcl90b3dlcigmc2VsZiwgdG93ZXI6IEVudGl0eUlkLCByYW5nZV9taWxsaTogaTMyKSAtPiBPcHRpb248RW50aXR5SWQ+IHsKICAgICAgICBsZXQgdG93ZXJfcG9zaXRpb24gPSAqc2VsZi50cmFuc2Zvcm1zLmdldChlbnRpdHlfa2V5KHRvd2VyKSk/OwogICAgICAgIGxldCByYW5nZV9zcSA9IGk2NDo6ZnJvbShyYW5nZV9taWxsaSkgKiBpNjQ6OmZyb20ocmFuZ2VfbWlsbGkpOwogICAgICAgIHNlbGYucmFpZGVycwogICAgICAgICAgICAua2V5cygpCiAgICAgICAgICAgIC5tYXAoa2V5X2VudGl0eSkKICAgICAgICAgICAgLmZpbHRlcl9tYXAofGVudGl0eXwgewogICAgICAgICAgICAgICAgaWYgIXNlbGYKICAgICAgICAgICAgICAgICAgICAuaGVhbHRoCiAgICAgICAgICAgICAgICAgICAgLmdldChlbnRpdHlfa2V5KGVudGl0eSkpCiAgICAgICAgICAgICAgICAgICAgLmlzX3NvbWVfYW5kKHxoZWFsdGh8IGhlYWx0aC5jdXJyZW50ID4gMCkKICAgICAgICAgICAgICAgIHsKICAgICAgICAgICAgICAgICAgICByZXR1cm4gTm9uZTsKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIGxldCBwb3NpdGlvbiA9IHNlbGYudHJhbnNmb3Jtcy5nZXQoZW50aXR5X2tleShlbnRpdHkpKT87CiAgICAgICAgICAgICAgICBsZXQgZHggPSBpNjQ6OmZyb20ocG9zaXRpb24ueF9taWxsaSAtIHRvd2VyX3Bvc2l0aW9uLnhfbWlsbGkpOwogICAgICAgICAgICAgICAgbGV0IGR6ID0gaTY0Ojpmcm9tKHBvc2l0aW9uLnpfbWlsbGkgLSB0b3dlcl9wb3NpdGlvbi56X21pbGxpKTsKICAgICAgICAgICAgICAgIGxldCBkaXN0YW5jZV9zcSA9IGR4ICogZHggKyBkeiAqIGR6OwogICAgICAgICAgICAgICAgKGRpc3RhbmNlX3NxIDw9IHJhbmdlX3NxKS50aGVuX3NvbWUoKGRpc3RhbmNlX3NxLCBlbnRpdHkpKQogICAgICAgICAgICB9KQogICAgICAgICAgICAubWluKCkKICAgICAgICAgICAgLm1hcCh8KF8sIGVudGl0eSl8IGVudGl0eSkKICAgIH0K').decode()
           combat = Path('crates/raid-defense-core/src/state_combat.rs')
           text = combat.read_text()
-          old = '''    pub(super) fn target_for_tower(&self, tower: EntityId, range_milli: i32) -> Option<EntityId> {
-        let tower_position = *self.transforms.get(entity_key(tower))?;
-        let range_sq = i64::from(range_milli) * i64::from(range_milli);
-        let mut candidates = self
-            .raiders
-            .keys()
-            .map(key_entity)
-            .filter(|entity| {
-                self.health
-                    .get(entity_key(*entity))
-                    .is_some_and(|health| health.current > 0)
-            })
-            .filter_map(|entity| {
-                let position = self.transforms.get(entity_key(entity))?;
-                let dx = i64::from(position.x_milli - tower_position.x_milli);
-                let dz = i64::from(position.z_milli - tower_position.z_milli);
-                let distance_sq = dx * dx + dz * dz;
-                (distance_sq <= range_sq).then_some((distance_sq, entity))
-            })
-            .collect::<Vec<_>>();
-        candidates.sort_unstable();
-        candidates.first().map(|(_, entity)| *entity)
-    }
-'''
-          new = '''    pub(super) fn target_for_tower(&self, tower: EntityId, range_milli: i32) -> Option<EntityId> {
-        let tower_position = *self.transforms.get(entity_key(tower))?;
-        let range_sq = i64::from(range_milli) * i64::from(range_milli);
-        self.raiders
-            .keys()
-            .map(key_entity)
-            .filter_map(|entity| {
-                if !self
-                    .health
-                    .get(entity_key(entity))
-                    .is_some_and(|health| health.current > 0)
-                {
-                    return None;
-                }
-                let position = self.transforms.get(entity_key(entity))?;
-                let dx = i64::from(position.x_milli - tower_position.x_milli);
-                let dz = i64::from(position.z_milli - tower_position.z_milli);
-                let distance_sq = dx * dx + dz * dz;
-                (distance_sq <= range_sq).then_some((distance_sq, entity))
-            })
-            .min()
-            .map(|(_, entity)| entity)
-    }
-'''
           if text.count(old) != 1:
               raise SystemExit('expected exactly one target_for_tower implementation')
           combat.write_text(text.replace(old, new))
 
+          marker = base64.b64decode('ICAgICNbdGVzdF0KICAgIGZuIGludGVnZXJfc3F1YXJlX3Jvb3RfaXNfZGV0ZXJtaW5pc3RpY19hdF9ib3VuZGFyaWVzKCkgewo=').decode()
+          addition = base64.b64decode('ICAgICNbdGVzdF0KICAgIGZuIHRvd2VyX3RhcmdldGluZ19wcmVmZXJzX25lYXJlc3RfdGhlbl9sb3dlc3RfZW50aXR5X2lkKCkgewogICAgICAgIGxldCBtdXQgc3RhdGUgPSBHYW1lU3RhdGU6Om5ldygxMSk7CiAgICAgICAgbGV0IHRvd2VyID0gc3RhdGUuYWxsb2NhdGVfZW50aXR5KCk7CiAgICAgICAgc3RhdGUudHJhbnNmb3Jtcy5pbnNlcnQoCiAgICAgICAgICAgIGVudGl0eV9rZXkodG93ZXIpLAogICAgICAgICAgICBUcmFuc2Zvcm0gewogICAgICAgICAgICAgICAgeF9taWxsaTogMTBfMDAwLAogICAgICAgICAgICAgICAgel9taWxsaTogMTBfMDAwLAogICAgICAgICAgICB9LAogICAgICAgICk7CgogICAgICAgIGxldCBsb3dlcl9pZCA9IHN0YXRlLmFsbG9jYXRlX2VudGl0eSgpOwogICAgICAgIGxldCBoaWdoZXJfaWQgPSBzdGF0ZS5hbGxvY2F0ZV9lbnRpdHkoKTsKICAgICAgICBmb3IgKGVudGl0eSwgeF9taWxsaSkgaW4gWyhsb3dlcl9pZCwgOV8wMDApLCAoaGlnaGVyX2lkLCAxMV8wMDApXSB7CiAgICAgICAgICAgIHN0YXRlLnJhaWRlcnMuaW5zZXJ0KAogICAgICAgICAgICAgICAgZW50aXR5X2tleShlbnRpdHkpLAogICAgICAgICAgICAgICAgUmFpZGVyIHsKICAgICAgICAgICAgICAgICAgICBhcmNoZXR5cGU6IFJhaWRlckFyY2hldHlwZTo6QmFzaWMsCiAgICAgICAgICAgICAgICAgICAgZWRnZTogRWRnZTo6Tm9ydGgsCiAgICAgICAgICAgICAgICAgICAgdGFyZ2V0X3N0b3JhZ2U6IFRPV05fRU5USVRZLAogICAgICAgICAgICAgICAgfSwKICAgICAgICAgICAgKTsKICAgICAgICAgICAgc3RhdGUuaGVhbHRoLmluc2VydCgKICAgICAgICAgICAgICAgIGVudGl0eV9rZXkoZW50aXR5KSwKICAgICAgICAgICAgICAgIEhlYWx0aCB7CiAgICAgICAgICAgICAgICAgICAgY3VycmVudDogMTAsCiAgICAgICAgICAgICAgICAgICAgbWF4aW11bTogMTAsCiAgICAgICAgICAgICAgICB9LAogICAgICAgICAgICApOwogICAgICAgICAgICBzdGF0ZS50cmFuc2Zvcm1zLmluc2VydCgKICAgICAgICAgICAgICAgIGVudGl0eV9rZXkoZW50aXR5KSwKICAgICAgICAgICAgICAgIFRyYW5zZm9ybSB7CiAgICAgICAgICAgICAgICAgICAgeF9taWxsaSwKICAgICAgICAgICAgICAgICAgICB6X21pbGxpOiAxMF8wMDAsCiAgICAgICAgICAgICAgICB9LAogICAgICAgICAgICApOwogICAgICAgIH0KCiAgICAgICAgYXNzZXJ0X2VxIShzdGF0ZS50YXJnZXRfZm9yX3Rvd2VyKHRvd2VyLCAyXzAwMCksIFNvbWUobG93ZXJfaWQpKTsKCiAgICAgICAgc3RhdGUudHJhbnNmb3Jtcy5pbnNlcnQoCiAgICAgICAgICAgIGVudGl0eV9rZXkoaGlnaGVyX2lkKSwKICAgICAgICAgICAgVHJhbnNmb3JtIHsKICAgICAgICAgICAgICAgIHhfbWlsbGk6IDEwXzUwMCwKICAgICAgICAgICAgICAgIHpfbWlsbGk6IDEwXzAwMCwKICAgICAgICAgICAgfSwKICAgICAgICApOwogICAgICAgIGFzc2VydF9lcSEoc3RhdGUudGFyZ2V0X2Zvcl90b3dlcih0b3dlciwgMl8wMDApLCBTb21lKGhpZ2hlcl9pZCkpOwogICAgfQoK').decode()
           tests = Path('crates/raid-defense-core/src/core_tests.rs')
           text = tests.read_text()
-          marker = '''    #[test]
-    fn integer_square_root_is_deterministic_at_boundaries() {
-'''
-          addition = '''    #[test]
-    fn tower_targeting_prefers_nearest_then_lowest_entity_id() {
-        let mut state = GameState::new(11);
-        let tower = state.allocate_entity();
-        state.transforms.insert(
-            entity_key(tower),
-            Transform {
-                x_milli: 10_000,
-                z_milli: 10_000,
-            },
-        );
-
-        let lower_id = state.allocate_entity();
-        let higher_id = state.allocate_entity();
-        for (entity, x_milli) in [(lower_id, 9_000), (higher_id, 11_000)] {
-            state.raiders.insert(
-                entity_key(entity),
-                Raider {
-                    archetype: RaiderArchetype::Basic,
-                    edge: Edge::North,
-                    target_storage: TOWN_ENTITY,
-                },
-            );
-            state.health.insert(
-                entity_key(entity),
-                Health {
-                    current: 10,
-                    maximum: 10,
-                },
-            );
-            state.transforms.insert(
-                entity_key(entity),
-                Transform {
-                    x_milli,
-                    z_milli: 10_000,
-                },
-            );
-        }
-
-        assert_eq!(state.target_for_tower(tower, 2_000), Some(lower_id));
-
-        state.transforms.insert(
-            entity_key(higher_id),
-            Transform {
-                x_milli: 10_500,
-                z_milli: 10_000,
-            },
-        );
-        assert_eq!(state.target_for_tower(tower, 2_000), Some(higher_id));
-    }
-
-'''
           if text.count(marker) != 1:
               raise SystemExit('expected integer-square-root test marker')
           tests.write_text(text.replace(marker, addition + marker))
-
-          script = Path('scripts/benchmark-simulation.sh')
-          script.parent.mkdir(exist_ok=True)
-          script.write_text('''#!/usr/bin/env bash
-set -euo pipefail
-
-repetitions="${1:-5}"
-if ! [[ "$repetitions" =~ ^[1-9][0-9]*$ ]]; then
-  echo "usage: $0 [positive-repetitions]" >&2
-  exit 2
-fi
-
-cargo build --release -p raid-defense-sim >/dev/null
-binary="$(pwd)/target/release/raid-defense-sim"
-python3 - "$binary" "$repetitions" <<'PYBENCH'
-import statistics
-import subprocess
-import sys
-import time
-
-binary = sys.argv[1]
-repetitions = int(sys.argv[2])
-command = [binary, '--seed', '100', '--runs', '16', '--ticks', '6000', '--policy', 'balanced']
-samples = []
-for _ in range(repetitions):
-    start = time.perf_counter()
-    subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
-    samples.append(time.perf_counter() - start)
-
-print('workload=balanced seeds=16 ticks=6000 seed_start=100')
-print(f'repetitions={repetitions}')
-print(f'min_seconds={min(samples):.6f}')
-print(f'median_seconds={statistics.median(samples):.6f}')
-print(f'max_seconds={max(samples):.6f}')
-PYBENCH
-''')
           PY
-          chmod +x scripts/benchmark-simulation.sh
           cargo fmt --all
       - name: Validate optimization
         run: |
           cargo test -p raid-defense-core
           cargo clippy -p raid-defense-core --all-targets -- -D warnings
-          scripts/benchmark-simulation.sh 1
+          bash scripts/benchmark-simulation.sh 1
       - name: Commit patch and remove helper
         shell: bash
         run: |
           rm .github/workflows/apply-stream-tower-targeting.yml
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add crates/raid-defense-core/src/state_combat.rs crates/raid-defense-core/src/core_tests.rs scripts/benchmark-simulation.sh .github/workflows/apply-stream-tower-targeting.yml
+          git add crates/raid-defense-core/src/state_combat.rs crates/raid-defense-core/src/core_tests.rs .github/workflows/apply-stream-tower-targeting.yml
           git commit -m "perf(combat): stream tower target selection"
           git push origin HEAD:perf/stream-tower-targeting
