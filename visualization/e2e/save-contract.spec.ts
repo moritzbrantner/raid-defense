@@ -47,9 +47,11 @@ test("persists replay authority as timed player actions and keeps derived state 
 
   const stored = await page.evaluate(() => {
     const replayRaw = window.localStorage.getItem("raid-defense.replay.v3");
+    const integrityRaw = window.localStorage.getItem("raid-defense.replay-integrity.v1");
     const summaryRaw = window.localStorage.getItem("raid-defense.save-summary.v1");
     return {
       replay: replayRaw ? JSON.parse(replayRaw) : null,
+      integrity: integrityRaw ? JSON.parse(integrityRaw) : null,
       summary: summaryRaw ? JSON.parse(summaryRaw) : null,
     };
   });
@@ -76,9 +78,43 @@ test("persists replay authority as timed player actions and keeps derived state 
     true,
   );
 
-  expect(stored.summary).toMatchObject({
+  expect(stored.integrity).toMatchObject({
+    version: 1,
+    replay_version: 3,
+    contract_version: 10,
+    seed: stored.replay.seed,
+    recorded_through_tick: stored.replay.recorded_through_tick,
+    action_count: 1,
     checksum: expect.any(String),
+  });
+  expect(stored.summary).toMatchObject({
+    checksum: stored.integrity.checksum,
     tick: stored.replay.recorded_through_tick,
     action_count: 1,
   });
+});
+
+test("fails closed when replay integrity does not match reconstructed state", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("new-game").click();
+  await expect(page.getByTestId("raid-defense-game")).toBeVisible();
+  await page.getByTestId("start-wave").click();
+  await expect(page.getByTestId("cycle-timer")).toContainText("Rally ·");
+  await page.getByTestId("return-to-menu").click();
+
+  await page.evaluate(() => {
+    const raw = window.localStorage.getItem("raid-defense.replay-integrity.v1");
+    if (!raw) throw new Error("expected replay integrity receipt");
+    const receipt = JSON.parse(raw) as { checksum: string };
+    receipt.checksum = "corrupted-checksum";
+    window.localStorage.setItem("raid-defense.replay-integrity.v1", JSON.stringify(receipt));
+  });
+
+  await page.reload();
+  await expect(page.getByTestId("resume-game")).toBeEnabled();
+  await page.getByTestId("resume-game").click();
+  await expect(page.getByTestId("event-feedback")).toContainText(
+    "Saved replay checksum does not match the reconstructed action log.",
+  );
+  await expect(page.getByTestId("raid-defense-game")).not.toBeVisible();
 });
