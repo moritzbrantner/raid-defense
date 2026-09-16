@@ -16,7 +16,7 @@ export const SHARED_PRESENTATION_SETTINGS_STORAGE_KEY = "raid-defense.settings.u
 // Pinned to an immutable generated settings browser distribution. This is deliberately
 // not the mutable browser-dist branch or Pages URL.
 export const SETTINGS_BROWSER_BUNDLE_URL =
-  "https://cdn.jsdelivr.net/gh/moritzbrantner/settings@345e57cabd8342481f33d7a7bb16da2a2657e323/settings-browser.js";
+  "https://cdn.jsdelivr.net/gh/moritzbrantner/settings@5e6b7383b14f1549154d2100f5df3d39d42d66ab/settings-browser.js";
 
 type WireSettingValue =
   | { type: "bool"; value: boolean }
