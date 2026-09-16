@@ -1,4 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+function presentationSwitch(page: Page, settingId: string) {
+  return page.locator(`[data-setting-id="${settingId}"] [data-slot="switch"]`);
+}
 
 test("preserves presentation edits made while shared settings initialize", async ({ page }) => {
   let releaseFoundation!: () => void;
@@ -19,7 +23,7 @@ test("preserves presentation edits made while shared settings initialize", async
   await page.goto("/?screen=settings&section=presentation");
   await foundationRequested;
 
-  const touchHints = page.getByTestId("setting-touch-hints");
+  const touchHints = presentationSwitch(page, "presentation.show_touch_hints");
   await expect(touchHints).toHaveAttribute("aria-checked", "true");
   await touchHints.click();
   await expect(touchHints).toHaveAttribute("aria-checked", "false");
@@ -55,8 +59,8 @@ test("keeps presentation controls usable when browser storage rejects writes", a
 
   await page.goto("/?screen=settings&section=presentation");
 
-  const touchHints = page.getByTestId("setting-touch-hints");
-  const reduceMotion = page.getByTestId("setting-reduce-motion");
+  const touchHints = presentationSwitch(page, "presentation.show_touch_hints");
+  const reduceMotion = presentationSwitch(page, "accessibility.reduce_motion");
   await expect(touchHints).toHaveAttribute("aria-checked", "true");
   await expect(reduceMotion).toHaveAttribute("aria-checked", "false");
 
