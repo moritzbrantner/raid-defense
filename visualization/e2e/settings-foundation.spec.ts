@@ -43,3 +43,27 @@ test("preserves presentation edits made while shared settings initialize", async
 
   await expect(touchHints).not.toBeChecked();
 });
+
+test("keeps presentation controls usable when browser storage rejects writes", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.addInitScript(() => {
+    Storage.prototype.setItem = function setItem() {
+      throw new DOMException("Storage disabled for test", "QuotaExceededError");
+    };
+  });
+
+  await page.goto("/?screen=settings&section=presentation");
+
+  const touchHints = page.getByTestId("setting-touch-hints");
+  const reduceMotion = page.getByTestId("setting-reduce-motion");
+  await expect(touchHints).toBeChecked();
+  await expect(reduceMotion).not.toBeChecked();
+
+  await touchHints.uncheck();
+  await reduceMotion.check();
+
+  await expect(touchHints).not.toBeChecked();
+  await expect(reduceMotion).toBeChecked();
+  expect(pageErrors).toEqual([]);
+});
