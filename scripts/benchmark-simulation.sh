@@ -7,8 +7,14 @@ if ! [[ "$repetitions" =~ ^[1-9][0-9]*$ ]]; then
   exit 2
 fi
 
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+target_dir="$(
+  cargo metadata --format-version 1 --no-deps |
+    python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])'
+)"
 cargo build --release -p raid-defense-sim >/dev/null
-binary="$(pwd)/target/release/raid-defense-sim"
+binary="$target_dir/release/raid-defense-sim"
 python3 - "$binary" "$repetitions" <<'PY'
 import statistics
 import subprocess
