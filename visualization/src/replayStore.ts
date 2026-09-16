@@ -24,6 +24,16 @@ type LegacySavedGame = {
   scenario?: ScenarioOptions;
 };
 
+type ReplayIntegrityReceipt = {
+  version: 1;
+  replay_version: 3;
+  contract_version: 10;
+  seed: number;
+  recorded_through_tick: number;
+  action_count: number;
+  checksum: string;
+};
+
 export type RecordedPlayerAction = {
   tick: number;
   sequence: number;
@@ -52,13 +62,14 @@ export type SavedGameSummary = {
 
 export type LoadedReplay = {
   replay: ReplayRecord;
-  legacy_checksum?: string;
+  expected_checksum: string;
   legacy_summary?: SavedGameSummary;
 };
 
 export const LOCAL_PLAYER_ID = 0;
 
 const REPLAY_KEY = "raid-defense.replay.v3";
+const INTEGRITY_KEY = "raid-defense.replay-integrity.v1";
 const SUMMARY_KEY = "raid-defense.save-summary.v1";
 const LEGACY_V2_KEY = "raid-defense.save.v2";
 const LEGACY_V1_KEY = "raid-defense.save.v1";
@@ -86,11 +97,7 @@ function isNonNegativeInteger(value: unknown): value is number {
 }
 
 function isPlayerCommand(value: unknown): value is PlayerCommand {
-  return (
-    isObject(value) &&
-    typeof value.type === "string" &&
-    value.type !== "advance_tick"
-  );
+  return isObject(value) && typeof value.type === "string" && value.type !== "advance_tick";
 }
 
 function isLegacyReplayEntry(value: unknown): value is LegacyReplayEntry {
@@ -136,6 +143,36 @@ function parseReplayRecord(raw: string): ReplayRecord | null {
   } catch {
     return null;
   }
+}
+
+function parseIntegrityReceipt(raw: string): ReplayIntegrityReceipt | null {
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (!isObject(value)) return null;
+    if (
+      value.version !== 1 ||
+      value.replay_version !== 3 ||
+      value.contract_version !== SAVE_CONTRACT_VERSION ||
+      !isSeed(value.seed) ||
+      !isNonNegativeInteger(value.recorded_through_tick) ||
+      !isNonNegativeInteger(value.action_count) ||
+      typeof value.checksum !== "string" ||
+      value.checksum.length === 0
+    ) {
+      return null;
+    }
+    return value as ReplayIntegrityReceipt;
+  } catch {
+    return null;
+  }
+}
+
+function integrityMatchesReplay(receipt: ReplayIntegrityReceipt, replay: ReplayRecord) {
+  return (
+    receipt.seed === replay.seed &&
+    receipt.recorded_through_tick === replay.recorded_through_tick &&
+    receipt.action_count === replay.actions.length
+  );
 }
 
 function parseSummary(raw: string): SavedGameSummary | null {
@@ -218,7 +255,7 @@ function migrateLegacySave(save: LegacySavedGame): LoadedReplay | null {
       recorded_through_tick: tick,
       actions,
     },
-    legacy_checksum: save.checksum,
+    expected_checksum: save.checksum,
     legacy_summary: {
       seed: save.seed,
       checksum: save.checksum,
@@ -248,7 +285,11 @@ export function readStoredReplay(): LoadedReplay | null {
   const current = window.localStorage.getItem(REPLAY_KEY);
   if (current !== null) {
     const replay = parseReplayRecord(current);
-    return replay ? { replay } : null;
+    if (!replay) return null;
+    const integrityRaw = window.localStorage.getItem(INTEGRITY_KEY);
+    const integrity = integrityRaw ? parseIntegrityReceipt(integrityRaw) : null;
+    if (!integrity || !integrityMatchesReplay(integrity, replay)) return null;
+    return { replay, expected_checksum: integrity.checksum };
   }
 
   const legacyV2 = window.localStorage.getItem(LEGACY_V2_KEY);
@@ -286,7 +327,7 @@ export function readSavedGameSummary(): SavedGameSummary | null {
 
   return {
     seed: loaded.replay.seed,
-    checksum: "",
+    checksum: loaded.expected_checksum,
     tick: loaded.replay.recorded_through_tick,
     wave: 0,
     completed_waves: 0,
@@ -312,8 +353,18 @@ export function summaryFromSnapshot(
 
 export function writeStoredReplay(replay: ReplayRecord, summary: SavedGameSummary) {
   if (!storageAvailable()) return;
+  const integrity: ReplayIntegrityReceipt = {
+    version: 1,
+    replay_version: replay.version,
+    contract_version: replay.contract_version,
+    seed: replay.seed,
+    recorded_through_tick: replay.recorded_through_tick,
+    action_count: replay.actions.length,
+    checksum: summary.checksum,
+  };
   try {
     window.localStorage.setItem(REPLAY_KEY, JSON.stringify(replay));
+    window.localStorage.setItem(INTEGRITY_KEY, JSON.stringify(integrity));
     window.localStorage.setItem(SUMMARY_KEY, JSON.stringify(summary));
     window.localStorage.removeItem(LEGACY_V2_KEY);
     window.localStorage.removeItem(LEGACY_V1_KEY);
@@ -325,6 +376,7 @@ export function writeStoredReplay(replay: ReplayRecord, summary: SavedGameSummar
 export function clearStoredReplay() {
   if (!storageAvailable()) return;
   window.localStorage.removeItem(REPLAY_KEY);
+  window.localStorage.removeItem(INTEGRITY_KEY);
   window.localStorage.removeItem(SUMMARY_KEY);
   window.localStorage.removeItem(LEGACY_V2_KEY);
   window.localStorage.removeItem(LEGACY_V1_KEY);
