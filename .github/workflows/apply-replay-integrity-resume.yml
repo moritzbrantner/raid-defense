@@ -22,17 +22,18 @@ jobs:
           from pathlib import Path
           path = Path('visualization/src/simulationClient.ts')
           text = path.read_text()
-          old = '''    if (loaded.legacy_checksum && snapshot.checksum !== loaded.legacy_checksum) {
-              throw new Error("Legacy saved-game checksum does not match the reconstructed action log.");
-            }
-          '''
-          new = '''    if (snapshot.checksum !== loaded.expected_checksum) {
-              throw new Error("Saved replay checksum does not match the reconstructed action log.");
-            }
-          '''
-          if text.count(old) != 1:
-              raise SystemExit(f'expected one legacy checksum block, found {text.count(old)}')
-          path.write_text(text.replace(old, new))
+          if text.count('loaded.legacy_checksum') != 2:
+              raise SystemExit('expected two legacy checksum references')
+          text = text.replace('loaded.legacy_checksum', 'loaded.expected_checksum')
+          text = text.replace(
+              'if (loaded.expected_checksum && snapshot.checksum !== loaded.expected_checksum)',
+              'if (snapshot.checksum !== loaded.expected_checksum)',
+          )
+          text = text.replace(
+              'Legacy saved-game checksum does not match the reconstructed action log.',
+              'Saved replay checksum does not match the reconstructed action log.',
+          )
+          path.write_text(text)
           PY
       - name: Commit patch and remove helper
         shell: bash
