@@ -349,6 +349,57 @@ mod tests {
     }
 
     #[test]
+    fn tower_targeting_prefers_nearest_then_lowest_entity_id() {
+        let mut state = GameState::new(11);
+        let tower = state.allocate_entity();
+        state.transforms.insert(
+            entity_key(tower),
+            Transform {
+                x_milli: 10_000,
+                z_milli: 10_000,
+            },
+        );
+
+        let lower_id = state.allocate_entity();
+        let higher_id = state.allocate_entity();
+        for (entity, x_milli) in [(lower_id, 9_000), (higher_id, 11_000)] {
+            state.raiders.insert(
+                entity_key(entity),
+                Raider {
+                    archetype: RaiderArchetype::Basic,
+                    edge: Edge::North,
+                    target_storage: TOWN_ENTITY,
+                },
+            );
+            state.health.insert(
+                entity_key(entity),
+                Health {
+                    current: 10,
+                    maximum: 10,
+                },
+            );
+            state.transforms.insert(
+                entity_key(entity),
+                Transform {
+                    x_milli,
+                    z_milli: 10_000,
+                },
+            );
+        }
+
+        assert_eq!(state.target_for_tower(tower, 2_000), Some(lower_id));
+
+        state.transforms.insert(
+            entity_key(higher_id),
+            Transform {
+                x_milli: 10_500,
+                z_milli: 10_000,
+            },
+        );
+        assert_eq!(state.target_for_tower(tower, 2_000), Some(higher_id));
+    }
+
+    #[test]
     fn integer_square_root_is_deterministic_at_boundaries() {
         assert_eq!(integer_sqrt(0), 0);
         assert_eq!(integer_sqrt(1), 1);
