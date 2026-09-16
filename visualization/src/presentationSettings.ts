@@ -108,7 +108,7 @@ let browserModulePromise: Promise<SettingsBrowserModule> | undefined;
 
 export async function createPresentationSettingsFoundation(
   initialSettings: PresentationSettings,
-  storage: StorageLike = window.localStorage,
+  storage?: StorageLike,
 ): Promise<{
   session: SettingsFoundationSession;
   settings: PresentationSettings;
@@ -119,8 +119,17 @@ export async function createPresentationSettingsFoundation(
     presentationSettingDefinitions,
     presentationMetadata,
   );
+  const resolvedStorage = storage ?? getBrowserStorage();
   let diagnostics: unknown[] = [];
-  const storedSnapshot = storage.getItem(SHARED_PRESENTATION_SETTINGS_STORAGE_KEY);
+  let storedSnapshot: string | null = null;
+
+  if (resolvedStorage) {
+    try {
+      storedSnapshot = resolvedStorage.getItem(SHARED_PRESENTATION_SETTINGS_STORAGE_KEY);
+    } catch (error) {
+      console.warn("Shared presentation settings storage is unavailable", error);
+    }
+  }
 
   if (storedSnapshot) {
     try {
@@ -137,15 +146,16 @@ export async function createPresentationSettingsFoundation(
   }
 
   const settings = materializePresentationSettings(session.effectiveValues(), initialSettings);
-  persistPresentationSettingsFoundation(session, settings, storage);
+  persistPresentationSettingsFoundation(session, settings, resolvedStorage);
   return { session, settings, diagnostics };
 }
 
 export function readLegacyPresentationSettings(
-  storage: Pick<Storage, "getItem"> = window.localStorage,
+  storage?: Pick<Storage, "getItem">,
 ): PresentationSettings {
   try {
-    const raw = storage.getItem(LEGACY_PRESENTATION_SETTINGS_STORAGE_KEY);
+    const resolvedStorage = storage ?? getBrowserStorage();
+    const raw = resolvedStorage?.getItem(LEGACY_PRESENTATION_SETTINGS_STORAGE_KEY);
     if (!raw) return DEFAULT_PRESENTATION_SETTINGS;
     const value = JSON.parse(raw) as Partial<PresentationSettings>;
     return {
@@ -170,23 +180,43 @@ export function readLegacyPresentationSettings(
 export function persistPresentationSettingsFoundation(
   session: SettingsFoundationSession,
   settings: PresentationSettings,
-  storage: Pick<Storage, "setItem"> = window.localStorage,
+  storage?: Pick<Storage, "setItem">,
 ) {
   syncPresentationSettingsToFoundation(session, settings);
-  storage.setItem(
-    SHARED_PRESENTATION_SETTINGS_STORAGE_KEY,
-    session.exportScope("user"),
-  );
-  writeLegacyPresentationSettings(settings, storage);
+  const resolvedStorage = storage ?? getBrowserStorage();
+  let sharedPersisted = false;
+
+  if (resolvedStorage) {
+    try {
+      resolvedStorage.setItem(
+        SHARED_PRESENTATION_SETTINGS_STORAGE_KEY,
+        session.exportScope("user"),
+      );
+      sharedPersisted = true;
+    } catch (error) {
+      console.warn("Shared presentation settings snapshot could not be persisted", error);
+    }
+  }
+
+  const legacyPersisted = writeLegacyPresentationSettings(settings, resolvedStorage);
+  return sharedPersisted && legacyPersisted;
 }
 
 export function writeLegacyPresentationSettings(
   settings: PresentationSettings,
-  storage: Pick<Storage, "setItem"> = window.localStorage,
+  storage?: Pick<Storage, "setItem">,
 ) {
-  // Retained only as a degraded-mode/downgrade projection. The shared snapshot is
-  // authoritative whenever the settings foundation is available.
-  storage.setItem(LEGACY_PRESENTATION_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  try {
+    const resolvedStorage = storage ?? getBrowserStorage();
+    if (!resolvedStorage) return false;
+    // Retained only as a degraded-mode/downgrade projection. The shared snapshot is
+    // authoritative whenever the settings foundation is available.
+    resolvedStorage.setItem(LEGACY_PRESENTATION_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+    return true;
+  } catch (error) {
+    console.warn("Local presentation settings projection could not be persisted", error);
+    return false;
+  }
 }
 
 export function materializePresentationSettings(
@@ -214,6 +244,15 @@ async function loadSettingsBrowserModule(): Promise<SettingsBrowserModule> {
     /* @vite-ignore */ SETTINGS_BROWSER_BUNDLE_URL
   ) as Promise<SettingsBrowserModule>;
   return browserModulePromise;
+}
+
+function getBrowserStorage(): StorageLike | undefined {
+  try {
+    return window.localStorage;
+  } catch (error) {
+    console.warn("Browser storage is unavailable for presentation settings", error);
+    return undefined;
+  }
 }
 
 function boolDefinition(id: string, value: boolean): WireSettingDefinition {
