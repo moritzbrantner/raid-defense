@@ -288,8 +288,8 @@ export class RaidDefenseSimulationClient {
     await advanceToTick(replay.recorded_through_tick);
 
     const snapshot = parseSnapshot(engine.snapshot());
-    if (loaded.legacy_checksum && snapshot.checksum !== loaded.legacy_checksum) {
-      throw new Error("Legacy saved-game checksum does not match the reconstructed action log.");
+    if (snapshot.checksum !== loaded.expected_checksum) {
+      throw new Error("Saved replay checksum does not match the reconstructed action log.");
     }
 
     const client = new RaidDefenseSimulationClient(engine, cloneReplay(replay), snapshot);
