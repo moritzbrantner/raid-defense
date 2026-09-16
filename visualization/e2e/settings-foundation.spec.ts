@@ -10,7 +10,7 @@ test("preserves presentation edits made while shared settings initialize", async
     markFoundationRequested = resolve;
   });
 
-  await page.route("**/settings-browser.js", async (route) => {
+  await page.route("**/*settings_wasm_bg.wasm*", async (route) => {
     markFoundationRequested();
     await foundationGate;
     await route.continue();
@@ -20,9 +20,9 @@ test("preserves presentation edits made while shared settings initialize", async
   await foundationRequested;
 
   const touchHints = page.getByTestId("setting-touch-hints");
-  await expect(touchHints).toBeChecked();
-  await touchHints.uncheck();
-  await expect(touchHints).not.toBeChecked();
+  await expect(touchHints).toHaveAttribute("aria-checked", "true");
+  await touchHints.click();
+  await expect(touchHints).toHaveAttribute("aria-checked", "false");
 
   releaseFoundation();
 
@@ -41,7 +41,7 @@ test("preserves presentation edits made while shared settings initialize", async
     )
     .toBe(false);
 
-  await expect(touchHints).not.toBeChecked();
+  await expect(touchHints).toHaveAttribute("aria-checked", "false");
 });
 
 test("keeps presentation controls usable when browser storage rejects writes", async ({ page }) => {
@@ -57,13 +57,13 @@ test("keeps presentation controls usable when browser storage rejects writes", a
 
   const touchHints = page.getByTestId("setting-touch-hints");
   const reduceMotion = page.getByTestId("setting-reduce-motion");
-  await expect(touchHints).toBeChecked();
-  await expect(reduceMotion).not.toBeChecked();
+  await expect(touchHints).toHaveAttribute("aria-checked", "true");
+  await expect(reduceMotion).toHaveAttribute("aria-checked", "false");
 
-  await touchHints.uncheck();
-  await reduceMotion.check();
+  await touchHints.click();
+  await reduceMotion.click();
 
-  await expect(touchHints).not.toBeChecked();
-  await expect(reduceMotion).toBeChecked();
+  await expect(touchHints).toHaveAttribute("aria-checked", "false");
+  await expect(reduceMotion).toHaveAttribute("aria-checked", "true");
   expect(pageErrors).toEqual([]);
 });
