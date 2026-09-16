@@ -1,0 +1,45 @@
+name: Apply replay integrity resume check
+
+on:
+  push:
+    branches: [feat/action-log-replays]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/action-log-replays
+      - name: Bind resume to integrity receipt
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('visualization/src/simulationClient.ts')
+          text = path.read_text()
+          old = '''    if (loaded.legacy_checksum && snapshot.checksum !== loaded.legacy_checksum) {
+              throw new Error("Legacy saved-game checksum does not match the reconstructed action log.");
+            }
+          '''
+          new = '''    if (snapshot.checksum !== loaded.expected_checksum) {
+              throw new Error("Saved replay checksum does not match the reconstructed action log.");
+            }
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one legacy checksum block, found {text.count(old)}')
+          path.write_text(text.replace(old, new))
+          PY
+      - name: Commit patch and remove helper
+        shell: bash
+        run: |
+          rm .github/workflows/apply-replay-integrity-resume.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+moritzbrantner@users.noreply.github.com
+          git add visualization/src/simulationClient.ts .github/workflows/apply-replay-integrity-resume.yml
+          git commit -m "fix(replay): verify v3 integrity before resume"
+          git push origin HEAD:feat/action-log-replays
