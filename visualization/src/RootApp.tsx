@@ -322,7 +322,6 @@ export default function RootApp() {
                       showTouchHints: checked,
                     }))
                   }
-                  switchProps={{ "data-testid": "setting-touch-hints" }}
                 />
                 <SettingsBooleanField
                   definition={presentationSettingDefinitions.reduceUiMotion}
@@ -335,7 +334,6 @@ export default function RootApp() {
                       reduceUiMotion: checked,
                     }))
                   }
-                  switchProps={{ "data-testid": "setting-reduce-motion" }}
                 />
                 <SettingsBooleanField
                   definition={presentationSettingDefinitions.compactStatus}
@@ -348,7 +346,6 @@ export default function RootApp() {
                       compactStatus: checked,
                     }))
                   }
-                  switchProps={{ "data-testid": "setting-compact-status" }}
                 />
               </div>
             </div>
