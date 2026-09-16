@@ -1,3 +1,11 @@
+import {
+  createSettingsSession,
+  type BrowserSettingsSession,
+  type PresentationEntry,
+  type SettingDefinition,
+  type SettingValue,
+} from "@moritzbrantner/settings-browser";
+
 export type PresentationSettings = {
   showTouchHints: boolean;
   reduceUiMotion: boolean;
@@ -13,63 +21,12 @@ export const DEFAULT_PRESENTATION_SETTINGS: PresentationSettings = {
 export const LEGACY_PRESENTATION_SETTINGS_STORAGE_KEY = "raid-defense.settings.v1";
 export const SHARED_PRESENTATION_SETTINGS_STORAGE_KEY = "raid-defense.settings.user.v2";
 
-// Pinned to an immutable generated settings browser distribution. This is deliberately
-// not the mutable browser-dist branch or Pages URL.
-export const SETTINGS_BROWSER_BUNDLE_URL =
-  "https://cdn.jsdelivr.net/gh/moritzbrantner/settings@5e6b7383b14f1549154d2100f5df3d39d42d66ab/settings-browser.js";
-
-type WireSettingValue =
-  | { type: "bool"; value: boolean }
-  | { type: "integer"; value: number }
-  | { type: "number"; value: number }
-  | { type: "text"; value: string }
-  | { type: "choice"; value: string };
-
-type WireSettingDefinition = {
-  id: string;
-  kind:
-    | { type: "bool" }
-    | { type: "integer"; min: number; max: number }
-    | { type: "number"; min: number; max: number }
-    | { type: "text"; min_chars: number; max_chars: number }
-    | { type: "choice"; options: string[] };
-  default: WireSettingValue;
-  scope: "session" | "save" | "device" | "user";
-  apply_mode: "immediate" | "apply" | "restart" | "reconnect";
-  availability?: unknown;
-};
-
-type WirePresentationEntry = {
-  id: string;
-  metadata: {
-    label_key: string;
-    description_key?: string;
-    category_key: string;
-    group_key?: string;
-    order?: number;
-    discoverability?: "primary" | "advanced" | "search_only";
-    search_keys?: string[];
-  };
-};
-
-export type SettingsFoundationSession = {
-  presentation(): WirePresentationEntry[];
-  effectiveValues(): Record<string, WireSettingValue>;
-  set(id: string, value: WireSettingValue): void;
-  reset(id: string): void;
-  importScope(scope: "save" | "device" | "user", snapshot: string): unknown[];
-  exportScope(scope: "save" | "device" | "user"): string;
-  dispose(): void;
-};
-
-type SettingsBrowserModule = {
-  createSettingsSession(
-    definitions: readonly WireSettingDefinition[],
-    presentation?: readonly WirePresentationEntry[],
-  ): Promise<SettingsFoundationSession>;
-};
-
+export type SettingsFoundationSession = BrowserSettingsSession;
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
+type BooleanSettingDefinition = SettingDefinition & {
+  kind: { type: "bool" };
+  default: Extract<SettingValue, { type: "bool" }>;
+};
 
 export const presentationSettingIds = {
   showTouchHints: "presentation.show_touch_hints",
@@ -77,34 +34,32 @@ export const presentationSettingIds = {
   compactStatus: "presentation.compact_status",
 } as const;
 
-const presentationSettingDefinitions: readonly WireSettingDefinition[] = [
-  boolDefinition(presentationSettingIds.showTouchHints, true),
-  boolDefinition(presentationSettingIds.reduceUiMotion, false),
-  boolDefinition(presentationSettingIds.compactStatus, false),
-];
+export const presentationSettingDefinitions = {
+  showTouchHints: boolDefinition(presentationSettingIds.showTouchHints, true),
+  reduceUiMotion: boolDefinition(presentationSettingIds.reduceUiMotion, false),
+  compactStatus: boolDefinition(presentationSettingIds.compactStatus, false),
+} as const;
 
-const presentationMetadata: readonly WirePresentationEntry[] = [
-  presentationEntry(
+export const presentationEntries = {
+  showTouchHints: presentationEntry(
     presentationSettingIds.showTouchHints,
     "settings.touchGuidance.title",
     "settings.touchGuidance.description",
     10,
   ),
-  presentationEntry(
+  reduceUiMotion: presentationEntry(
     presentationSettingIds.reduceUiMotion,
     "settings.reduceMotion.title",
     "settings.reduceMotion.description",
     20,
   ),
-  presentationEntry(
+  compactStatus: presentationEntry(
     presentationSettingIds.compactStatus,
     "settings.compactStatus.title",
     "settings.compactStatus.description",
     30,
   ),
-];
-
-let browserModulePromise: Promise<SettingsBrowserModule> | undefined;
+} as const;
 
 export async function createPresentationSettingsFoundation(
   initialSettings: PresentationSettings,
@@ -112,15 +67,14 @@ export async function createPresentationSettingsFoundation(
 ): Promise<{
   session: SettingsFoundationSession;
   settings: PresentationSettings;
-  diagnostics: unknown[];
+  diagnostics: string[];
 }> {
-  const browserModule = await loadSettingsBrowserModule();
-  const session = await browserModule.createSettingsSession(
-    presentationSettingDefinitions,
-    presentationMetadata,
+  const session = await createSettingsSession(
+    Object.values(presentationSettingDefinitions),
+    Object.values(presentationEntries),
   );
   const resolvedStorage = storage ?? getBrowserStorage();
-  let diagnostics: unknown[] = [];
+  let diagnostics: string[] = [];
   let storedSnapshot: string | null = null;
 
   if (resolvedStorage) {
@@ -220,7 +174,7 @@ export function writeLegacyPresentationSettings(
 }
 
 export function materializePresentationSettings(
-  values: Readonly<Record<string, WireSettingValue>>,
+  values: Readonly<Record<string, SettingValue>>,
   fallback: PresentationSettings = DEFAULT_PRESENTATION_SETTINGS,
 ): PresentationSettings {
   return {
@@ -239,13 +193,6 @@ function syncPresentationSettingsToFoundation(
   session.set(presentationSettingIds.compactStatus, bool(settings.compactStatus));
 }
 
-async function loadSettingsBrowserModule(): Promise<SettingsBrowserModule> {
-  browserModulePromise ??= import(
-    /* @vite-ignore */ SETTINGS_BROWSER_BUNDLE_URL
-  ) as Promise<SettingsBrowserModule>;
-  return browserModulePromise;
-}
-
 function getBrowserStorage(): StorageLike | undefined {
   try {
     return window.localStorage;
@@ -255,7 +202,7 @@ function getBrowserStorage(): StorageLike | undefined {
   }
 }
 
-function boolDefinition(id: string, value: boolean): WireSettingDefinition {
+function boolDefinition(id: string, value: boolean): BooleanSettingDefinition {
   return {
     id,
     kind: { type: "bool" },
@@ -270,7 +217,7 @@ function presentationEntry(
   labelKey: string,
   descriptionKey: string,
   order: number,
-): WirePresentationEntry {
+): PresentationEntry {
   return {
     id,
     metadata: {
@@ -283,10 +230,10 @@ function presentationEntry(
   };
 }
 
-function bool(value: boolean): WireSettingValue {
+function bool(value: boolean): Extract<SettingValue, { type: "bool" }> {
   return { type: "bool", value };
 }
 
-function boolValue(value: WireSettingValue | undefined, fallback: boolean) {
+function boolValue(value: SettingValue | undefined, fallback: boolean) {
   return value?.type === "bool" ? value.value : fallback;
 }
