@@ -102,6 +102,9 @@ test("fails closed when replay integrity does not match reconstructed state", as
   await expect(page.getByTestId("cycle-timer")).toContainText("Rally ·");
   await page.getByTestId("return-to-menu").click();
 
+  await page.reload();
+  await expect(page.getByTestId("resume-game")).toBeEnabled();
+
   const beforeTamper = await page.evaluate(() => {
     const summaryRaw = window.localStorage.getItem("raid-defense.save-summary.v1");
     if (!summaryRaw) throw new Error("expected saved-game summary");
@@ -116,8 +119,6 @@ test("fails closed when replay integrity does not match reconstructed state", as
     window.localStorage.setItem("raid-defense.replay-integrity.v1", JSON.stringify(receipt));
   });
 
-  await page.reload();
-  await expect(page.getByTestId("resume-game")).toBeEnabled();
   await page.getByTestId("resume-game").click();
   await page.waitForTimeout(1_000);
 
