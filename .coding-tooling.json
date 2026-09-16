@@ -4,10 +4,22 @@
   "tiers": {
     "fast": ["format:check", "lint", "build", "test:unit"],
     "integration": ["test:integration"],
-    "e2e": ["test:e2e"]
+    "e2e": ["test:e2e"],
+    "performance": ["benchmark:smoke"]
   },
-  "requiredCapabilities": ["format:check", "lint", "build", "test:unit"],
+  "requiredCapabilities": [
+    "format:check",
+    "lint",
+    "build",
+    "test:unit",
+    "benchmark:smoke"
+  ],
   "optionalCapabilities": ["test:integration", "test:e2e"],
+  "capabilityCommands": {
+    ".": {
+      "benchmark:smoke": ["bash", "scripts/performance-smoke.sh"]
+    }
+  },
   "merge": {
     "authority": "hosted",
     "requiredChecks": ["fast", "integration", "workflow", "e2e"]
