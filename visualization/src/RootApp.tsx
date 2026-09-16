@@ -60,6 +60,8 @@ export default function RootApp() {
     readLegacyPresentationSettings(),
   );
   const initialSettingsRef = useRef(settings);
+  const latestSettingsRef = useRef(settings);
+  const userEditedBeforeFoundationReadyRef = useRef(false);
   const settingsFoundationRef = useRef<SettingsFoundationSession | null>(null);
   const [scenario, setScenario] = useState<ScenarioOptions>(() => createStandardScenarioOptions());
   const [confirmNew, setConfirmNew] = useState(false);
@@ -95,7 +97,14 @@ export default function RootApp() {
         if (diagnostics.length > 0) {
           console.info("Shared presentation settings recovered with diagnostics", diagnostics);
         }
-        setSettings(restoredSettings);
+
+        if (userEditedBeforeFoundationReadyRef.current) {
+          persistPresentationSettingsFoundation(session, latestSettingsRef.current);
+          userEditedBeforeFoundationReadyRef.current = false;
+        } else {
+          latestSettingsRef.current = restoredSettings;
+          setSettings(restoredSettings);
+        }
       })
       .catch((error) => {
         console.warn(
@@ -126,6 +135,7 @@ export default function RootApp() {
   }, []);
 
   useEffect(() => {
+    latestSettingsRef.current = settings;
     const session = settingsFoundationRef.current;
     if (session) {
       persistPresentationSettingsFoundation(session, settings);
@@ -137,6 +147,19 @@ export default function RootApp() {
     root.classList.toggle("reduce-ui-motion", settings.reduceUiMotion);
     root.classList.toggle("compact-status", settings.compactStatus);
   }, [settings]);
+
+  function updatePresentationSettings(
+    update: (current: PresentationSettings) => PresentationSettings,
+  ) {
+    setSettings((current) => {
+      const next = update(current);
+      latestSettingsRef.current = next;
+      if (!settingsFoundationRef.current) {
+        userEditedBeforeFoundationReadyRef.current = true;
+      }
+      return next;
+    });
+  }
 
   function navigate(next: Screen) {
     const url = new URL(window.location.href);
@@ -279,7 +302,10 @@ export default function RootApp() {
                   type="checkbox"
                   checked={settings.showTouchHints}
                   onChange={(event) =>
-                    setSettings((current) => ({ ...current, showTouchHints: event.target.checked }))
+                    updatePresentationSettings((current) => ({
+                      ...current,
+                      showTouchHints: event.target.checked,
+                    }))
                   }
                   data-testid="setting-touch-hints"
                 />
@@ -294,7 +320,10 @@ export default function RootApp() {
                   type="checkbox"
                   checked={settings.reduceUiMotion}
                   onChange={(event) =>
-                    setSettings((current) => ({ ...current, reduceUiMotion: event.target.checked }))
+                    updatePresentationSettings((current) => ({
+                      ...current,
+                      reduceUiMotion: event.target.checked,
+                    }))
                   }
                   data-testid="setting-reduce-motion"
                 />
@@ -309,7 +338,10 @@ export default function RootApp() {
                   type="checkbox"
                   checked={settings.compactStatus}
                   onChange={(event) =>
-                    setSettings((current) => ({ ...current, compactStatus: event.target.checked }))
+                    updatePresentationSettings((current) => ({
+                      ...current,
+                      compactStatus: event.target.checked,
+                    }))
                   }
                   data-testid="setting-compact-status"
                 />
@@ -335,7 +367,7 @@ export default function RootApp() {
               className="menu-button subtle"
               onClick={() =>
                 settingsSection === "presentation"
-                  ? setSettings(DEFAULT_PRESENTATION_SETTINGS)
+                  ? updatePresentationSettings(() => DEFAULT_PRESENTATION_SETTINGS)
                   : resetScenario()
               }
             >
