@@ -113,7 +113,7 @@ test("fails closed when replay integrity does not match reconstructed state", as
   await page.reload();
   await expect(page.getByTestId("resume-game")).toBeEnabled();
   await page.getByTestId("resume-game").click();
-  await expect(page.getByTestId("event-feedback")).toContainText(
+  await expect(page.getByTestId("loading-state")).toContainText(
     "Saved replay checksum does not match the reconstructed action log.",
   );
   await expect(page.getByTestId("raid-defense-game")).not.toBeVisible();
