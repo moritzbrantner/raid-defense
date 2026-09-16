@@ -219,25 +219,25 @@ impl GameState {
     pub(super) fn target_for_tower(&self, tower: EntityId, range_milli: i32) -> Option<EntityId> {
         let tower_position = *self.transforms.get(entity_key(tower))?;
         let range_sq = i64::from(range_milli) * i64::from(range_milli);
-        let mut candidates = self
-            .raiders
+        self.raiders
             .keys()
             .map(key_entity)
-            .filter(|entity| {
-                self.health
-                    .get(entity_key(*entity))
-                    .is_some_and(|health| health.current > 0)
-            })
             .filter_map(|entity| {
+                if !self
+                    .health
+                    .get(entity_key(entity))
+                    .is_some_and(|health| health.current > 0)
+                {
+                    return None;
+                }
                 let position = self.transforms.get(entity_key(entity))?;
                 let dx = i64::from(position.x_milli - tower_position.x_milli);
                 let dz = i64::from(position.z_milli - tower_position.z_milli);
                 let distance_sq = dx * dx + dz * dz;
                 (distance_sq <= range_sq).then_some((distance_sq, entity))
             })
-            .collect::<Vec<_>>();
-        candidates.sort_unstable();
-        candidates.first().map(|(_, entity)| *entity)
+            .min()
+            .map(|(_, entity)| entity)
     }
 
     pub(super) fn run_raider_movement_system(&mut self) -> (u16, u16) {
