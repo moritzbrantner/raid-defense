@@ -1,0 +1,33 @@
+name: Verify benchmark target path
+
+on:
+  push:
+    branches: [perf/stream-tower-targeting]
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/stream-tower-targeting
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.98.0 --profile minimal
+      - name: Run benchmark from nested directory with custom target
+        shell: bash
+        run: |
+          cd scripts
+          CARGO_TARGET_DIR=../target-benchmark ./benchmark-simulation.sh 1
+      - name: Remove one-shot verifier
+        shell: bash
+        run: |
+          rm .github/workflows/verify-benchmark-target-path.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/workflows/verify-benchmark-target-path.yml
+          git commit -m "ci: remove benchmark path verifier"
+          git push origin HEAD:perf/stream-tower-targeting
