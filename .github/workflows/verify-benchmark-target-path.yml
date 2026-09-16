@@ -21,7 +21,7 @@ jobs:
         shell: bash
         run: |
           cd scripts
-          CARGO_TARGET_DIR=../target-benchmark ./benchmark-simulation.sh 1
+          CARGO_TARGET_DIR=../target-benchmark bash ./benchmark-simulation.sh 1
       - name: Remove one-shot verifier
         shell: bash
         run: |
