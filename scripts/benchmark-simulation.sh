@@ -9,6 +9,7 @@ fi
 
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
+# Ask Cargo for the effective target path so nested invocation and CARGO_TARGET_DIR stay correct.
 target_dir="$(
   cargo metadata --format-version 1 --no-deps |
     python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])'
