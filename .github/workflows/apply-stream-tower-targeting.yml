@@ -1,0 +1,191 @@
+name: Apply streaming tower targeting
+
+on:
+  push:
+    branches: [perf/stream-tower-targeting]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/stream-tower-targeting
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.98.0 --profile minimal --component rustfmt,clippy
+      - name: Apply targeting optimization and benchmark
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          combat = Path('crates/raid-defense-core/src/state_combat.rs')
+          text = combat.read_text()
+          old = '''    pub(super) fn target_for_tower(&self, tower: EntityId, range_milli: i32) -> Option<EntityId> {
+        let tower_position = *self.transforms.get(entity_key(tower))?;
+        let range_sq = i64::from(range_milli) * i64::from(range_milli);
+        let mut candidates = self
+            .raiders
+            .keys()
+            .map(key_entity)
+            .filter(|entity| {
+                self.health
+                    .get(entity_key(*entity))
+                    .is_some_and(|health| health.current > 0)
+            })
+            .filter_map(|entity| {
+                let position = self.transforms.get(entity_key(entity))?;
+                let dx = i64::from(position.x_milli - tower_position.x_milli);
+                let dz = i64::from(position.z_milli - tower_position.z_milli);
+                let distance_sq = dx * dx + dz * dz;
+                (distance_sq <= range_sq).then_some((distance_sq, entity))
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_unstable();
+        candidates.first().map(|(_, entity)| *entity)
+    }
+'''
+          new = '''    pub(super) fn target_for_tower(&self, tower: EntityId, range_milli: i32) -> Option<EntityId> {
+        let tower_position = *self.transforms.get(entity_key(tower))?;
+        let range_sq = i64::from(range_milli) * i64::from(range_milli);
+        self.raiders
+            .keys()
+            .map(key_entity)
+            .filter_map(|entity| {
+                if !self
+                    .health
+                    .get(entity_key(entity))
+                    .is_some_and(|health| health.current > 0)
+                {
+                    return None;
+                }
+                let position = self.transforms.get(entity_key(entity))?;
+                let dx = i64::from(position.x_milli - tower_position.x_milli);
+                let dz = i64::from(position.z_milli - tower_position.z_milli);
+                let distance_sq = dx * dx + dz * dz;
+                (distance_sq <= range_sq).then_some((distance_sq, entity))
+            })
+            .min()
+            .map(|(_, entity)| entity)
+    }
+'''
+          if text.count(old) != 1:
+              raise SystemExit('expected exactly one target_for_tower implementation')
+          combat.write_text(text.replace(old, new))
+
+          tests = Path('crates/raid-defense-core/src/core_tests.rs')
+          text = tests.read_text()
+          marker = '''    #[test]
+    fn integer_square_root_is_deterministic_at_boundaries() {
+'''
+          addition = '''    #[test]
+    fn tower_targeting_prefers_nearest_then_lowest_entity_id() {
+        let mut state = GameState::new(11);
+        let tower = state.allocate_entity();
+        state.transforms.insert(
+            entity_key(tower),
+            Transform {
+                x_milli: 10_000,
+                z_milli: 10_000,
+            },
+        );
+
+        let lower_id = state.allocate_entity();
+        let higher_id = state.allocate_entity();
+        for (entity, x_milli) in [(lower_id, 9_000), (higher_id, 11_000)] {
+            state.raiders.insert(
+                entity_key(entity),
+                Raider {
+                    archetype: RaiderArchetype::Basic,
+                    edge: Edge::North,
+                    target_storage: TOWN_ENTITY,
+                },
+            );
+            state.health.insert(
+                entity_key(entity),
+                Health {
+                    current: 10,
+                    maximum: 10,
+                },
+            );
+            state.transforms.insert(
+                entity_key(entity),
+                Transform {
+                    x_milli,
+                    z_milli: 10_000,
+                },
+            );
+        }
+
+        assert_eq!(state.target_for_tower(tower, 2_000), Some(lower_id));
+
+        state.transforms.insert(
+            entity_key(higher_id),
+            Transform {
+                x_milli: 10_500,
+                z_milli: 10_000,
+            },
+        );
+        assert_eq!(state.target_for_tower(tower, 2_000), Some(higher_id));
+    }
+
+'''
+          if text.count(marker) != 1:
+              raise SystemExit('expected integer-square-root test marker')
+          tests.write_text(text.replace(marker, addition + marker))
+
+          script = Path('scripts/benchmark-simulation.sh')
+          script.parent.mkdir(exist_ok=True)
+          script.write_text('''#!/usr/bin/env bash
+set -euo pipefail
+
+repetitions="${1:-5}"
+if ! [[ "$repetitions" =~ ^[1-9][0-9]*$ ]]; then
+  echo "usage: $0 [positive-repetitions]" >&2
+  exit 2
+fi
+
+cargo build --release -p raid-defense-sim >/dev/null
+binary="$(pwd)/target/release/raid-defense-sim"
+python3 - "$binary" "$repetitions" <<'PYBENCH'
+import statistics
+import subprocess
+import sys
+import time
+
+binary = sys.argv[1]
+repetitions = int(sys.argv[2])
+command = [binary, '--seed', '100', '--runs', '16', '--ticks', '6000', '--policy', 'balanced']
+samples = []
+for _ in range(repetitions):
+    start = time.perf_counter()
+    subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
+    samples.append(time.perf_counter() - start)
+
+print('workload=balanced seeds=16 ticks=6000 seed_start=100')
+print(f'repetitions={repetitions}')
+print(f'min_seconds={min(samples):.6f}')
+print(f'median_seconds={statistics.median(samples):.6f}')
+print(f'max_seconds={max(samples):.6f}')
+PYBENCH
+''')
+          PY
+          chmod +x scripts/benchmark-simulation.sh
+          cargo fmt --all
+      - name: Validate optimization
+        run: |
+          cargo test -p raid-defense-core
+          cargo clippy -p raid-defense-core --all-targets -- -D warnings
+          scripts/benchmark-simulation.sh 1
+      - name: Commit patch and remove helper
+        shell: bash
+        run: |
+          rm .github/workflows/apply-stream-tower-targeting.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add crates/raid-defense-core/src/state_combat.rs crates/raid-defense-core/src/core_tests.rs scripts/benchmark-simulation.sh .github/workflows/apply-stream-tower-targeting.yml
+          git commit -m "perf(combat): stream tower target selection"
+          git push origin HEAD:perf/stream-tower-targeting
