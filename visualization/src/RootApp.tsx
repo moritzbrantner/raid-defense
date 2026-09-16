@@ -1,4 +1,5 @@
 import { useLocale, useTranslation } from "@moritzbrantner/i18n/react";
+import { SettingsBooleanField } from "@moritzbrantner/settings-browser/react";
 import { useEffect, useRef, useState } from "react";
 import App from "./App";
 import { GameWiki } from "./GameWiki";
@@ -6,6 +7,8 @@ import {
   createPresentationSettingsFoundation,
   DEFAULT_PRESENTATION_SETTINGS,
   persistPresentationSettingsFoundation,
+  presentationEntries,
+  presentationSettingDefinitions,
   readLegacyPresentationSettings,
   writeLegacyPresentationSettings,
   type PresentationSettings,
@@ -26,6 +29,8 @@ import {
   type SavedGameSummary,
 } from "./simulationClient";
 import type { AppLocale } from "./translations";
+import "@moritzbrantner/ui/styles.css";
+import "@moritzbrantner/ui/component-sources.css";
 import "./StartMenu.css";
 
 type Screen = "menu" | "game" | "settings";
@@ -65,6 +70,14 @@ export default function RootApp() {
   const settingsFoundationRef = useRef<SettingsFoundationSession | null>(null);
   const [scenario, setScenario] = useState<ScenarioOptions>(() => createStandardScenarioOptions());
   const [confirmNew, setConfirmNew] = useState(false);
+  const settingMessages: Record<string, string> = {
+    "settings.touchGuidance.title": t("settings.touchGuidance.title"),
+    "settings.touchGuidance.description": t("settings.touchGuidance.description"),
+    "settings.reduceMotion.title": t("settings.reduceMotion.title"),
+    "settings.reduceMotion.description": t("settings.reduceMotion.description"),
+    "settings.compactStatus.title": t("settings.compactStatus.title"),
+    "settings.compactStatus.description": t("settings.compactStatus.description"),
+  };
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -159,6 +172,10 @@ export default function RootApp() {
       }
       return next;
     });
+  }
+
+  function localizeSetting(key: string) {
+    return settingMessages[key] ?? key;
   }
 
   function navigate(next: Screen) {
@@ -293,59 +310,47 @@ export default function RootApp() {
                 </select>
               </label>
 
-              <label className="setting-row">
-                <span>
-                  <strong>{t("settings.touchGuidance.title")}</strong>
-                  <small>{t("settings.touchGuidance.description")}</small>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={settings.showTouchHints}
-                  onChange={(event) =>
+              <div className="shared-settings-fields" data-testid="shared-settings-fields">
+                <SettingsBooleanField
+                  definition={presentationSettingDefinitions.showTouchHints}
+                  presentation={presentationEntries.showTouchHints}
+                  value={{ type: "bool", value: settings.showTouchHints }}
+                  localize={localizeSetting}
+                  onValueChange={(checked) =>
                     updatePresentationSettings((current) => ({
                       ...current,
-                      showTouchHints: event.target.checked,
+                      showTouchHints: checked,
                     }))
                   }
-                  data-testid="setting-touch-hints"
+                  switchProps={{ "data-testid": "setting-touch-hints" }}
                 />
-              </label>
-
-              <label className="setting-row">
-                <span>
-                  <strong>{t("settings.reduceMotion.title")}</strong>
-                  <small>{t("settings.reduceMotion.description")}</small>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={settings.reduceUiMotion}
-                  onChange={(event) =>
+                <SettingsBooleanField
+                  definition={presentationSettingDefinitions.reduceUiMotion}
+                  presentation={presentationEntries.reduceUiMotion}
+                  value={{ type: "bool", value: settings.reduceUiMotion }}
+                  localize={localizeSetting}
+                  onValueChange={(checked) =>
                     updatePresentationSettings((current) => ({
                       ...current,
-                      reduceUiMotion: event.target.checked,
+                      reduceUiMotion: checked,
                     }))
                   }
-                  data-testid="setting-reduce-motion"
+                  switchProps={{ "data-testid": "setting-reduce-motion" }}
                 />
-              </label>
-
-              <label className="setting-row">
-                <span>
-                  <strong>{t("settings.compactStatus.title")}</strong>
-                  <small>{t("settings.compactStatus.description")}</small>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={settings.compactStatus}
-                  onChange={(event) =>
+                <SettingsBooleanField
+                  definition={presentationSettingDefinitions.compactStatus}
+                  presentation={presentationEntries.compactStatus}
+                  value={{ type: "bool", value: settings.compactStatus }}
+                  localize={localizeSetting}
+                  onValueChange={(checked) =>
                     updatePresentationSettings((current) => ({
                       ...current,
-                      compactStatus: event.target.checked,
+                      compactStatus: checked,
                     }))
                   }
-                  data-testid="setting-compact-status"
+                  switchProps={{ "data-testid": "setting-compact-status" }}
                 />
-              </label>
+              </div>
             </div>
           ) : (
             <div data-testid="scenario-settings">
