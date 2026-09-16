@@ -1,4 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+function presentationSwitch(page: Page, settingId: string) {
+  return page.locator(`[data-setting-id="${settingId}"] [data-slot="switch"]`);
+}
 
 test("starts a new game and resumes saved authoritative progress", async ({ page }) => {
   await page.goto("/");
@@ -39,9 +43,9 @@ test("opens URL-addressable settings and persists presentation preferences", asy
   await expect(page).toHaveURL(/screen=settings/);
   await expect(page.getByTestId("shared-settings-fields").locator('[data-slot="toggle-setting"]')).toHaveCount(3);
 
-  const touchHints = page.getByTestId("setting-touch-hints");
-  const reduceMotion = page.getByTestId("setting-reduce-motion");
-  const compactStatus = page.getByTestId("setting-compact-status");
+  const touchHints = presentationSwitch(page, "presentation.show_touch_hints");
+  const reduceMotion = presentationSwitch(page, "accessibility.reduce_motion");
+  const compactStatus = presentationSwitch(page, "presentation.compact_status");
   await expect(touchHints).toHaveAttribute("aria-checked", "true");
   await expect(reduceMotion).toHaveAttribute("aria-checked", "false");
   await expect(compactStatus).toHaveAttribute("aria-checked", "false");
