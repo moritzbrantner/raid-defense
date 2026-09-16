@@ -18,7 +18,7 @@
   "dependencies": {
     "@moritzbrantner/i18n": "^0.1.0",
     "@moritzbrantner/settings-browser": "github:moritzbrantner/settings#007b4405d2aaa5d765eea87abd813c8dd1c3e1be",
-    "@moritzbrantner/ui": "github:moritzbrantner/ui#f9f42fadcaaf9629b9716964c59e9bea3cd9624f",
+    "@moritzbrantner/ui": "https://registry.npmjs.org/@moritzbrantner/ui/-/ui-1.1.0.tgz",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.0",
     "react": "^19.2.0",
