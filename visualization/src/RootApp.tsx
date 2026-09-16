@@ -1,7 +1,16 @@
 import { useLocale, useTranslation } from "@moritzbrantner/i18n/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import App from "./App";
 import { GameWiki } from "./GameWiki";
+import {
+  createPresentationSettingsFoundation,
+  DEFAULT_PRESENTATION_SETTINGS,
+  persistPresentationSettingsFoundation,
+  readLegacyPresentationSettings,
+  writeLegacyPresentationSettings,
+  type PresentationSettings,
+  type SettingsFoundationSession,
+} from "./presentationSettings";
 import { ScenarioEditor } from "./ScenarioEditor";
 import {
   createStandardScenarioOptions,
@@ -22,19 +31,6 @@ import "./StartMenu.css";
 type Screen = "menu" | "game" | "settings";
 type SettingsSection = "presentation" | "scenario";
 
-type PresentationSettings = {
-  showTouchHints: boolean;
-  reduceUiMotion: boolean;
-  compactStatus: boolean;
-};
-
-const SETTINGS_KEY = "raid-defense.settings.v1";
-const DEFAULT_SETTINGS: PresentationSettings = {
-  showTouchHints: true,
-  reduceUiMotion: false,
-  compactStatus: false,
-};
-
 function readScreen(): Screen {
   const value = new URLSearchParams(window.location.search).get("screen");
   return value === "game" || value === "settings" ? value : "menu";
@@ -44,21 +40,6 @@ function readSettingsSection(): SettingsSection {
   return new URLSearchParams(window.location.search).get("section") === "scenario"
     ? "scenario"
     : "presentation";
-}
-
-function readSettings(): PresentationSettings {
-  try {
-    const raw = window.localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return DEFAULT_SETTINGS;
-    const value = JSON.parse(raw) as Partial<PresentationSettings>;
-    return {
-      showTouchHints: value.showTouchHints ?? DEFAULT_SETTINGS.showTouchHints,
-      reduceUiMotion: value.reduceUiMotion ?? DEFAULT_SETTINGS.reduceUiMotion,
-      compactStatus: value.compactStatus ?? DEFAULT_SETTINGS.compactStatus,
-    };
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
 }
 
 function createSeed() {
@@ -75,7 +56,11 @@ export default function RootApp() {
   const [saveSummary, setSaveSummary] = useState<SavedGameSummary | null>(() =>
     readSavedGameSummary(),
   );
-  const [settings, setSettings] = useState<PresentationSettings>(() => readSettings());
+  const [settings, setSettings] = useState<PresentationSettings>(() =>
+    readLegacyPresentationSettings(),
+  );
+  const initialSettingsRef = useRef(settings);
+  const settingsFoundationRef = useRef<SettingsFoundationSession | null>(null);
   const [scenario, setScenario] = useState<ScenarioOptions>(() => createStandardScenarioOptions());
   const [confirmNew, setConfirmNew] = useState(false);
 
@@ -100,6 +85,34 @@ export default function RootApp() {
 
   useEffect(() => {
     let cancelled = false;
+    void createPresentationSettingsFoundation(initialSettingsRef.current)
+      .then(({ session, settings: restoredSettings, diagnostics }) => {
+        if (cancelled) {
+          session.dispose();
+          return;
+        }
+        settingsFoundationRef.current = session;
+        if (diagnostics.length > 0) {
+          console.info("Shared presentation settings recovered with diagnostics", diagnostics);
+        }
+        setSettings(restoredSettings);
+      })
+      .catch((error) => {
+        console.warn(
+          "Shared settings foundation unavailable; continuing with the local presentation projection.",
+          error,
+        );
+      });
+
+    return () => {
+      cancelled = true;
+      settingsFoundationRef.current?.dispose();
+      settingsFoundationRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     void loadStandardScenarioWorld()
       .then((world) => {
         if (!cancelled) {
@@ -113,7 +126,12 @@ export default function RootApp() {
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    const session = settingsFoundationRef.current;
+    if (session) {
+      persistPresentationSettingsFoundation(session, settings);
+    } else {
+      writeLegacyPresentationSettings(settings);
+    }
     const root = document.documentElement;
     root.classList.toggle("hide-touch-hints", !settings.showTouchHints);
     root.classList.toggle("reduce-ui-motion", settings.reduceUiMotion);
@@ -317,7 +335,7 @@ export default function RootApp() {
               className="menu-button subtle"
               onClick={() =>
                 settingsSection === "presentation"
-                  ? setSettings(DEFAULT_SETTINGS)
+                  ? setSettings(DEFAULT_PRESENTATION_SETTINGS)
                   : resetScenario()
               }
             >
