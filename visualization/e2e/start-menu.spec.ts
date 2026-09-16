@@ -37,17 +37,18 @@ test("opens URL-addressable settings and persists presentation preferences", asy
   await page.getByTestId("open-settings").click();
   await expect(page.getByTestId("settings-screen")).toBeVisible();
   await expect(page).toHaveURL(/screen=settings/);
+  await expect(page.getByTestId("shared-settings-fields").locator('[data-slot="toggle-setting"]')).toHaveCount(3);
 
   const touchHints = page.getByTestId("setting-touch-hints");
   const reduceMotion = page.getByTestId("setting-reduce-motion");
   const compactStatus = page.getByTestId("setting-compact-status");
-  await expect(touchHints).toBeChecked();
-  await expect(reduceMotion).not.toBeChecked();
-  await expect(compactStatus).not.toBeChecked();
+  await expect(touchHints).toHaveAttribute("aria-checked", "true");
+  await expect(reduceMotion).toHaveAttribute("aria-checked", "false");
+  await expect(compactStatus).toHaveAttribute("aria-checked", "false");
 
-  await touchHints.uncheck();
-  await reduceMotion.check();
-  await compactStatus.check();
+  await touchHints.click();
+  await reduceMotion.click();
+  await compactStatus.click();
 
   await expect
     .poll(
@@ -85,9 +86,9 @@ test("opens URL-addressable settings and persists presentation preferences", asy
   await page.reload();
 
   await expect(page.getByTestId("settings-screen")).toBeVisible();
-  await expect(touchHints).not.toBeChecked();
-  await expect(reduceMotion).toBeChecked();
-  await expect(compactStatus).toBeChecked();
+  await expect(touchHints).toHaveAttribute("aria-checked", "false");
+  await expect(reduceMotion).toHaveAttribute("aria-checked", "true");
+  await expect(compactStatus).toHaveAttribute("aria-checked", "true");
 });
 
 test("starts and resumes a game with authoritative scenario options", async ({ page }) => {
