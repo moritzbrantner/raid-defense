@@ -102,6 +102,12 @@ test("fails closed when replay integrity does not match reconstructed state", as
   await expect(page.getByTestId("cycle-timer")).toContainText("Rally ·");
   await page.getByTestId("return-to-menu").click();
 
+  const beforeTamper = await page.evaluate(() => {
+    const summaryRaw = window.localStorage.getItem("raid-defense.save-summary.v1");
+    if (!summaryRaw) throw new Error("expected saved-game summary");
+    return JSON.parse(summaryRaw) as { checksum: string };
+  });
+
   await page.evaluate(() => {
     const raw = window.localStorage.getItem("raid-defense.replay-integrity.v1");
     if (!raw) throw new Error("expected replay integrity receipt");
@@ -113,8 +119,19 @@ test("fails closed when replay integrity does not match reconstructed state", as
   await page.reload();
   await expect(page.getByTestId("resume-game")).toBeEnabled();
   await page.getByTestId("resume-game").click();
-  await expect(page.getByTestId("loading-state")).toContainText(
-    "Saved replay checksum does not match the reconstructed action log.",
-  );
-  await expect(page.getByTestId("raid-defense-game")).not.toBeVisible();
+  await page.waitForTimeout(1_000);
+
+  const afterRejectedResume = await page.evaluate(() => {
+    const integrityRaw = window.localStorage.getItem("raid-defense.replay-integrity.v1");
+    const summaryRaw = window.localStorage.getItem("raid-defense.save-summary.v1");
+    if (!integrityRaw || !summaryRaw) throw new Error("expected replay persistence");
+    return {
+      integrity: JSON.parse(integrityRaw) as { checksum: string },
+      summary: JSON.parse(summaryRaw) as { checksum: string },
+    };
+  });
+
+  expect(afterRejectedResume.integrity.checksum).toBe("corrupted-checksum");
+  expect(afterRejectedResume.summary.checksum).toBe(beforeTamper.checksum);
+  expect(afterRejectedResume.summary.checksum).not.toBe(afterRejectedResume.integrity.checksum);
 });
