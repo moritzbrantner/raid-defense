@@ -71,3 +71,39 @@ test("keeps presentation controls usable when browser storage rejects writes", a
   await expect(reduceMotion).toHaveAttribute("aria-checked", "true");
   expect(pageErrors).toEqual([]);
 });
+
+test.describe("phone-sized shared settings", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+
+  test("touch switches remain tappable and persist through reload", async ({ page }) => {
+    await page.goto("/?screen=settings&section=presentation");
+
+    const compactStatus = presentationSwitch(page, "presentation.compact_status");
+    await expect(compactStatus).toBeVisible();
+    await expect(compactStatus).toHaveAttribute("aria-checked", "false");
+
+    await compactStatus.tap();
+    await expect(compactStatus).toHaveAttribute("aria-checked", "true");
+
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const raw = window.localStorage.getItem("raid-defense.settings.user.v2");
+            if (!raw) return null;
+            const snapshot = JSON.parse(raw) as {
+              overrides?: Record<string, { value?: unknown }>;
+            };
+            return snapshot.overrides?.["presentation.compact_status"]?.value;
+          }),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+
+    await page.reload();
+    await expect(presentationSwitch(page, "presentation.compact_status")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
+});
