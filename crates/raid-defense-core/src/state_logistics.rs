@@ -329,6 +329,7 @@ impl GameState {
 
         let mut reserved_construction = BTreeMap::<EntityId, u32>::new();
         let mut reserved_sawmills = BTreeMap::<EntityId, u32>::new();
+        let mut reserved_forests = BTreeMap::<EntityId, u32>::new();
         for (_, person) in self.people.iter() {
             match person.state {
                 PersonState::ToConstructionStorage | PersonState::ToConstructionSite => {
@@ -345,6 +346,14 @@ impl GameState {
                     if let Some(target) = person.target_entity {
                         let entry = reserved_sawmills.entry(target).or_default();
                         *entry = entry.saturating_add(u32::from(person.cargo_capacity));
+                    }
+                }
+                PersonState::ToForest | PersonState::HarvestingForest => {
+                    if let Some(target) = person.target_entity {
+                        let harvest_amount =
+                            u32::from(person.cargo_capacity.min(self.rules.economy.sawmill_output));
+                        let entry = reserved_forests.entry(target).or_default();
+                        *entry = entry.saturating_add(harvest_amount);
                     }
                 }
                 _ => {}
@@ -397,7 +406,11 @@ impl GameState {
                 }
             }
 
-            let Some(forest) = self.best_forest_for_person(start) else {
+            let harvest_amount =
+                u32::from(person.cargo_capacity.min(self.rules.economy.sawmill_output));
+            let Some(forest) =
+                self.best_forest_for_person(start, harvest_amount, &reserved_forests)
+            else {
                 continue;
             };
             let goals = self.forest_goal_cells(forest, None);
@@ -416,6 +429,8 @@ impl GameState {
                     speed_milli: self.rules.population.speed_milli,
                 },
             );
+            let entry = reserved_forests.entry(forest).or_default();
+            *entry = entry.saturating_add(harvest_amount);
         }
     }
 
@@ -449,7 +464,12 @@ impl GameState {
         candidates.first().map(|(_, entity)| *entity)
     }
 
-    fn best_forest_for_person(&self, start: Cell) -> Option<EntityId> {
+    fn best_forest_for_person(
+        &self,
+        start: Cell,
+        harvest_amount: u32,
+        reserved: &BTreeMap<EntityId, u32>,
+    ) -> Option<EntityId> {
         self.nearest_sawmill_with_capacity(start)?;
         let mut candidates = self
             .buildings
@@ -459,17 +479,24 @@ impl GameState {
                     return None;
                 }
                 let storage = self.storage.get(key)?;
-                if storage.wood == 0 {
+                let entity = key_entity(key);
+                let reserved_wood = reserved.get(&entity).copied().unwrap_or(0);
+                let available = storage.wood.saturating_sub(reserved_wood);
+                if available == 0 {
                     return None;
                 }
-                let entity = key_entity(key);
                 let goals = self.forest_goal_cells(entity, None);
                 let distance = self.path_distance_to_any(start, &goals, None)?;
-                Some((distance, entity))
+                let reserved_batches = if harvest_amount == 0 {
+                    0
+                } else {
+                    reserved_wood / harvest_amount
+                };
+                Some((reserved_batches, reserved_wood, distance, entity))
             })
             .collect::<Vec<_>>();
         candidates.sort_unstable();
-        candidates.first().map(|(_, entity)| *entity)
+        candidates.first().map(|(_, _, _, entity)| *entity)
     }
 
     fn nearest_sawmill_with_capacity(&self, start: Cell) -> Option<EntityId> {
