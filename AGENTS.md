@@ -9,6 +9,15 @@
 - `visualization/` owns browser input, camera, 3D presentation, and explanatory reference content only. It must not recompute authoritative game outcomes.
 - The gameplay plane is a 2D grid. Rendering may be fully 3D, but visual transforms must derive from authoritative Rust positions.
 
+## Application and simulation boundary
+
+- Use lightweight command/query separation only at the player/application boundary. Commands represent player intent such as placing or upgrading a structure or manually starting a wave.
+- Deterministic simulation steps are not CQRS commands. The owner of the simulation clock must call `GameState::advance_tick` (or the direct WASM `advance_tick` adapter) rather than route live ticks through command serialization or a mediator/bus.
+- Keep the legacy `AdvanceTick` command/DTO only as a compatibility and replay seam while older saved inputs and tools still depend on it. Do not build new hot paths on it.
+- Pathfinding, ECS systems, production, logistics, combat, movement, forest regrowth, raid scheduling, and other per-tick work execute directly inside the Rust simulation.
+- Read snapshots are presentation/query projections; they do not imply a separate asynchronous read store or eventual-consistency architecture.
+- Do not introduce CQRS infrastructure into shared performance-oriented foundations such as tables, maps, charts, rendering, physics, or game-server/runtime internals merely for architectural uniformity.
+
 ## Game-rules architecture
 
 - `crates/raid-defense-core/src/rules.rs` defines the typed, authoritative `GameRules` schema, validation, rule queries, and deterministic rules fingerprint. It must not become a second simulation implementation.
@@ -64,7 +73,7 @@
 
 ## Determinism
 
-- Every simulation outcome must be a pure consequence of initial seed, immutable rules, authoritative state, and ordered commands.
+- Every simulation outcome must be a pure consequence of initial seed, immutable rules, authoritative state, ordered player commands, and the exact sequence/count of deterministic simulation steps.
 - Validate a command completely before mutating state. Rejected commands must leave state unchanged.
 - Prefer integer or fixed-point representations for authoritative movement, logistics, economy, and combat rules.
 - System iteration/order must be deterministic when it can affect outcomes; tie-break with stable entity identifiers where needed.
@@ -72,8 +81,9 @@
 
 ## Save and resume invariants
 
-- Browser persistence must not deserialize a snapshot into authoritative game state. Persist the initial seed plus the ordered accepted command stream, then reconstruct by replaying those commands through the real Rust/WASM engine.
-- Consecutive `advance_tick` commands may be run-length encoded for storage efficiency, but replay order and count must remain exact.
+- Browser persistence must not deserialize a snapshot into authoritative game state. Persist the initial seed plus an ordered input timeline containing accepted player commands and explicit simulation-step counts, then reconstruct through the real Rust/WASM engine.
+- Consecutive simulation steps are run-length encoded as `advance_ticks` entries. Replay order and count must remain exact, but replay should call the direct simulation-step API rather than serialize synthetic commands.
+- Legacy saved `advance_tick` command entries may be accepted for compatibility and internally routed to the direct simulation path; do not emit new saves in that form.
 - Persist an authoritative checksum with the save and fail closed on resume if replay does not reproduce that checksum.
 - Rejected commands are not part of the replay because they must leave authoritative state unchanged.
 - Save schema and WASM contract versions must be explicit. Incompatible or malformed saves must not be silently coerced into a different game.
