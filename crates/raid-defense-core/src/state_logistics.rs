@@ -487,11 +487,7 @@ impl GameState {
                 }
                 let goals = self.forest_goal_cells(entity, None);
                 let distance = self.path_distance_to_any(start, &goals, None)?;
-                let reserved_batches = if harvest_amount == 0 {
-                    0
-                } else {
-                    reserved_wood / harvest_amount
-                };
+                let reserved_batches = reserved_wood.checked_div(harvest_amount).unwrap_or(0);
                 Some((reserved_batches, reserved_wood, distance, entity))
             })
             .collect::<Vec<_>>();
