@@ -114,14 +114,17 @@ export function GameWiki() {
               <section>
                 <h3>Forests, sawmills, and storage</h3>
                 <p>
-                  Forest tiles are seeded resource nodes that regrow over time. Sawmills have no
-                  fixed harvest radius: they draw from the nearest reachable forest that currently
-                  contains wood, and harvested wood first waits at the sawmill instead of becoming
-                  instantly spendable.
+                  Forest tiles are renewable resource patches. Forestry workers spread across
+                  reachable stocked patches before additional workers stack onto already-reserved
+                  patches. Sawmills have no fixed harvest radius, and harvested wood first waits at
+                  a sawmill instead of becoming instantly spendable.
                 </p>
                 <p>
-                  Workers carry that wood into the Town Hall or Storage Houses. All of those stores
-                  form the settlement inventory used by authoritative build and upgrade commands.
+                  A partially harvested patch keeps its remaining stock. Once a patch is fully
+                  depleted, it stays dormant for its configured recovery duration and then returns
+                  at full capacity in one deterministic step. Workers carry harvested wood into the
+                  Town Hall or Storage Houses, which form the settlement inventory used by
+                  authoritative build and upgrade commands.
                 </p>
               </section>
 
