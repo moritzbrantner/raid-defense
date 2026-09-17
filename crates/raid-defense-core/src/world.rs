@@ -136,9 +136,7 @@ impl GameState {
         let capacity = u64::from(self.rules.economy.forest_tile_wood);
         let amount = u64::from(self.rules.economy.forest_regrowth_amount);
         let recovery_cycles = capacity.saturating_add(amount - 1) / amount;
-        recovery_cycles.saturating_mul(u64::from(
-            self.rules.economy.forest_regrowth_interval_ticks,
-        ))
+        recovery_cycles.saturating_mul(u64::from(self.rules.economy.forest_regrowth_interval_ticks))
     }
 
     pub(super) fn run_forest_regrowth_system(&mut self) {
@@ -154,9 +152,7 @@ impl GameState {
                 .buildings
                 .get(entity_key(forest))
                 .is_some_and(|building| building.kind == BuildingKind::Forest);
-            if is_forest
-                && let Some(storage) = self.storage.get_mut(entity_key(forest))
-            {
+            if is_forest && let Some(storage) = self.storage.get_mut(entity_key(forest)) {
                 storage.wood = storage.wood_capacity;
             }
             self.forest_regrowth_ready_tick.remove(&forest);
