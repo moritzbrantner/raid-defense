@@ -1,6 +1,6 @@
 use raid_defense_core::{
-    Cell, Command, EntityKind, Event, GameState, PersonState, STANDARD_RULES, GRID_HEIGHT,
-    GRID_WIDTH,
+    Cell, Command, EntityKind, Event, GRID_HEIGHT, GRID_WIDTH, GameState, PersonState,
+    STANDARD_RULES,
 };
 
 fn place_first_reachable_sawmill(state: &mut GameState) -> Cell {
@@ -90,7 +90,10 @@ fn depleted_patch_waits_for_recovery_then_returns_full() {
         if forests[0].1 == 0 {
             break state.tick();
         }
-        assert!(state.tick() < 500, "worker must eventually deplete the patch");
+        assert!(
+            state.tick() < 500,
+            "worker must eventually deplete the patch"
+        );
     };
 
     // ceil(5 / 2) * 3 preserves the previous empty-to-full recovery duration.
@@ -135,7 +138,10 @@ fn partially_harvested_patch_does_not_regrow_in_background() {
         if wood_produced > 0 {
             break;
         }
-        assert!(state.tick() < 500, "worker must eventually harvest the patch");
+        assert!(
+            state.tick() < 500,
+            "worker must eventually harvest the patch"
+        );
     }
     assert_eq!(forest_wood(&state)[0].1, 3);
 
