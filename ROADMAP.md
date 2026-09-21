@@ -61,6 +61,8 @@ The roadmap is vertical: every milestone should leave GitHub Pages more playable
 
 - [ ] Replace primitive meshes with reproducible tower, town, raider, projectile, worker, storage, forest, and terrain assets.
 - [ ] Add animation and effects driven from authoritative events/state.
+- [ ] Reuse pinned `3d-lab` procedural skeletal animation for worker/raider two-bone IK, foot placement/locking, pelvis correction, surface alignment, and later bounded motion warping instead of building browser-local IK.
+- [ ] Source physical contact point/normal evidence from `physics-engine` where terrain or obstacle presentation needs it; pose correction must not alter authoritative grid movement, combat, logistics, economy, or replay truth.
 - [ ] Add camera presets and mobile-friendly interaction without coupling camera state to simulation.
 - [ ] Add terrain dressing outside the build plane while keeping the gameplay grid legible.
 - [ ] Preserve a performant fallback path for browsers/devices that cannot run the richest rendering path.
