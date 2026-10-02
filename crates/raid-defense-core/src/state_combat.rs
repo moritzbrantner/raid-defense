@@ -219,25 +219,25 @@ impl GameState {
     pub(super) fn target_for_tower(&self, tower: EntityId, range_milli: i32) -> Option<EntityId> {
         let tower_position = *self.transforms.get(entity_key(tower))?;
         let range_sq = i64::from(range_milli) * i64::from(range_milli);
-        let mut candidates = self
-            .raiders
+        self.raiders
             .keys()
             .map(key_entity)
-            .filter(|entity| {
-                self.health
-                    .get(entity_key(*entity))
-                    .is_some_and(|health| health.current > 0)
-            })
             .filter_map(|entity| {
+                if !self
+                    .health
+                    .get(entity_key(entity))
+                    .is_some_and(|health| health.current > 0)
+                {
+                    return None;
+                }
                 let position = self.transforms.get(entity_key(entity))?;
                 let dx = i64::from(position.x_milli - tower_position.x_milli);
                 let dz = i64::from(position.z_milli - tower_position.z_milli);
                 let distance_sq = dx * dx + dz * dz;
                 (distance_sq <= range_sq).then_some((distance_sq, entity))
             })
-            .collect::<Vec<_>>();
-        candidates.sort_unstable();
-        candidates.first().map(|(_, entity)| *entity)
+            .min()
+            .map(|(_, entity)| entity)
     }
 
     pub(super) fn run_raider_movement_system(&mut self) -> (u16, u16) {
@@ -264,8 +264,8 @@ impl GameState {
                     .expect("raider ids come from the raider store");
 
                 if self.storage_reached(raider.target_storage, movement.from) {
-                    let stolen =
-                        self.take_wood_at(raider.target_storage, self.raider_wood_steal_amount());
+                    let stolen = self
+                        .take_wood_at(raider.target_storage, self.raider_wood_steal_amount(entity));
                     if stolen > 0 {
                         wood_stolen =
                             wood_stolen.saturating_add(u16::try_from(stolen).unwrap_or(u16::MAX));
@@ -388,7 +388,13 @@ impl GameState {
             .map_or(TOWN_ENTITY, |(_, entity)| *entity)
     }
 
-    pub(super) fn raider_wood_steal_amount(&self) -> u32 {
+    pub(super) fn raider_wood_steal_amount(&self, entity: EntityId) -> u32 {
+        if self.rules.raids.wave_plan.is_explicit() {
+            return self
+                .raiders
+                .get(entity_key(entity))
+                .map_or(0, |raider| self.rules.raider(raider.archetype).wood_steal);
+        }
         self.rules.raids.base_wood_steal.saturating_add(
             self.wave
                 .saturating_sub(1)
@@ -396,7 +402,12 @@ impl GameState {
         )
     }
 
+    #[cfg(test)]
     pub(super) fn spawn_raider(&mut self, edge: Edge) {
+        self.spawn_raider_as(edge, RaiderArchetype::Basic);
+    }
+
+    pub(super) fn spawn_raider_as(&mut self, edge: Edge, archetype: RaiderArchetype) {
         let from = edge.spawn_cell();
         let target_storage = self.nearest_raider_storage(from);
         let goals = self.storage_goal_cells(target_storage, None);
@@ -405,13 +416,26 @@ impl GameState {
             .or_else(|| self.next_path_step_to_any(from, &town_goal_cells(), None))
             .expect("validated building placements keep every edge connected to town hall");
         let entity = self.allocate_entity();
-        let wave_bonus = u16::try_from(self.wave.saturating_sub(1))
-            .unwrap_or(u16::MAX)
-            .saturating_mul(self.rules.raids.health_per_wave);
-        let max_health = self.rules.raids.base_health.saturating_add(wave_bonus);
-        let damage_steps = u16::try_from(self.wave / self.rules.raids.damage_increase_every_waves)
-            .unwrap_or(u16::MAX);
-        let damage_bonus = damage_steps.saturating_mul(self.rules.raids.damage_increase_amount);
+
+        let (max_health, damage, speed_milli) = if self.rules.raids.wave_plan.is_explicit() {
+            let profile = self.rules.raider(archetype);
+            (profile.health, profile.damage, profile.speed_milli)
+        } else {
+            let wave_bonus = u16::try_from(self.wave.saturating_sub(1))
+                .unwrap_or(u16::MAX)
+                .saturating_mul(self.rules.raids.health_per_wave);
+            let max_health = self.rules.raids.base_health.saturating_add(wave_bonus);
+            let damage_steps =
+                u16::try_from(self.wave / self.rules.raids.damage_increase_every_waves)
+                    .unwrap_or(u16::MAX);
+            let damage_bonus = damage_steps.saturating_mul(self.rules.raids.damage_increase_amount);
+            (
+                max_health,
+                self.rules.raids.base_damage.saturating_add(damage_bonus),
+                self.rules.raids.speed_milli,
+            )
+        };
+
         self.transforms
             .insert(entity_key(entity), Transform::at_cell(from));
         self.health.insert(
@@ -424,7 +448,7 @@ impl GameState {
         self.attacks.insert(
             entity_key(entity),
             Attack {
-                damage: self.rules.raids.base_damage.saturating_add(damage_bonus),
+                damage,
                 range_milli: 0,
                 cooldown_ticks: 0,
                 cooldown_remaining: 0,
@@ -434,6 +458,7 @@ impl GameState {
         self.raiders.insert(
             entity_key(entity),
             Raider {
+                archetype,
                 edge,
                 target_storage,
             },
@@ -444,7 +469,7 @@ impl GameState {
                 from,
                 to,
                 progress_milli: 0,
-                speed_milli: self.rules.raids.speed_milli,
+                speed_milli,
             },
         );
     }

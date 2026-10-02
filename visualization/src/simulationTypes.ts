@@ -4,10 +4,14 @@ export type CellView = {
 };
 
 export type TowerArchetype = "arrow" | "cannon";
+export type RaiderArchetype = "basic" | "advanced";
 export type ResourceKind = "wood";
 export type PersonState =
   | "idle_at_town_hall"
+  | "to_forest"
+  | "harvesting_forest"
   | "to_sawmill"
+  | "to_sawmill_pickup"
   | "to_storage"
   | "to_construction_storage"
   | "to_construction_site"
@@ -36,6 +40,7 @@ export type EntityView = {
   tower_archetype: TowerArchetype | null;
   tower_level: number;
   upgrade_cost: number | null;
+  raider_archetype: RaiderArchetype | null;
   projectile_target: number | null;
   stored_wood: number;
   wood_capacity: number;
@@ -51,7 +56,7 @@ export type EntityView = {
 };
 
 export type SnapshotView = {
-  contract_version: 8;
+  contract_version: 10;
   seed: string;
   tick: number;
   wood: number;
@@ -59,6 +64,8 @@ export type SnapshotView = {
   wave: number;
   completed_waves: number;
   day_ticks_remaining: number;
+  raid_rally_ticks_remaining: number;
+  is_rallying: boolean;
   is_night: boolean;
   people: number;
   population_capacity: number;
@@ -81,6 +88,9 @@ export type SnapshotView = {
   house_unlock_completed_waves: number;
   house_population_capacity: number;
   person_carry_capacity: number;
+  raid_rally_ticks: number;
+  automatic_raids: boolean;
+  pause_economy_during_raids: boolean;
   arrow_tower_cost: number;
   cannon_tower_cost: number;
   max_tower_level: number;
@@ -133,7 +143,7 @@ export type RaidDefenseEvent =
       level: number;
       wood_cost: number;
     }
-  | { type: "wave_started"; wave: number; raiders: number }
+  | { type: "wave_started"; wave: number; raiders: number; rally_ticks: number }
   | {
       type: "tick_advanced";
       tick: number;
@@ -150,7 +160,7 @@ export type RaidDefenseEvent =
     };
 
 export type DispatchResponse = {
-  contract_version: 8;
+  contract_version: 10;
   ok: boolean;
   event: RaidDefenseEvent | null;
   error: { code: string } | null;

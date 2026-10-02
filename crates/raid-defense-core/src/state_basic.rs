@@ -20,6 +20,7 @@ impl GameState {
             wave: 0,
             completed_waves: 0,
             day_ticks_remaining: rules.cycle.day_length_ticks,
+            raid_rally_ticks_remaining: 0,
             wave_schedule: WaveSchedule::default(),
             next_entity: 1,
             transforms: SparseMap::new(),
@@ -34,6 +35,8 @@ impl GameState {
             producers: SparseMap::new(),
             housing: SparseMap::new(),
             people: SparseMap::new(),
+            work_ticks: SparseMap::new(),
+            forest_regrowth_ready_tick: BTreeMap::new(),
             alive: SparseSet::new(),
         };
 
@@ -104,6 +107,16 @@ impl GameState {
     #[must_use]
     pub const fn day_ticks_remaining(&self) -> u16 {
         self.day_ticks_remaining
+    }
+
+    #[must_use]
+    pub const fn raid_rally_ticks_remaining(&self) -> u16 {
+        self.raid_rally_ticks_remaining
+    }
+
+    #[must_use]
+    pub const fn is_rallying(&self) -> bool {
+        self.raid_rally_ticks_remaining != 0
     }
 
     #[must_use]
@@ -245,8 +258,11 @@ impl GameState {
         feed_u64(&mut hash, u64::from(self.wave));
         feed_u64(&mut hash, u64::from(self.completed_waves));
         feed_u16(&mut hash, self.day_ticks_remaining);
+        feed_u16(&mut hash, self.raid_rally_ticks_remaining);
         feed_u16(&mut hash, self.wave_schedule.remaining_raiders);
         feed_u16(&mut hash, self.wave_schedule.spawn_ticks_remaining);
+        feed_byte(&mut hash, self.wave_schedule.group_index);
+        feed_u16(&mut hash, self.wave_schedule.remaining_in_group);
         feed_u64(&mut hash, u64::from(self.next_entity));
 
         for entity in &self.snapshot().entities {
@@ -305,6 +321,7 @@ impl GameState {
 
             if let Some(raider) = self.raiders.get(entity_key(entity.id)) {
                 feed_byte(&mut hash, 1);
+                feed_byte(&mut hash, raider_archetype_code(raider.archetype));
                 feed_byte(
                     &mut hash,
                     match raider.edge {
@@ -337,6 +354,13 @@ impl GameState {
                 feed_byte(&mut hash, 0);
             }
 
+            if let Some(ready_tick) = self.forest_regrowth_ready_tick.get(&entity.id) {
+                feed_byte(&mut hash, 1);
+                feed_u64(&mut hash, *ready_tick);
+            } else {
+                feed_byte(&mut hash, 0);
+            }
+
             if let Some(producer) = self.producers.get(entity_key(entity.id)) {
                 feed_byte(&mut hash, 1);
                 feed_byte(&mut hash, resource_kind_code(producer.resource));
@@ -365,6 +389,12 @@ impl GameState {
                 }
                 feed_u16(&mut hash, person.cargo_wood);
                 feed_u16(&mut hash, person.cargo_capacity);
+                if let Some(work_ticks) = self.work_ticks.get(entity_key(entity.id)) {
+                    feed_byte(&mut hash, 1);
+                    feed_u16(&mut hash, *work_ticks);
+                } else {
+                    feed_byte(&mut hash, 0);
+                }
             } else {
                 feed_byte(&mut hash, 0);
             }

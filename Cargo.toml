@@ -13,7 +13,7 @@ rust-version = "1.98"
 publish = false
 
 [workspace.dependencies]
-collection-kernels = { git = "https://github.com/moritzbrantner/rust-kernels", rev = "d970928a4be8b7cbbbde3d1961ea67af3adefd13" }
+collection-kernels = { git = "https://github.com/moritzbrantner/rust-kernels", rev = "c21b8306fb5d156efbff396f2c79a00167886566" }
 serde = "=1.0.229"
 serde_json = "=1.0.151"
 wasm-bindgen = "=0.2.128"

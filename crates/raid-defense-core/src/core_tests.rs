@@ -85,8 +85,11 @@ mod tests {
     }
 
     #[test]
-    fn sawmill_harvests_forest_wood_before_creating_local_stock() {
-        let mut state = GameState::new(7);
+    fn sawmill_does_not_harvest_forest_without_worker_labor() {
+        let mut rules = STANDARD_RULES;
+        rules.economy.sawmill_interval_ticks = 50;
+        rules.economy.forest_regrowth_interval_ticks = u16::MAX;
+        let mut state = GameState::with_rules(7, rules);
         let cell = first_buildable_sawmill_cell(&state);
         state
             .apply(Command::PlaceSawmill {
@@ -101,9 +104,33 @@ mod tests {
             .filter(|entity| entity.kind == EntityKind::Forest)
             .map(|entity| entity.stored_wood)
             .sum();
-        for _ in 0..state.rules.economy.sawmill_interval_ticks {
-            state.advance_tick();
+
+        for _ in 0..10 {
+            let Event::TickAdvanced { wood_produced, .. } = state.advance_tick() else {
+                unreachable!("advance_tick always yields a tick event");
+            };
+            assert_eq!(wood_produced, 0, "the sawmill itself must never cut trees");
         }
+        let forest_before_worker_finishes: u32 = state
+            .snapshot()
+            .entities
+            .iter()
+            .filter(|entity| entity.kind == EntityKind::Forest)
+            .map(|entity| entity.stored_wood)
+            .sum();
+        assert_eq!(forest_before_worker_finishes, forest_before);
+
+        let mut gathered = 0_u16;
+        for _ in 0..400 {
+            let Event::TickAdvanced { wood_produced, .. } = state.advance_tick() else {
+                unreachable!("advance_tick always yields a tick event");
+            };
+            gathered = gathered.saturating_add(wood_produced);
+            if gathered > 0 {
+                break;
+            }
+        }
+        assert!(gathered > 0, "a person should eventually finish gathering a tree batch");
         let forest_after: u32 = state
             .snapshot()
             .entities
@@ -118,6 +145,8 @@ mod tests {
     fn sawmill_has_no_forest_range_gate() {
         let mut rules = STANDARD_RULES;
         rules.economy.forest_tile_count = 1;
+        rules.economy.sawmill_interval_ticks = 1;
+        rules.economy.forest_regrowth_interval_ticks = u16::MAX;
         let mut state = GameState::with_rules(7, rules);
         let forest = state
             .snapshot()
@@ -153,14 +182,17 @@ mod tests {
             .expect("forest distance must not reject a valid sawmill");
         assert_eq!(state.sawmill_count(), 1);
 
-        let mut produced = 0_u16;
-        for _ in 0..state.rules.economy.sawmill_interval_ticks {
+        let mut gathered = 0_u16;
+        for _ in 0..500 {
             let Event::TickAdvanced { wood_produced, .. } = state.advance_tick() else {
                 unreachable!("advance_tick always yields a tick event");
             };
-            produced = produced.saturating_add(wood_produced);
+            gathered = gathered.saturating_add(wood_produced);
+            if gathered > 0 {
+                break;
+            }
         }
-        assert_eq!(produced, state.rules.economy.sawmill_output);
+        assert!(gathered > 0, "workers should be able to service a distant sawmill");
         let forest_after = state
             .snapshot()
             .entities
@@ -168,19 +200,16 @@ mod tests {
             .find(|entity| entity.id == forest.id)
             .expect("forest must persist after harvesting")
             .stored_wood;
-        assert_eq!(
-            forest.stored_wood - forest_after,
-            u32::from(state.rules.economy.sawmill_output)
-        );
+        assert_eq!(forest.stored_wood - forest_after, u32::from(gathered));
     }
 
     #[test]
-    fn depleted_forest_tile_persists_and_regrows() {
+    fn depleted_forest_tile_persists_then_regenerates_to_full_capacity() {
         let mut rules = STANDARD_RULES;
         rules.economy.forest_tile_count = 1;
         rules.economy.forest_tile_wood = 5;
-        rules.economy.forest_regrowth_amount = 3;
-        rules.economy.forest_regrowth_interval_ticks = 1;
+        rules.economy.forest_regrowth_amount = 2;
+        rules.economy.forest_regrowth_interval_ticks = 3;
         let mut state = GameState::with_rules(19, rules);
         let forest = state
             .snapshot()
@@ -201,6 +230,21 @@ mod tests {
                 .stored_wood,
             0
         );
+        assert_eq!(state.forest_regrowth_ready_tick.get(&forest.id), Some(&9));
+
+        for _ in 0..8 {
+            state.advance_tick();
+        }
+        assert_eq!(
+            state
+                .snapshot()
+                .entities
+                .iter()
+                .find(|entity| entity.id == forest.id)
+                .expect("dormant forest remains in the snapshot")
+                .stored_wood,
+            0
+        );
 
         state.advance_tick();
         let regrown = state
@@ -208,9 +252,10 @@ mod tests {
             .entities
             .into_iter()
             .find(|entity| entity.id == forest.id)
-            .expect("regrowing forest remains stable")
+            .expect("regenerated forest remains stable")
             .stored_wood;
-        assert_eq!(regrown, 3);
+        assert_eq!(regrown, 5);
+        assert!(!state.forest_regrowth_ready_tick.contains_key(&forest.id));
         assert_eq!(state.forest_count(), 1);
     }
 
@@ -317,6 +362,57 @@ mod tests {
         probe
             .apply(Command::AdvanceTick)
             .expect("probe remains usable");
+    }
+
+    #[test]
+    fn tower_targeting_prefers_nearest_then_lowest_entity_id() {
+        let mut state = GameState::new(11);
+        let tower = state.allocate_entity();
+        state.transforms.insert(
+            entity_key(tower),
+            Transform {
+                x_milli: 10_000,
+                z_milli: 10_000,
+            },
+        );
+
+        let lower_id = state.allocate_entity();
+        let higher_id = state.allocate_entity();
+        for (entity, x_milli) in [(lower_id, 9_000), (higher_id, 11_000)] {
+            state.raiders.insert(
+                entity_key(entity),
+                Raider {
+                    archetype: RaiderArchetype::Basic,
+                    edge: Edge::North,
+                    target_storage: TOWN_ENTITY,
+                },
+            );
+            state.health.insert(
+                entity_key(entity),
+                Health {
+                    current: 10,
+                    maximum: 10,
+                },
+            );
+            state.transforms.insert(
+                entity_key(entity),
+                Transform {
+                    x_milli,
+                    z_milli: 10_000,
+                },
+            );
+        }
+
+        assert_eq!(state.target_for_tower(tower, 2_000), Some(lower_id));
+
+        state.transforms.insert(
+            entity_key(higher_id),
+            Transform {
+                x_milli: 10_500,
+                z_milli: 10_000,
+            },
+        );
+        assert_eq!(state.target_for_tower(tower, 2_000), Some(higher_id));
     }
 
     #[test]

@@ -44,6 +44,7 @@ pub const PERSON_CARRY_CAPACITY: u16 = STANDARD_RULES.population.carry_capacity;
 pub const PERSON_SPEED_MILLI: u16 = STANDARD_RULES.population.speed_milli;
 pub const TOWN_MAX_HEALTH: u16 = STANDARD_RULES.buildings.town_hall.max_health;
 pub const DAY_LENGTH_TICKS: u16 = STANDARD_RULES.cycle.day_length_ticks;
+pub const RAID_RALLY_TICKS: u16 = STANDARD_RULES.cycle.raid_rally_ticks;
 
 const TOWN_ENTITY: EntityId = 0;
 
@@ -186,14 +187,30 @@ pub struct TowerStats {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Raider {
+    pub archetype: RaiderArchetype,
     pub edge: Edge,
     pub target_storage: EntityId,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct WaveSchedule {
     remaining_raiders: u16,
     spawn_ticks_remaining: u16,
+    wave: WaveRules,
+    group_index: u8,
+    remaining_in_group: u16,
+}
+
+impl Default for WaveSchedule {
+    fn default() -> Self {
+        Self {
+            remaining_raiders: 0,
+            spawn_ticks_remaining: 0,
+            wave: WaveRules::EMPTY,
+            group_index: 0,
+            remaining_in_group: 0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -215,7 +232,10 @@ pub struct Projectile {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PersonState {
     IdleAtTownHall,
+    ToForest,
+    HarvestingForest,
     ToSawmill,
+    ToSawmillPickup,
     ToStorage,
     ToConstructionStorage,
     ToConstructionSite,
@@ -292,12 +312,14 @@ pub enum Event {
     WaveStarted {
         wave: u32,
         raiders: u16,
+        rally_ticks: u16,
     },
     TickAdvanced {
         tick: u64,
         shots: u16,
         impacts: u16,
         kills: u16,
+        /// Wood cut by people at forests during this tick.
         wood_produced: u16,
         wood_picked_up: u16,
         wood_delivered: u16,
@@ -320,6 +342,7 @@ pub enum GameError {
     NoTower,
     MaxTowerLevel,
     RaidersStillActive,
+    ScenarioComplete,
     GameOver,
 }
 
@@ -350,6 +373,7 @@ pub struct EntitySnapshot {
     pub tower_archetype: Option<TowerArchetype>,
     pub tower_level: u8,
     pub upgrade_cost: Option<u32>,
+    pub raider_archetype: Option<RaiderArchetype>,
     pub projectile_target: Option<EntityId>,
     pub stored_wood: u32,
     pub wood_capacity: u32,
@@ -390,6 +414,7 @@ pub struct GameState {
     wave: u32,
     completed_waves: u32,
     day_ticks_remaining: u16,
+    raid_rally_ticks_remaining: u16,
     wave_schedule: WaveSchedule,
     next_entity: EntityId,
     transforms: SparseMap<Transform>,
@@ -404,6 +429,8 @@ pub struct GameState {
     producers: SparseMap<ResourceProducer>,
     housing: SparseMap<Housing>,
     people: SparseMap<Person>,
+    work_ticks: SparseMap<u16>,
+    forest_regrowth_ready_tick: BTreeMap<EntityId, u64>,
     alive: SparseSet,
 }
 

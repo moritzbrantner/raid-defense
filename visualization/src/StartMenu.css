@@ -19,7 +19,7 @@
 }
 
 .settings-panel {
-  width: min(620px, 100%);
+  width: min(920px, 100%);
   margin: clamp(0px, 4vh, 48px) 0 clamp(0px, 4vh, 48px) clamp(0px, 8vw, 120px);
 }
 

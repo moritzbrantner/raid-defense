@@ -1,14 +1,16 @@
 #![forbid(unsafe_code)]
 
 use raid_defense_core::{
-    Command, DayLength, EntityKind, Event, ForestDensity, ForestRegrowth, GameError, GameState,
-    PersonState, RaidEconomy, RaidSize, RaidTiming, RaiderStrength, ResourceKind,
-    SawmillThroughput, ScenarioOptions, StartingSupplies, TowerArchetype,
+    Command, DayLength, EntityKind, Event, ForestDensity, ForestRegrowth, GameError, GameRules,
+    GameState, MAX_SCENARIO_WAVES, MAX_WAVE_GROUPS, PersonState, RaidEconomy, RaidSize, RaidTiming,
+    RaiderArchetype, RaiderArchetypeRules, RaiderCatalogRules, RaiderStrength, ResourceKind,
+    SawmillThroughput, ScenarioOptions, StartingSupplies, TowerArchetype, TowerArchetypeRules,
+    TowerLevelRules, TowerRules, WaveGroupRules, WavePlanRules, WaveRules,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-const CONTRACT_VERSION: u8 = 8;
+const CONTRACT_VERSION: u8 = 10;
 
 #[wasm_bindgen]
 pub struct RaidDefenseGame {
@@ -44,12 +46,19 @@ impl RaidDefenseGame {
 
 #[wasm_bindgen]
 pub fn create_game(seed: u32, scenario_json: &str) -> Result<RaidDefenseGame, JsValue> {
-    let scenario = serde_json::from_str::<ScenarioOptionsDto>(scenario_json)
-        .map(ScenarioOptions::from)
+    let dto = serde_json::from_str::<ScenarioOptionsDto>(scenario_json)
         .map_err(|_| JsValue::from_str("invalid_scenario_options"))?;
-    let rules = scenario
+    let world = dto.world;
+    let scenario = ScenarioOptions::try_from(dto)
+        .map_err(|_| JsValue::from_str("invalid_scenario_options"))?;
+    let mut rules = scenario
         .into_rules()
         .map_err(|_| JsValue::from_str("invalid_scenario_rules"))?;
+    if let Some(world) = world {
+        rules = world
+            .apply(rules)
+            .map_err(|_| JsValue::from_str("invalid_scenario_rules"))?;
+    }
     let state = GameState::try_with_rules(u64::from(seed), rules)
         .map_err(|_| JsValue::from_str("invalid_scenario_rules"))?;
     Ok(RaidDefenseGame { state })
@@ -214,6 +223,178 @@ impl From<RaidEconomyDto> for RaidEconomy {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum RaiderArchetypeDto {
+    Basic,
+    Advanced,
+}
+
+impl From<RaiderArchetypeDto> for RaiderArchetype {
+    fn from(value: RaiderArchetypeDto) -> Self {
+        match value {
+            RaiderArchetypeDto::Basic => Self::Basic,
+            RaiderArchetypeDto::Advanced => Self::Advanced,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RaiderArchetypeRulesDto {
+    health: u16,
+    damage: u16,
+    speed_milli: u16,
+    wood_steal: u32,
+}
+
+impl From<RaiderArchetypeRulesDto> for RaiderArchetypeRules {
+    fn from(value: RaiderArchetypeRulesDto) -> Self {
+        Self {
+            health: value.health,
+            damage: value.damage,
+            speed_milli: value.speed_milli,
+            wood_steal: value.wood_steal,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RaiderCatalogRulesDto {
+    basic: RaiderArchetypeRulesDto,
+    advanced: RaiderArchetypeRulesDto,
+}
+
+impl From<RaiderCatalogRulesDto> for RaiderCatalogRules {
+    fn from(value: RaiderCatalogRulesDto) -> Self {
+        Self {
+            basic: value.basic.into(),
+            advanced: value.advanced.into(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WaveGroupRulesDto {
+    archetype: RaiderArchetypeDto,
+    count: u16,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WaveRulesDto {
+    groups: Vec<WaveGroupRulesDto>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TowerLevelRulesDto {
+    damage: u16,
+    range_milli: i32,
+    cooldown_ticks: u8,
+    projectile_speed_milli: u16,
+    upgrade_cost: Option<u32>,
+}
+
+impl From<TowerLevelRulesDto> for TowerLevelRules {
+    fn from(value: TowerLevelRulesDto) -> Self {
+        Self {
+            damage: value.damage,
+            range_milli: value.range_milli,
+            cooldown_ticks: value.cooldown_ticks,
+            projectile_speed_milli: value.projectile_speed_milli,
+            upgrade_cost: value.upgrade_cost,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TowerArchetypeRulesDto {
+    build_cost: u32,
+    levels: [TowerLevelRulesDto; 3],
+}
+
+impl From<TowerArchetypeRulesDto> for TowerArchetypeRules {
+    fn from(value: TowerArchetypeRulesDto) -> Self {
+        Self {
+            build_cost: value.build_cost,
+            levels: value.levels.map(Into::into),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TowerRulesDto {
+    max_level: u8,
+    max_health: u16,
+    arrow: TowerArchetypeRulesDto,
+    cannon: TowerArchetypeRulesDto,
+}
+
+impl From<TowerRulesDto> for TowerRules {
+    fn from(value: TowerRulesDto) -> Self {
+        Self {
+            max_level: value.max_level,
+            max_health: value.max_health,
+            arrow: value.arrow.into(),
+            cannon: value.cannon.into(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ScenarioWorldRulesDto {
+    starting_wood: u32,
+    forest_tile_count: u16,
+    forest_tile_wood: u32,
+    forest_regrowth_amount: u16,
+    forest_regrowth_interval_ticks: u16,
+    sawmill_output: u16,
+    sawmill_interval_ticks: u16,
+    sawmill_local_wood_capacity: u32,
+    day_length_ticks: u16,
+    raid_rally_ticks: u16,
+    automatic_raids: bool,
+    pause_economy_during_raids: bool,
+}
+
+impl ScenarioWorldRulesDto {
+    fn apply(self, mut rules: GameRules) -> Result<GameRules, ()> {
+        if self.forest_tile_count == 0
+            || self.forest_tile_wood == 0
+            || self.forest_regrowth_amount == 0
+            || self.forest_regrowth_interval_ticks == 0
+            || self.sawmill_output == 0
+            || self.sawmill_interval_ticks == 0
+            || self.sawmill_local_wood_capacity == 0
+            || self.day_length_ticks == 0
+            || self.raid_rally_ticks == 0
+        {
+            return Err(());
+        }
+
+        rules.economy.starting_wood = self.starting_wood;
+        rules.economy.forest_tile_count = self.forest_tile_count;
+        rules.economy.forest_tile_wood = self.forest_tile_wood;
+        rules.economy.forest_regrowth_amount = self.forest_regrowth_amount;
+        rules.economy.forest_regrowth_interval_ticks = self.forest_regrowth_interval_ticks;
+        rules.economy.sawmill_output = self.sawmill_output;
+        rules.economy.sawmill_interval_ticks = self.sawmill_interval_ticks;
+        rules.economy.sawmill_local_wood_capacity = self.sawmill_local_wood_capacity;
+        rules.cycle.day_length_ticks = self.day_length_ticks;
+        rules.cycle.raid_rally_ticks = self.raid_rally_ticks;
+        rules.cycle.automatic_raids = self.automatic_raids;
+        rules.cycle.pause_economy_during_raids = self.pause_economy_during_raids;
+        rules.validate().map_err(|_| ())?;
+        Ok(rules)
+    }
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ScenarioOptionsDto {
     starting_supplies: StartingSuppliesDto,
@@ -225,11 +406,17 @@ struct ScenarioOptionsDto {
     day_length: DayLengthDto,
     raid_timing: RaidTimingDto,
     raid_economy: RaidEconomyDto,
+    world: Option<ScenarioWorldRulesDto>,
+    raiders: Option<RaiderCatalogRulesDto>,
+    waves: Option<Vec<WaveRulesDto>>,
+    towers: Option<TowerRulesDto>,
 }
 
-impl From<ScenarioOptionsDto> for ScenarioOptions {
-    fn from(value: ScenarioOptionsDto) -> Self {
-        Self {
+impl TryFrom<ScenarioOptionsDto> for ScenarioOptions {
+    type Error = ();
+
+    fn try_from(value: ScenarioOptionsDto) -> Result<Self, Self::Error> {
+        let mut scenario = Self {
             starting_supplies: value.starting_supplies.into(),
             forest_density: value.forest_density.into(),
             forest_regrowth: value.forest_regrowth.into(),
@@ -239,8 +426,42 @@ impl From<ScenarioOptionsDto> for ScenarioOptions {
             day_length: value.day_length.into(),
             raid_timing: value.raid_timing.into(),
             raid_economy: value.raid_economy.into(),
+            ..ScenarioOptions::standard()
+        };
+        if let Some(raiders) = value.raiders {
+            scenario.raiders = raiders.into();
         }
+        if let Some(waves) = value.waves {
+            scenario.wave_plan = wave_plan_from_dtos(waves)?;
+        }
+        if let Some(towers) = value.towers {
+            scenario.towers = towers.into();
+        }
+        Ok(scenario)
     }
+}
+
+fn wave_plan_from_dtos(waves: Vec<WaveRulesDto>) -> Result<WavePlanRules, ()> {
+    if waves.is_empty() || waves.len() > MAX_SCENARIO_WAVES {
+        return Err(());
+    }
+    let mut plan = WavePlanRules::EMPTY;
+    plan.wave_count = u8::try_from(waves.len()).map_err(|_| ())?;
+    for (wave_index, wave_dto) in waves.into_iter().enumerate() {
+        if wave_dto.groups.is_empty() || wave_dto.groups.len() > MAX_WAVE_GROUPS {
+            return Err(());
+        }
+        let mut wave = WaveRules::EMPTY;
+        wave.group_count = u8::try_from(wave_dto.groups.len()).map_err(|_| ())?;
+        for (group_index, group) in wave_dto.groups.into_iter().enumerate() {
+            wave.groups[group_index] = WaveGroupRules {
+                archetype: group.archetype.into(),
+                count: group.count,
+            };
+        }
+        plan.waves[wave_index] = wave;
+    }
+    Ok(plan)
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -355,6 +576,7 @@ enum EventDto {
     WaveStarted {
         wave: u32,
         raiders: u16,
+        rally_ticks: u16,
     },
     TickAdvanced {
         tick: u64,
@@ -429,7 +651,15 @@ impl From<Event> for EventDto {
                 level,
                 wood_cost,
             },
-            Event::WaveStarted { wave, raiders } => Self::WaveStarted { wave, raiders },
+            Event::WaveStarted {
+                wave,
+                raiders,
+                rally_ticks,
+            } => Self::WaveStarted {
+                wave,
+                raiders,
+                rally_ticks,
+            },
             Event::TickAdvanced {
                 tick,
                 shots,
@@ -484,6 +714,8 @@ struct SnapshotDto {
     wave: u32,
     completed_waves: u32,
     day_ticks_remaining: u16,
+    raid_rally_ticks_remaining: u16,
+    is_rallying: bool,
     is_night: bool,
     people: u16,
     population_capacity: u16,
@@ -506,6 +738,9 @@ struct SnapshotDto {
     house_unlock_completed_waves: u32,
     house_population_capacity: u16,
     person_carry_capacity: u16,
+    raid_rally_ticks: u16,
+    automatic_raids: bool,
+    pause_economy_during_raids: bool,
     arrow_tower_cost: u32,
     cannon_tower_cost: u32,
     max_tower_level: u8,
@@ -526,6 +761,8 @@ impl From<&GameState> for SnapshotDto {
             wave: snapshot.wave,
             completed_waves: snapshot.completed_waves,
             day_ticks_remaining: state.day_ticks_remaining(),
+            raid_rally_ticks_remaining: state.raid_rally_ticks_remaining(),
+            is_rallying: state.is_rallying(),
             is_night: state.is_night(),
             people: snapshot.people,
             population_capacity: snapshot.population_capacity,
@@ -548,6 +785,9 @@ impl From<&GameState> for SnapshotDto {
             house_unlock_completed_waves: rules.buildings.house.unlock_completed_waves,
             house_population_capacity: rules.buildings.house.population_capacity,
             person_carry_capacity: rules.population.carry_capacity,
+            raid_rally_ticks: rules.cycle.raid_rally_ticks,
+            automatic_raids: rules.cycle.automatic_raids,
+            pause_economy_during_raids: rules.cycle.pause_economy_during_raids,
             arrow_tower_cost: rules.towers.arrow.build_cost,
             cannon_tower_cost: rules.towers.cannon.build_cost,
             max_tower_level: rules.towers.max_level,
@@ -571,6 +811,7 @@ struct EntityDto {
     tower_archetype: Option<&'static str>,
     tower_level: u8,
     upgrade_cost: Option<u32>,
+    raider_archetype: Option<&'static str>,
     projectile_target: Option<u32>,
     stored_wood: u32,
     wood_capacity: u32,
@@ -610,6 +851,7 @@ impl From<raid_defense_core::EntitySnapshot> for EntityDto {
             tower_archetype: entity.tower_archetype.map(tower_archetype_label),
             tower_level: entity.tower_level,
             upgrade_cost: entity.upgrade_cost,
+            raider_archetype: entity.raider_archetype.map(raider_archetype_label),
             projectile_target: entity.projectile_target,
             stored_wood: entity.stored_wood,
             wood_capacity: entity.wood_capacity,
@@ -680,6 +922,13 @@ const fn tower_archetype_label(archetype: TowerArchetype) -> &'static str {
     }
 }
 
+const fn raider_archetype_label(archetype: RaiderArchetype) -> &'static str {
+    match archetype {
+        RaiderArchetype::Basic => "basic",
+        RaiderArchetype::Advanced => "advanced",
+    }
+}
+
 const fn resource_kind_label(resource: ResourceKind) -> &'static str {
     match resource {
         ResourceKind::Wood => "wood",
@@ -689,7 +938,10 @@ const fn resource_kind_label(resource: ResourceKind) -> &'static str {
 const fn person_state_label(state: PersonState) -> &'static str {
     match state {
         PersonState::IdleAtTownHall => "idle_at_town_hall",
+        PersonState::ToForest => "to_forest",
+        PersonState::HarvestingForest => "harvesting_forest",
         PersonState::ToSawmill => "to_sawmill",
+        PersonState::ToSawmillPickup => "to_sawmill_pickup",
         PersonState::ToStorage => "to_storage",
         PersonState::ToConstructionStorage => "to_construction_storage",
         PersonState::ToConstructionSite => "to_construction_site",
@@ -709,6 +961,7 @@ const fn error_code(error: GameError) -> &'static str {
         GameError::NoTower => "no_tower",
         GameError::MaxTowerLevel => "max_tower_level",
         GameError::RaidersStillActive => "raiders_still_active",
+        GameError::ScenarioComplete => "scenario_complete",
         GameError::GameOver => "game_over",
     }
 }
@@ -782,6 +1035,15 @@ mod tests {
         assert_eq!(snapshot.people, 2);
         assert!(snapshot.forest_regrowth_amount > 0);
         assert!(snapshot.forest_regrowth_interval_ticks > 0);
+        assert!(snapshot.raid_rally_ticks > 0);
+        assert_eq!(
+            snapshot.automatic_raids,
+            STANDARD_RULES.cycle.automatic_raids
+        );
+        assert_eq!(
+            snapshot.pause_economy_during_raids,
+            STANDARD_RULES.cycle.pause_economy_during_raids
+        );
         assert!(
             snapshot
                 .entities
@@ -806,7 +1068,8 @@ mod tests {
             }"#,
         )
         .expect("scenario JSON should parse");
-        let rules = ScenarioOptions::from(dto)
+        let rules = ScenarioOptions::try_from(dto)
+            .expect("scenario DTO should map")
             .into_rules()
             .expect("scenario rules should validate");
 
@@ -815,6 +1078,106 @@ mod tests {
         assert!(rules.raids.raiders_per_wave > STANDARD_RULES.raids.raiders_per_wave);
         assert!(!rules.cycle.automatic_raids);
         assert!(!rules.cycle.pause_economy_during_raids);
+    }
+
+    #[test]
+    fn explicit_world_contract_maps_numbers_without_presets() {
+        let dto: ScenarioOptionsDto = serde_json::from_str(
+            r#"{
+                "starting_supplies":"standard",
+                "forest_density":"standard",
+                "forest_regrowth":"standard",
+                "sawmill_throughput":"standard",
+                "raid_size":"standard",
+                "raider_strength":"standard",
+                "day_length":"standard",
+                "raid_timing":"standard",
+                "raid_economy":"standard",
+                "world":{
+                    "starting_wood":240,
+                    "forest_tile_count":24,
+                    "forest_tile_wood":95,
+                    "forest_regrowth_amount":2,
+                    "forest_regrowth_interval_ticks":11,
+                    "sawmill_output":7,
+                    "sawmill_interval_ticks":8,
+                    "sawmill_local_wood_capacity":31,
+                    "day_length_ticks":875,
+                    "raid_rally_ticks":43,
+                    "automatic_raids":false,
+                    "pause_economy_during_raids":false
+                }
+            }"#,
+        )
+        .expect("explicit world JSON should parse");
+        let world = dto.world.expect("world rules should be present");
+        let rules = ScenarioOptions::try_from(dto)
+            .expect("scenario DTO should map")
+            .into_rules()
+            .expect("base scenario rules should validate");
+        let rules = world.apply(rules).expect("world rules should validate");
+
+        assert_eq!(rules.economy.starting_wood, 240);
+        assert_eq!(rules.economy.forest_tile_count, 24);
+        assert_eq!(rules.economy.forest_tile_wood, 95);
+        assert_eq!(rules.economy.forest_regrowth_amount, 2);
+        assert_eq!(rules.economy.forest_regrowth_interval_ticks, 11);
+        assert_eq!(rules.economy.sawmill_output, 7);
+        assert_eq!(rules.economy.sawmill_interval_ticks, 8);
+        assert_eq!(rules.economy.sawmill_local_wood_capacity, 31);
+        assert_eq!(rules.cycle.day_length_ticks, 875);
+        assert_eq!(rules.cycle.raid_rally_ticks, 43);
+        assert!(!rules.cycle.automatic_raids);
+        assert!(!rules.cycle.pause_economy_during_raids);
+    }
+
+    #[test]
+    fn explicit_scenario_contract_maps_wave_units_and_towers() {
+        let dto: ScenarioOptionsDto = serde_json::from_str(
+            r#"{
+                "starting_supplies":"standard",
+                "forest_density":"standard",
+                "forest_regrowth":"standard",
+                "sawmill_throughput":"standard",
+                "raid_size":"standard",
+                "raider_strength":"standard",
+                "day_length":"standard",
+                "raid_timing":"manual",
+                "raid_economy":"standard",
+                "raiders":{
+                    "basic":{"health":30,"damage":10,"speed_milli":250,"wood_steal":15},
+                    "advanced":{"health":75,"damage":22,"speed_milli":210,"wood_steal":30}
+                },
+                "waves":[
+                    {"groups":[{"archetype":"basic","count":2},{"archetype":"advanced","count":1}]}
+                ],
+                "towers":{
+                    "max_level":3,
+                    "max_health":100,
+                    "arrow":{"build_cost":25,"levels":[
+                        {"damage":8,"range_milli":3200,"cooldown_ticks":3,"projectile_speed_milli":900,"upgrade_cost":20},
+                        {"damage":12,"range_milli":3500,"cooldown_ticks":3,"projectile_speed_milli":1000,"upgrade_cost":30},
+                        {"damage":17,"range_milli":3800,"cooldown_ticks":2,"projectile_speed_milli":1100,"upgrade_cost":null}
+                    ]},
+                    "cannon":{"build_cost":45,"levels":[
+                        {"damage":18,"range_milli":4200,"cooldown_ticks":7,"projectile_speed_milli":500,"upgrade_cost":30},
+                        {"damage":27,"range_milli":4500,"cooldown_ticks":6,"projectile_speed_milli":550,"upgrade_cost":45},
+                        {"damage":40,"range_milli":4800,"cooldown_ticks":5,"projectile_speed_milli":600,"upgrade_cost":null}
+                    ]}
+                }
+            }"#,
+        )
+        .expect("explicit scenario JSON should parse");
+        let rules = ScenarioOptions::try_from(dto)
+            .expect("explicit scenario DTO should map")
+            .into_rules()
+            .expect("explicit scenario rules should validate");
+
+        assert_eq!(rules.raids.wave_plan.wave_count, 1);
+        assert_eq!(rules.raids.wave_plan.waves[0].total_raiders(), 3);
+        assert_eq!(rules.raids.advanced.health, 75);
+        assert_eq!(rules.raids.advanced.damage, 22);
+        assert_eq!(rules.towers.arrow.build_cost, 25);
     }
 
     #[test]

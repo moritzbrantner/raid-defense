@@ -132,77 +132,31 @@ impl GameState {
             .count()
     }
 
+    pub(super) fn forest_regrowth_duration_ticks(&self) -> u64 {
+        let capacity = u64::from(self.rules.economy.forest_tile_wood);
+        let amount = u64::from(self.rules.economy.forest_regrowth_amount);
+        let recovery_cycles = capacity.saturating_add(amount - 1) / amount;
+        recovery_cycles.saturating_mul(u64::from(self.rules.economy.forest_regrowth_interval_ticks))
+    }
+
     pub(super) fn run_forest_regrowth_system(&mut self) {
-        let interval = u64::from(self.rules.economy.forest_regrowth_interval_ticks);
-        if !self.tick.is_multiple_of(interval) {
-            return;
-        }
-
-        let amount = u32::from(self.rules.economy.forest_regrowth_amount);
-        let mut forests = self
-            .buildings
+        let mut ready = self
+            .forest_regrowth_ready_tick
             .iter()
-            .filter_map(|(key, building)| {
-                (building.kind == BuildingKind::Forest).then_some(key_entity(key))
-            })
+            .filter_map(|(forest, ready_tick)| (*ready_tick <= self.tick).then_some(*forest))
             .collect::<Vec<_>>();
-        forests.sort_unstable();
+        ready.sort_unstable();
 
-        for forest in forests {
-            let Some(storage) = self.storage.get_mut(entity_key(forest)) else {
-                continue;
-            };
-            storage.wood = storage
-                .wood
-                .saturating_add(amount)
-                .min(storage.wood_capacity);
+        for forest in ready {
+            let is_forest = self
+                .buildings
+                .get(entity_key(forest))
+                .is_some_and(|building| building.kind == BuildingKind::Forest);
+            if is_forest && let Some(storage) = self.storage.get_mut(entity_key(forest)) {
+                storage.wood = storage.wood_capacity;
+            }
+            self.forest_regrowth_ready_tick.remove(&forest);
         }
-    }
-
-    fn best_forest_for_cell(&self, cell: Cell) -> Option<EntityId> {
-        let sawmill_goals = self.adjacent_walkable_cells(cell, None);
-        if sawmill_goals.is_empty() {
-            return None;
-        }
-
-        let mut candidates = self
-            .buildings
-            .iter()
-            .filter_map(|(key, building)| {
-                if building.kind != BuildingKind::Forest {
-                    return None;
-                }
-                let entity = key_entity(key);
-                let storage = self.storage.get(key)?;
-                if storage.wood == 0 {
-                    return None;
-                }
-                let forest_goals = self.adjacent_walkable_cells(building.cell, None);
-                let distance = self.distance_between_goal_sets(&sawmill_goals, &forest_goals)?;
-                Some((distance, entity))
-            })
-            .collect::<Vec<_>>();
-        candidates.sort_unstable();
-        candidates.first().map(|(_, entity)| *entity)
-    }
-
-    pub(super) fn harvest_forest_for_sawmill(&mut self, sawmill: EntityId, amount: u32) -> u32 {
-        let Some(sawmill_cell) = self
-            .buildings
-            .get(entity_key(sawmill))
-            .map(|building| building.cell)
-        else {
-            return 0;
-        };
-        let Some(forest) = self.best_forest_for_cell(sawmill_cell) else {
-            return 0;
-        };
-        let Some(storage) = self.storage.get_mut(entity_key(forest)) else {
-            return 0;
-        };
-        let harvested = storage.wood.min(amount);
-        storage.wood -= harvested;
-        harvested
     }
 
     pub(super) fn settlement_storage_ids(&self) -> Vec<EntityId> {
@@ -264,11 +218,25 @@ impl GameState {
     }
 
     pub(super) fn take_wood_at(&mut self, storage_entity: EntityId, amount: u32) -> u32 {
+        let is_forest = self
+            .buildings
+            .get(entity_key(storage_entity))
+            .is_some_and(|building| building.kind == BuildingKind::Forest);
+        let regrowth_duration = is_forest.then(|| self.forest_regrowth_duration_ticks());
         let Some(storage) = self.storage.get_mut(entity_key(storage_entity)) else {
             return 0;
         };
         let taken = storage.wood.min(amount);
         storage.wood -= taken;
+        let depleted_forest = is_forest && taken > 0 && storage.wood == 0;
+        if depleted_forest {
+            let ready_tick = self
+                .tick
+                .saturating_add(regrowth_duration.expect("forest duration must be available"));
+            self.forest_regrowth_ready_tick
+                .entry(storage_entity)
+                .or_insert(ready_tick);
+        }
         taken
     }
 

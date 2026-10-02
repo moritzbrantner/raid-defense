@@ -4,9 +4,10 @@ import type {
   SnapshotView,
 } from "./simulationTypes";
 import {
+  createStandardScenarioOptions,
   isScenarioOptions,
-  STANDARD_SCENARIO_OPTIONS,
   type ScenarioOptions,
+  type ScenarioWorldRules,
 } from "./scenarioOptions";
 
 type WasmModule = typeof import("./generated/raid-defense-wasm/raid_defense_wasm.js");
@@ -19,7 +20,7 @@ type ReplayEntry =
   | { kind: "command"; command: RaidDefenseCommand };
 
 type SavedGameBase = {
-  contract_version: 9;
+  contract_version: 10;
   seed: number;
   entries: ReplayEntry[];
   checksum: string;
@@ -47,8 +48,8 @@ export type SavedGameSummary = Pick<
 
 const SAVE_KEY = "raid-defense.save.v2";
 const LEGACY_SAVE_KEY = "raid-defense.save.v1";
-const WASM_CONTRACT_VERSION = 8;
-const SAVE_CONTRACT_VERSION = 9;
+const WASM_CONTRACT_VERSION = 10;
+const SAVE_CONTRACT_VERSION = 10;
 const TICKS_PER_PERSIST = 10;
 
 let wasmModulePromise: Promise<WasmModule> | null = null;
@@ -106,8 +107,16 @@ function parseSnapshotValue(value: unknown): SnapshotView {
   if (typeof value.houses_unlocked !== "boolean") {
     throw new Error("snapshot house unlock state must be boolean");
   }
-  if (typeof value.day_ticks_remaining !== "number" || typeof value.is_night !== "boolean") {
-    throw new Error("snapshot day/night state must be authoritative and typed");
+  if (
+    typeof value.day_ticks_remaining !== "number" ||
+    typeof value.raid_rally_ticks_remaining !== "number" ||
+    typeof value.raid_rally_ticks !== "number" ||
+    typeof value.is_rallying !== "boolean" ||
+    typeof value.is_night !== "boolean" ||
+    typeof value.automatic_raids !== "boolean" ||
+    typeof value.pause_economy_during_raids !== "boolean"
+  ) {
+    throw new Error("snapshot day, rally, and raid state must be authoritative and typed");
   }
   if (
     typeof value.forest_tile_count !== "number" ||
@@ -123,6 +132,30 @@ function parseSnapshotValue(value: unknown): SnapshotView {
 
 function parseSnapshot(json: string) {
   return parseSnapshotValue(parseObject(json, "snapshot"));
+}
+
+export async function loadStandardScenarioWorld(): Promise<ScenarioWorldRules> {
+  const module = await loadWasmModule();
+  const engine = new module.RaidDefenseGame(0);
+  try {
+    const snapshot = parseSnapshot(engine.snapshot());
+    return {
+      starting_wood: snapshot.wood,
+      forest_tile_count: snapshot.forest_tile_count,
+      forest_tile_wood: snapshot.forest_tile_wood,
+      forest_regrowth_amount: snapshot.forest_regrowth_amount,
+      forest_regrowth_interval_ticks: snapshot.forest_regrowth_interval_ticks,
+      sawmill_output: snapshot.sawmill_output,
+      sawmill_interval_ticks: snapshot.sawmill_interval_ticks,
+      sawmill_local_wood_capacity: snapshot.sawmill_local_wood_capacity,
+      day_length_ticks: snapshot.day_ticks_remaining,
+      raid_rally_ticks: snapshot.raid_rally_ticks,
+      automatic_raids: snapshot.automatic_raids,
+      pause_economy_during_raids: snapshot.pause_economy_during_raids,
+    };
+  } finally {
+    engine.free();
+  }
 }
 
 function parseResponse(json: string): DispatchResponse {
@@ -230,6 +263,10 @@ function seedFromUrl(fallback: number) {
   return Number.isInteger(value) && value >= 0 && value <= 0xffff_ffff ? value : fallback;
 }
 
+function cloneScenario(scenario: ScenarioOptions): ScenarioOptions {
+  return JSON.parse(JSON.stringify(scenario)) as ScenarioOptions;
+}
+
 function createScenarioEngine(module: WasmModule, seed: number, scenario: ScenarioOptions) {
   return module.create_game(seed, JSON.stringify(scenario));
 }
@@ -245,10 +282,10 @@ function installFlushListeners() {
 
 export function prepareNewGame(
   seed: number,
-  scenario: ScenarioOptions = STANDARD_SCENARIO_OPTIONS,
+  scenario: ScenarioOptions = createStandardScenarioOptions(),
 ) {
   clearSavedGame();
-  pendingSession = { kind: "new", seed: seed >>> 0, scenario: { ...scenario } };
+  pendingSession = { kind: "new", seed: seed >>> 0, scenario: cloneScenario(scenario) };
 }
 
 export function prepareResume() {
@@ -310,14 +347,14 @@ export class RaidDefenseSimulationClient {
     }
 
     const seed = intent?.kind === "new" ? intent.seed : seedFromUrl(fallbackSeed);
-    const scenario = intent?.kind === "new" ? intent.scenario : STANDARD_SCENARIO_OPTIONS;
+    const scenario = intent?.kind === "new" ? intent.scenario : createStandardScenarioOptions();
     const engine = createScenarioEngine(module, seed, scenario);
     const snapshot = parseSnapshot(engine.snapshot());
     const save: SavedGameV2 = {
       version: 2,
       contract_version: SAVE_CONTRACT_VERSION,
       seed,
-      scenario: { ...scenario },
+      scenario: cloneScenario(scenario),
       entries: [],
       checksum: snapshot.checksum,
       tick: snapshot.tick,

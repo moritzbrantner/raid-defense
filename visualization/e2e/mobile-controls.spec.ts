@@ -16,28 +16,45 @@ test("keeps core controls reachable and touch-sized on a phone", async ({ page }
   await expect(dock).toBeVisible();
   await expect(dock).toHaveCSS("position", "fixed");
 
-  const touchTargets = [
+  const alwaysVisibleTouchTargets = [
     page.getByTestId("start-wave"),
-    page.getByTestId("cell-west"),
-    page.getByTestId("cell-north"),
-    page.getByTestId("cell-south"),
-    page.getByTestId("cell-east"),
     page.getByTestId("build-sawmill"),
     page.getByTestId("build-storage-house"),
     page.getByTestId("build-arrow-tower"),
   ];
-  for (const target of touchTargets) {
+  for (const target of alwaysVisibleTouchTargets) {
     const box = await target.boundingBox();
     expect(box).not.toBeNull();
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
   }
 
+  await expect(page.getByTestId("mobile-selected-cell")).toHaveText("No tile selected");
+  await page.getByTestId("build-storage-house").click();
+  await expect(page.getByTestId("storage-count")).toHaveText("0");
+  await expect(page.getByTestId("mobile-world-hint")).toContainText("Tap a tile to place Storage house");
+
+  await page.getByTestId("cell-x").fill("2");
+  await page.getByTestId("cell-z").fill("2");
   await expect(page.getByTestId("mobile-selected-cell")).toHaveText("2,2");
+
+  const precisePlacementTouchTargets = [
+    page.getByTestId("cell-west"),
+    page.getByTestId("cell-north"),
+    page.getByTestId("cell-south"),
+    page.getByTestId("cell-east"),
+    page.getByTestId("place-selected-cell"),
+  ];
+  for (const target of precisePlacementTouchTargets) {
+    const box = await target.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  }
+
   await page.getByTestId("cell-east").click();
   await expect(page.getByTestId("mobile-selected-cell")).toHaveText("3,2");
   await expect(page.getByTestId("cell-x")).toHaveValue("3");
 
-  await page.getByTestId("build-storage-house").click();
+  await page.getByTestId("place-selected-cell").click();
   await expect(page.getByTestId("storage-count")).toHaveText("1");
   await expect(page.getByTestId("event-feedback")).toContainText("Storage house built at 3, 2");
 
@@ -62,19 +79,68 @@ test("keeps all scenario controls reachable and touch-sized on a phone", async (
   await page.goto("/?screen=settings&section=scenario");
   await expect(page.getByTestId("scenario-settings")).toBeVisible();
 
-  const scenarioControls = [
-    ["scenario-starting-supplies", "rich"],
-    ["scenario-forest-density", "dense"],
-    ["scenario-forest-regrowth", "fast"],
-    ["scenario-sawmill-throughput", "fast"],
-    ["scenario-raid-size", "large"],
-    ["scenario-raider-strength", "harsh"],
-    ["scenario-day-length", "long"],
-    ["scenario-raid-timing", "manual"],
-    ["scenario-raid-economy", "continuous"],
+  const tabs = [
+    page.getByTestId("scenario-waves-tab"),
+    page.getByTestId("scenario-units-tab"),
+    page.getByTestId("scenario-towers-tab"),
+    page.getByTestId("scenario-world-tab"),
+  ];
+  for (const tab of tabs) {
+    const box = await tab.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+  }
+
+  await page.getByTestId("scenario-wave-5").click();
+  for (const control of [
+    page.getByTestId("scenario-wave-group-type-0"),
+    page.getByTestId("scenario-wave-group-count-0"),
+    page.getByTestId("scenario-wave-group-type-1"),
+    page.getByTestId("scenario-wave-group-count-1"),
+  ]) {
+    await control.scrollIntoViewIfNeeded();
+    const box = await control.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+  }
+
+  await page.getByTestId("scenario-units-tab").click();
+  const unitInputs = page.getByTestId("scenario-unit-editor").locator("input");
+  for (let index = 0; index < (await unitInputs.count()); index += 1) {
+    const input = unitInputs.nth(index);
+    await input.scrollIntoViewIfNeeded();
+    const box = await input.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  }
+
+  await page.getByTestId("scenario-towers-tab").click();
+  const towerInputs = page.getByTestId("scenario-tower-editor").locator("input");
+  for (let index = 0; index < (await towerInputs.count()); index += 1) {
+    const input = towerInputs.nth(index);
+    await input.scrollIntoViewIfNeeded();
+    const box = await input.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  }
+
+  await page.getByTestId("scenario-world-tab").click();
+  const worldNumberControls = [
+    ["scenario-starting-wood", "240"],
+    ["scenario-forest-tile-count", "24"],
+    ["scenario-forest-tile-wood", "95"],
+    ["scenario-forest-regrowth-amount", "2"],
+    ["scenario-forest-regrowth-interval", "11"],
+    ["scenario-sawmill-output", "7"],
+    ["scenario-sawmill-interval", "8"],
+    ["scenario-sawmill-capacity", "31"],
+    ["scenario-day-length-ticks", "875"],
+    ["scenario-raid-rally-ticks", "43"],
   ] as const;
 
-  for (const [testId, value] of scenarioControls) {
+  for (const [testId, value] of worldNumberControls) {
     const control = page.getByTestId(testId);
     await control.scrollIntoViewIfNeeded();
     await expect(control).toBeVisible();
@@ -82,8 +148,21 @@ test("keeps all scenario controls reachable and touch-sized on a phone", async (
     expect(box).not.toBeNull();
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
     expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
-    await control.selectOption(value);
+    await control.fill(value);
     await expect(control).toHaveValue(value);
+  }
+
+  for (const testId of ["scenario-automatic-raids", "scenario-pause-economy"] as const) {
+    const control = page.getByTestId(testId);
+    await control.scrollIntoViewIfNeeded();
+    await expect(control).toBeVisible();
+    const label = control.locator("..");
+    const box = await label.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+    await control.uncheck();
+    await expect(control).not.toBeChecked();
   }
 
   const pageFitsViewport = await page.evaluate(
