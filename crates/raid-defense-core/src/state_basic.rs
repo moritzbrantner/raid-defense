@@ -36,6 +36,7 @@ impl GameState {
             housing: SparseMap::new(),
             people: SparseMap::new(),
             work_ticks: SparseMap::new(),
+            forest_regrowth_ready_tick: BTreeMap::new(),
             alive: SparseSet::new(),
         };
 
@@ -349,6 +350,13 @@ impl GameState {
                 feed_byte(&mut hash, 1);
                 feed_u64(&mut hash, u64::from(storage.wood));
                 feed_u64(&mut hash, u64::from(storage.wood_capacity));
+            } else {
+                feed_byte(&mut hash, 0);
+            }
+
+            if let Some(ready_tick) = self.forest_regrowth_ready_tick.get(&entity.id) {
+                feed_byte(&mut hash, 1);
+                feed_u64(&mut hash, *ready_tick);
             } else {
                 feed_byte(&mut hash, 0);
             }

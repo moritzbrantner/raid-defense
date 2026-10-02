@@ -48,6 +48,40 @@ test("opens URL-addressable settings and persists presentation preferences", asy
   await touchHints.uncheck();
   await reduceMotion.check();
   await compactStatus.check();
+
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const raw = window.localStorage.getItem("raid-defense.settings.user.v2");
+          if (!raw) return null;
+          const snapshot = JSON.parse(raw) as {
+            schema_version?: number;
+            scope?: string;
+            overrides?: Record<string, { type?: string; value?: unknown }>;
+          };
+          return {
+            schemaVersion: snapshot.schema_version,
+            scope: snapshot.scope,
+            touchHints: snapshot.overrides?.["presentation.show_touch_hints"]?.value,
+            reduceMotion: snapshot.overrides?.["accessibility.reduce_motion"]?.value,
+            compactStatus: snapshot.overrides?.["presentation.compact_status"]?.value,
+            hasScenarioSettings: Object.keys(snapshot.overrides ?? {}).some((key) =>
+              key.startsWith("scenario."),
+            ),
+          };
+        }),
+      { timeout: 10_000 },
+    )
+    .toEqual({
+      schemaVersion: 2,
+      scope: "user",
+      touchHints: false,
+      reduceMotion: true,
+      compactStatus: true,
+      hasScenarioSettings: false,
+    });
+
   await page.reload();
 
   await expect(page.getByTestId("settings-screen")).toBeVisible();

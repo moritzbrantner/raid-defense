@@ -430,6 +430,7 @@ pub struct GameState {
     housing: SparseMap<Housing>,
     people: SparseMap<Person>,
     work_ticks: SparseMap<u16>,
+    forest_regrowth_ready_tick: BTreeMap<EntityId, u64>,
     alive: SparseSet,
 }
 

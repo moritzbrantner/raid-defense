@@ -204,12 +204,12 @@ mod tests {
     }
 
     #[test]
-    fn depleted_forest_tile_persists_and_regrows() {
+    fn depleted_forest_tile_persists_then_regenerates_to_full_capacity() {
         let mut rules = STANDARD_RULES;
         rules.economy.forest_tile_count = 1;
         rules.economy.forest_tile_wood = 5;
-        rules.economy.forest_regrowth_amount = 3;
-        rules.economy.forest_regrowth_interval_ticks = 1;
+        rules.economy.forest_regrowth_amount = 2;
+        rules.economy.forest_regrowth_interval_ticks = 3;
         let mut state = GameState::with_rules(19, rules);
         let forest = state
             .snapshot()
@@ -230,6 +230,21 @@ mod tests {
                 .stored_wood,
             0
         );
+        assert_eq!(state.forest_regrowth_ready_tick.get(&forest.id), Some(&9));
+
+        for _ in 0..8 {
+            state.advance_tick();
+        }
+        assert_eq!(
+            state
+                .snapshot()
+                .entities
+                .iter()
+                .find(|entity| entity.id == forest.id)
+                .expect("dormant forest remains in the snapshot")
+                .stored_wood,
+            0
+        );
 
         state.advance_tick();
         let regrown = state
@@ -237,9 +252,10 @@ mod tests {
             .entities
             .into_iter()
             .find(|entity| entity.id == forest.id)
-            .expect("regrowing forest remains stable")
+            .expect("regenerated forest remains stable")
             .stored_wood;
-        assert_eq!(regrown, 3);
+        assert_eq!(regrown, 5);
+        assert!(!state.forest_regrowth_ready_tick.contains_key(&forest.id));
         assert_eq!(state.forest_count(), 1);
     }
 
