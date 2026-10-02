@@ -4,8 +4,9 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
-cargo build --locked --release -p raid-defense-sim >/dev/null
-binary="$root/target/release/raid-defense-sim"
+cargo build --release -p raid-defense-sim >/dev/null
+target_dir="$(cargo metadata --format-version 1 --no-deps | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')"
+binary="${target_dir:-$root/target}/release/raid-defense-sim"
 
 measure() {
   local name="$1"
