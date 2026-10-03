@@ -220,3 +220,6 @@ fn feed_byte(hash: &mut u64, byte: u8) {
     *hash ^= u64::from(byte);
     *hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
 }
+
+mod replay_log;
+pub use replay_log::*;

@@ -52,7 +52,7 @@ test("edits, starts, saves, reloads, and resumes explicit world settings on a ph
   await expect(page.getByTestId("resume-game")).toBeEnabled();
 
   const savedWorld = await page.evaluate(() => {
-    const raw = window.localStorage.getItem("raid-defense.save.v2");
+    const raw = window.localStorage.getItem("raid-defense.replay.v3");
     if (!raw) return null;
     return (JSON.parse(raw) as { scenario?: { world?: unknown } }).scenario?.world ?? null;
   });

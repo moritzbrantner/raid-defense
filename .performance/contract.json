@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "suite": "raid-defense/headless-simulation-v1",
+  "description": "Product-level deterministic simulation journeys covering economy/logistics/combat composition. Repeated textual simulation results are the correctness gate; hosted-linux wall-clock timing is advisory until internal targeting/path/logistics work counters are exposed.",
+  "scenarios": [
+    {
+      "id": "balanced-representative",
+      "kind": "journey",
+      "description": "Run the balanced deterministic policy through economy growth, workers, construction, repeated waves and combat.",
+      "dimensions": {
+        "seed": 41,
+        "ticks": 4000,
+        "runs": 1,
+        "policy": "balanced"
+      },
+      "correctnessEvidence": [
+        "byte-identical simulator report across repeated executions",
+        "deterministic final checksum",
+        "full requested horizon or explicit deterministic town destruction"
+      ],
+      "metrics": [
+        {
+          "name": "elapsed_ns",
+          "unit": "ns",
+          "direction": "lower",
+          "signal": "wall-clock",
+          "blocking": false
+        },
+        {
+          "name": "target_candidates",
+          "unit": "candidates",
+          "direction": "lower",
+          "signal": "operation-count",
+          "blocking": false,
+          "notes": "Instrumentation prerequisite: expose deterministic tower/raider targeting candidate work before enabling a blocking budget."
+        },
+        {
+          "name": "path_searches",
+          "unit": "searches",
+          "direction": "lower",
+          "signal": "operation-count",
+          "blocking": false,
+          "notes": "Instrumentation prerequisite: count worker/raider path or flow-field rebuild/reuse work."
+        },
+        {
+          "name": "policy_validation_probes",
+          "unit": "probes",
+          "direction": "lower",
+          "signal": "operation-count",
+          "blocking": false,
+          "notes": "The current headless policy probes candidate commands by cloning state; count these probes so future removal/reuse work is measurable."
+        }
+      ]
+    },
+    {
+      "id": "defense-scaling",
+      "kind": "scaling",
+      "description": "Longer defense-focused run exercises higher tower/wave/raider populations and repeated targeting under the same deterministic seed.",
+      "dimensions": {
+        "seed": 41,
+        "ticks": 8000,
+        "runs": 1,
+        "policy": "defense"
+      },
+      "correctnessEvidence": [
+        "byte-identical simulator report across repeated executions",
+        "deterministic final checksum"
+      ],
+      "metrics": [
+        {
+          "name": "elapsed_ns",
+          "unit": "ns",
+          "direction": "lower",
+          "signal": "wall-clock",
+          "blocking": false
+        },
+        {
+          "name": "target_candidates",
+          "unit": "candidates",
+          "direction": "lower",
+          "signal": "operation-count",
+          "blocking": false,
+          "notes": "Planned portable scaling guard for targeting."
+        },
+        {
+          "name": "flow_field_rebuilds",
+          "unit": "rebuilds",
+          "direction": "lower",
+          "signal": "operation-count",
+          "blocking": false,
+          "notes": "Planned portable scaling guard for raider navigation-state reuse."
+        }
+      ]
+    }
+  ]
+}
