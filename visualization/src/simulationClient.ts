@@ -257,11 +257,7 @@ export class RaidDefenseSimulationClient {
     let currentTick = 0;
     let replayedOperations = 0;
 
-    const replayCommand = async (command: RaidDefenseCommand) => {
-      const response = parseResponse(engine.dispatch(JSON.stringify(command)));
-      if (!response.ok) {
-        throw new Error(`Saved replay rejected command: ${response.error?.code ?? "unknown"}`);
-      }
+    const recordReplayStep = async (response: DispatchResponse) => {
       currentTick = response.snapshot.tick;
       replayedOperations += 1;
       if (replayedOperations % 250 === 0) {
@@ -269,9 +265,30 @@ export class RaidDefenseSimulationClient {
       }
     };
 
+    const replayTick = async () => {
+      const response = parseResponse(engine.advance_tick());
+      if (!response.ok) {
+        throw new Error(`Saved replay rejected simulation tick: ${response.error?.code ?? "unknown"}`);
+      }
+      await recordReplayStep(response);
+    };
+
+    const replayCommand = async (command: RaidDefenseCommand) => {
+      if (command.type === "advance_tick") {
+        // Compatibility seam: legacy tick commands replay through the direct simulation step.
+        await replayTick();
+        return;
+      }
+      const response = parseResponse(engine.dispatch(JSON.stringify(command)));
+      if (!response.ok) {
+        throw new Error(`Saved replay rejected command: ${response.error?.code ?? "unknown"}`);
+      }
+      await recordReplayStep(response);
+    };
+
     const advanceToTick = async (targetTick: number) => {
       while (currentTick < targetTick) {
-        await replayCommand({ type: "advance_tick" });
+        await replayTick();
       }
       if (currentTick !== targetTick) {
         throw new Error("Saved replay action tick is behind the reconstructed simulation.");
@@ -302,10 +319,23 @@ export class RaidDefenseSimulationClient {
   }
 
   dispatch(command: RaidDefenseCommand) {
+    // Compatibility adapter: old callers may still express a tick as a command, but the live path
+    // bypasses JSON command dispatch and advances the deterministic simulation directly.
+    if (command.type === "advance_tick") return this.advanceTick();
+
     const response = parseResponse(this.engine.dispatch(JSON.stringify(command)));
     if (response.ok) {
       this.lastSnapshot = response.snapshot;
       this.recordAcceptedCommand(command, response.snapshot.tick);
+    }
+    return response;
+  }
+
+  advanceTick() {
+    const response = parseResponse(this.engine.advance_tick());
+    if (response.ok) {
+      this.lastSnapshot = response.snapshot;
+      this.recordAcceptedTick(response.snapshot.tick);
     }
     return response;
   }
@@ -319,21 +349,27 @@ export class RaidDefenseSimulationClient {
     this.dirtyTicks = 0;
   }
 
-  private recordAcceptedCommand(command: RaidDefenseCommand, tick: number) {
+  private recordAcceptedTick(tick: number) {
     this.replay.recorded_through_tick = tick;
-    if (command.type === "advance_tick") {
-      this.dirtyTicks += 1;
-    } else {
-      this.replay.actions.push({
-        tick,
-        sequence: this.replay.actions.length,
-        player_id: LOCAL_PLAYER_ID,
-        command,
-      });
-    }
-
-    if (command.type !== "advance_tick" || this.dirtyTicks >= TICKS_PER_PERSIST) {
+    this.dirtyTicks += 1;
+    if (this.dirtyTicks >= TICKS_PER_PERSIST) {
       this.flushSave();
     }
+  }
+
+  private recordAcceptedCommand(command: RaidDefenseCommand, tick: number) {
+    if (command.type === "advance_tick") {
+      this.recordAcceptedTick(tick);
+      return;
+    }
+
+    this.replay.recorded_through_tick = tick;
+    this.replay.actions.push({
+      tick,
+      sequence: this.replay.actions.length,
+      player_id: LOCAL_PLAYER_ID,
+      command,
+    });
+    this.flushSave();
   }
 }

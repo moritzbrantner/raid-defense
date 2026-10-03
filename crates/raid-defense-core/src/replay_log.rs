@@ -77,10 +77,10 @@ pub fn replay_player_actions(
     actions: &[RecordedPlayerAction],
 ) -> Result<GameState, ReplayError> {
     let mut state = GameState::try_with_rules(seed, rules).map_err(ReplayError::InvalidRules)?;
-    let mut expected_sequence = 0_u64;
     let mut previous_tick = 0_u64;
 
-    for recorded in actions {
+    for (index, recorded) in actions.iter().enumerate() {
+        let expected_sequence = index as u64;
         if recorded.sequence != expected_sequence {
             return Err(ReplayError::NonContiguousSequence {
                 expected: expected_sequence,
@@ -101,12 +101,7 @@ pub fn replay_player_actions(
         }
 
         while state.tick() < recorded.tick {
-            state
-                .apply(Command::AdvanceTick)
-                .map_err(|error| ReplayError::ActionRejected {
-                    sequence: recorded.sequence,
-                    error,
-                })?;
+            state.advance_tick();
         }
         state
             .apply(recorded.action.into())
@@ -116,16 +111,10 @@ pub fn replay_player_actions(
             })?;
 
         previous_tick = recorded.tick;
-        expected_sequence += 1;
     }
 
     while state.tick() < recorded_through_tick {
-        state
-            .apply(Command::AdvanceTick)
-            .map_err(|error| ReplayError::ActionRejected {
-                sequence: expected_sequence,
-                error,
-            })?;
+        state.advance_tick();
     }
 
     Ok(state)
