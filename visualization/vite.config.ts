@@ -4,4 +4,10 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [tailwindcss(), react()],
+  optimizeDeps: {
+    // The settings browser package loads its wasm-bindgen module through
+    // `new URL("settings_wasm_bg.wasm", import.meta.url)`. Dev-server pre-bundling would move
+    // the JS into `.vite/deps` without the wasm asset, so the settings session never initializes.
+    exclude: ["@moritzbrantner/settings-browser"],
+  },
 });
