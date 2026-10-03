@@ -81,9 +81,9 @@
 
 ## Save and resume invariants
 
-- Browser persistence must not deserialize a snapshot into authoritative game state. Persist the initial seed plus an ordered input timeline containing accepted player commands and explicit simulation-step counts, then reconstruct through the real Rust/WASM engine.
-- Consecutive simulation steps are run-length encoded as `advance_ticks` entries. Replay order and count must remain exact, but replay should call the direct simulation-step API rather than serialize synthetic commands.
-- Legacy saved `advance_tick` command entries may be accepted for compatibility and internally routed to the direct simulation path; do not emit new saves in that form.
+- Browser persistence must not deserialize a snapshot into authoritative game state. Persist the initial seed plus the replay action log described in `docs/replay-contract.md` (accepted player actions stamped with their simulation tick, plus the `recorded_through_tick` cursor), then reconstruct through the real Rust/WASM engine.
+- Simulation steps are not persisted as replay actions. Reconstruction must advance to each recorded tick exactly, and it should call the direct simulation-step API rather than serialize synthetic tick commands.
+- Legacy saves containing `advance_ticks` runs or `advance_tick` command entries may be migrated for compatibility; do not emit new saves in that form.
 - Persist an authoritative checksum with the save and fail closed on resume if replay does not reproduce that checksum.
 - Rejected commands are not part of the replay because they must leave authoritative state unchanged.
 - Save schema and WASM contract versions must be explicit. Incompatible or malformed saves must not be silently coerced into a different game.
