@@ -1,4 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+function presentationSwitch(page: Page, settingId: string) {
+  return page.locator(`[data-setting-id="${settingId}"] [data-slot="switch"]`);
+}
 
 test("preserves presentation edits made while shared settings initialize", async ({ page }) => {
   let releaseFoundation!: () => void;
@@ -10,7 +14,7 @@ test("preserves presentation edits made while shared settings initialize", async
     markFoundationRequested = resolve;
   });
 
-  await page.route("**/settings-browser.js", async (route) => {
+  await page.route("**/*settings_wasm_bg.wasm*", async (route) => {
     markFoundationRequested();
     await foundationGate;
     await route.continue();
@@ -19,10 +23,10 @@ test("preserves presentation edits made while shared settings initialize", async
   await page.goto("/?screen=settings&section=presentation");
   await foundationRequested;
 
-  const touchHints = page.getByTestId("setting-touch-hints");
-  await expect(touchHints).toBeChecked();
-  await touchHints.uncheck();
-  await expect(touchHints).not.toBeChecked();
+  const touchHints = presentationSwitch(page, "presentation.show_touch_hints");
+  await expect(touchHints).toHaveAttribute("aria-checked", "true");
+  await touchHints.click();
+  await expect(touchHints).toHaveAttribute("aria-checked", "false");
 
   releaseFoundation();
 
@@ -41,7 +45,7 @@ test("preserves presentation edits made while shared settings initialize", async
     )
     .toBe(false);
 
-  await expect(touchHints).not.toBeChecked();
+  await expect(touchHints).toHaveAttribute("aria-checked", "false");
 });
 
 test("keeps presentation controls usable when browser storage rejects writes", async ({ page }) => {
@@ -55,15 +59,51 @@ test("keeps presentation controls usable when browser storage rejects writes", a
 
   await page.goto("/?screen=settings&section=presentation");
 
-  const touchHints = page.getByTestId("setting-touch-hints");
-  const reduceMotion = page.getByTestId("setting-reduce-motion");
-  await expect(touchHints).toBeChecked();
-  await expect(reduceMotion).not.toBeChecked();
+  const touchHints = presentationSwitch(page, "presentation.show_touch_hints");
+  const reduceMotion = presentationSwitch(page, "accessibility.reduce_motion");
+  await expect(touchHints).toHaveAttribute("aria-checked", "true");
+  await expect(reduceMotion).toHaveAttribute("aria-checked", "false");
 
-  await touchHints.uncheck();
-  await reduceMotion.check();
+  await touchHints.click();
+  await reduceMotion.click();
 
-  await expect(touchHints).not.toBeChecked();
-  await expect(reduceMotion).toBeChecked();
+  await expect(touchHints).toHaveAttribute("aria-checked", "false");
+  await expect(reduceMotion).toHaveAttribute("aria-checked", "true");
   expect(pageErrors).toEqual([]);
+});
+
+test.describe("phone-sized shared settings", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+
+  test("touch switches remain tappable and persist through reload", async ({ page }) => {
+    await page.goto("/?screen=settings&section=presentation");
+
+    const compactStatus = presentationSwitch(page, "presentation.compact_status");
+    await expect(compactStatus).toBeVisible();
+    await expect(compactStatus).toHaveAttribute("aria-checked", "false");
+
+    await compactStatus.tap();
+    await expect(compactStatus).toHaveAttribute("aria-checked", "true");
+
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const raw = window.localStorage.getItem("raid-defense.settings.user.v2");
+            if (!raw) return null;
+            const snapshot = JSON.parse(raw) as {
+              overrides?: Record<string, { value?: unknown }>;
+            };
+            return snapshot.overrides?.["presentation.compact_status"]?.value;
+          }),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+
+    await page.reload();
+    await expect(presentationSwitch(page, "presentation.compact_status")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
 });
