@@ -128,7 +128,7 @@ test("starts and resumes a game with authoritative scenario options", async ({ p
   await expect(page.getByTestId("wood-value")).toHaveText("240");
 
   const savedScenario = await page.evaluate(() => {
-    const raw = window.localStorage.getItem("raid-defense.save.v2");
+    const raw = window.localStorage.getItem("raid-defense.replay.v3");
     if (!raw) return null;
     const scenario = (JSON.parse(raw) as { scenario?: Record<string, any> }).scenario;
     if (!scenario) return null;

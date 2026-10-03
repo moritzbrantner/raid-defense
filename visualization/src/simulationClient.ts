@@ -5,51 +5,31 @@ import type {
 } from "./simulationTypes";
 import {
   createStandardScenarioOptions,
-  isScenarioOptions,
   type ScenarioOptions,
   type ScenarioWorldRules,
 } from "./scenarioOptions";
+import {
+  clearStoredReplay,
+  createReplayRecord,
+  LOCAL_PLAYER_ID,
+  readSavedGameSummary as readReplaySummary,
+  readStoredReplay,
+  summaryFromSnapshot,
+  writeStoredReplay,
+  type LoadedReplay,
+  type ReplayRecord,
+  type SavedGameSummary,
+} from "./replayStore";
+
+export type { SavedGameSummary } from "./replayStore";
 
 type WasmModule = typeof import("./generated/raid-defense-wasm/raid_defense_wasm.js");
 type JsonObject = Record<string, unknown>;
 type SessionIntent =
   | { kind: "new"; seed: number; scenario: ScenarioOptions }
   | { kind: "resume" };
-type ReplayEntry =
-  | { kind: "advance_ticks"; count: number }
-  | { kind: "command"; command: RaidDefenseCommand };
 
-type SavedGameBase = {
-  contract_version: 10;
-  seed: number;
-  entries: ReplayEntry[];
-  checksum: string;
-  tick: number;
-  wave: number;
-  completed_waves: number;
-  saved_at: number;
-};
-
-type SavedGameV1 = SavedGameBase & {
-  version: 1;
-};
-
-type SavedGameV2 = SavedGameBase & {
-  version: 2;
-  scenario: ScenarioOptions;
-};
-
-type SavedGame = SavedGameV1 | SavedGameV2;
-
-export type SavedGameSummary = Pick<
-  SavedGameBase,
-  "seed" | "checksum" | "tick" | "wave" | "completed_waves" | "saved_at"
->;
-
-const SAVE_KEY = "raid-defense.save.v2";
-const LEGACY_SAVE_KEY = "raid-defense.save.v1";
 const WASM_CONTRACT_VERSION = 10;
-const SAVE_CONTRACT_VERSION = 10;
 const TICKS_PER_PERSIST = 10;
 
 let wasmModulePromise: Promise<WasmModule> | null = null;
@@ -168,95 +148,6 @@ function parseResponse(json: string): DispatchResponse {
   return { ...(value as Omit<DispatchResponse, "snapshot">), snapshot };
 }
 
-function storageAvailable() {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-}
-
-function isReplayEntry(value: unknown): value is ReplayEntry {
-  if (!isObject(value) || typeof value.kind !== "string") return false;
-  if (value.kind === "advance_ticks") {
-    return typeof value.count === "number" && Number.isInteger(value.count) && value.count > 0;
-  }
-  return value.kind === "command" && isObject(value.command) && typeof value.command.type === "string";
-}
-
-function parseSavedGame(raw: string): SavedGame | null {
-  try {
-    const value: unknown = JSON.parse(raw);
-    if (!isObject(value)) return null;
-    if (
-      (value.version !== 1 && value.version !== 2) ||
-      value.contract_version !== SAVE_CONTRACT_VERSION
-    ) {
-      return null;
-    }
-    if (
-      typeof value.seed !== "number" ||
-      !Number.isInteger(value.seed) ||
-      value.seed < 0 ||
-      value.seed > 0xffff_ffff
-    ) {
-      return null;
-    }
-    if (!Array.isArray(value.entries) || !value.entries.every(isReplayEntry)) return null;
-    if (typeof value.checksum !== "string") return null;
-    if (
-      typeof value.tick !== "number" ||
-      typeof value.wave !== "number" ||
-      !Number.isInteger(value.tick) ||
-      !Number.isInteger(value.wave)
-    ) {
-      return null;
-    }
-    if (
-      typeof value.completed_waves !== "number" ||
-      typeof value.saved_at !== "number" ||
-      !Number.isInteger(value.completed_waves) ||
-      !Number.isFinite(value.saved_at)
-    ) {
-      return null;
-    }
-    if (value.version === 2 && !isScenarioOptions(value.scenario)) return null;
-    return value as SavedGame;
-  } catch {
-    return null;
-  }
-}
-
-function readSavedGame() {
-  if (!storageAvailable()) return null;
-  const current = window.localStorage.getItem(SAVE_KEY);
-  if (current !== null) return parseSavedGame(current);
-  const legacy = window.localStorage.getItem(LEGACY_SAVE_KEY);
-  return legacy ? parseSavedGame(legacy) : null;
-}
-
-function writeSavedGame(save: SavedGame) {
-  if (!storageAvailable()) return;
-  try {
-    if (save.version === 2) {
-      window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-      window.localStorage.removeItem(LEGACY_SAVE_KEY);
-    } else {
-      window.localStorage.setItem(LEGACY_SAVE_KEY, JSON.stringify(save));
-      window.localStorage.removeItem(SAVE_KEY);
-    }
-  } catch (error) {
-    console.warn("Unable to persist Raid Defense save", error);
-  }
-}
-
-function summaryFromSave(save: SavedGame): SavedGameSummary {
-  return {
-    seed: save.seed,
-    checksum: save.checksum,
-    tick: save.tick,
-    wave: save.wave,
-    completed_waves: save.completed_waves,
-    saved_at: save.saved_at,
-  };
-}
-
 function seedFromUrl(fallback: number) {
   if (typeof window === "undefined") return fallback;
   const value = Number(new URLSearchParams(window.location.search).get("seed"));
@@ -265,6 +156,10 @@ function seedFromUrl(fallback: number) {
 
 function cloneScenario(scenario: ScenarioOptions): ScenarioOptions {
   return JSON.parse(JSON.stringify(scenario)) as ScenarioOptions;
+}
+
+function cloneReplay(replay: ReplayRecord): ReplayRecord {
+  return JSON.parse(JSON.stringify(replay)) as ReplayRecord;
 }
 
 function createScenarioEngine(module: WasmModule, seed: number, scenario: ScenarioOptions) {
@@ -295,10 +190,7 @@ export function prepareResume() {
 export function clearSavedGame() {
   activeClient = null;
   pendingSession = null;
-  if (storageAvailable()) {
-    window.localStorage.removeItem(SAVE_KEY);
-    window.localStorage.removeItem(LEGACY_SAVE_KEY);
-  }
+  clearStoredReplay();
 }
 
 export function flushActiveSession() {
@@ -306,21 +198,23 @@ export function flushActiveSession() {
 }
 
 export function readSavedGameSummary(): SavedGameSummary | null {
-  const save = readSavedGame();
-  return save ? summaryFromSave(save) : null;
+  return readReplaySummary();
 }
 
 export class RaidDefenseSimulationClient {
   private readonly engine: InstanceType<WasmModule["RaidDefenseGame"]>;
-  private readonly save: SavedGame;
+  private readonly replay: ReplayRecord;
+  private lastSnapshot: SnapshotView;
   private dirtyTicks = 0;
 
   private constructor(
     engine: InstanceType<WasmModule["RaidDefenseGame"]>,
-    save: SavedGame,
+    replay: ReplayRecord,
+    lastSnapshot: SnapshotView,
   ) {
     this.engine = engine;
-    this.save = save;
+    this.replay = replay;
+    this.lastSnapshot = lastSnapshot;
   }
 
   static async create(fallbackSeed: number) {
@@ -335,9 +229,9 @@ export class RaidDefenseSimulationClient {
       intent?.kind === "resume" || (!intent && !directNew && params?.get("screen") === "game");
 
     if (shouldResume) {
-      const saved = readSavedGame();
-      if (saved) {
-        const client = await RaidDefenseSimulationClient.fromSavedGame(module, saved);
+      const stored = readStoredReplay();
+      if (stored) {
+        const client = await RaidDefenseSimulationClient.fromStoredReplay(module, stored);
         activeClient = client;
         return client;
       }
@@ -350,59 +244,57 @@ export class RaidDefenseSimulationClient {
     const scenario = intent?.kind === "new" ? intent.scenario : createStandardScenarioOptions();
     const engine = createScenarioEngine(module, seed, scenario);
     const snapshot = parseSnapshot(engine.snapshot());
-    const save: SavedGameV2 = {
-      version: 2,
-      contract_version: SAVE_CONTRACT_VERSION,
-      seed,
-      scenario: cloneScenario(scenario),
-      entries: [],
-      checksum: snapshot.checksum,
-      tick: snapshot.tick,
-      wave: snapshot.wave,
-      completed_waves: snapshot.completed_waves,
-      saved_at: Date.now(),
-    };
-    const client = new RaidDefenseSimulationClient(engine, save);
+    const replay = createReplayRecord(seed, scenario);
+    const client = new RaidDefenseSimulationClient(engine, replay, snapshot);
     activeClient = client;
     client.flushSave();
     return client;
   }
 
-  private static async fromSavedGame(module: WasmModule, saved: SavedGame) {
-    const engine =
-      saved.version === 2
-        ? createScenarioEngine(module, saved.seed, saved.scenario)
-        : new module.RaidDefenseGame(saved.seed);
-    let replayed = 0;
+  private static async fromStoredReplay(module: WasmModule, loaded: LoadedReplay) {
+    const replay = loaded.replay;
+    const engine = createScenarioEngine(module, replay.seed, replay.scenario);
+    let currentTick = 0;
+    let replayedOperations = 0;
 
     const replayCommand = async (command: RaidDefenseCommand) => {
       const response = parseResponse(engine.dispatch(JSON.stringify(command)));
       if (!response.ok) {
         throw new Error(`Saved replay rejected command: ${response.error?.code ?? "unknown"}`);
       }
-      replayed += 1;
-      if (replayed % 250 === 0) {
+      currentTick = response.snapshot.tick;
+      replayedOperations += 1;
+      if (replayedOperations % 250 === 0) {
         await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
       }
     };
 
-    for (const entry of saved.entries) {
-      if (entry.kind === "advance_ticks") {
-        for (let tick = 0; tick < entry.count; tick += 1) {
-          await replayCommand({ type: "advance_tick" });
-        }
-      } else {
-        await replayCommand(entry.command);
+    const advanceToTick = async (targetTick: number) => {
+      while (currentTick < targetTick) {
+        await replayCommand({ type: "advance_tick" });
+      }
+      if (currentTick !== targetTick) {
+        throw new Error("Saved replay action tick is behind the reconstructed simulation.");
+      }
+    };
+
+    for (const recorded of replay.actions) {
+      await advanceToTick(recorded.tick);
+      await replayCommand(recorded.command);
+      if (currentTick !== recorded.tick) {
+        throw new Error("Saved replay player action unexpectedly advanced simulation time.");
       }
     }
+    await advanceToTick(replay.recorded_through_tick);
 
-    const checksum = engine.checksum();
-    if (checksum !== saved.checksum) {
-      throw new Error("Saved game replay checksum does not match the recorded authoritative state.");
+    const snapshot = parseSnapshot(engine.snapshot());
+    if (snapshot.checksum !== loaded.expected_checksum) {
+      throw new Error("Saved replay checksum does not match the reconstructed action log.");
     }
 
-    const cloned = JSON.parse(JSON.stringify(saved)) as SavedGame;
-    return new RaidDefenseSimulationClient(engine, cloned);
+    const client = new RaidDefenseSimulationClient(engine, cloneReplay(replay), snapshot);
+    client.flushSave();
+    return client;
   }
 
   snapshot() {
@@ -411,7 +303,10 @@ export class RaidDefenseSimulationClient {
 
   dispatch(command: RaidDefenseCommand) {
     const response = parseResponse(this.engine.dispatch(JSON.stringify(command)));
-    if (response.ok) this.recordAcceptedCommand(command, response.snapshot);
+    if (response.ok) {
+      this.lastSnapshot = response.snapshot;
+      this.recordAcceptedCommand(command, response.snapshot.tick);
+    }
     return response;
   }
 
@@ -420,28 +315,22 @@ export class RaidDefenseSimulationClient {
   }
 
   flushSave() {
-    this.save.saved_at = Date.now();
-    writeSavedGame(this.save);
+    writeStoredReplay(this.replay, summaryFromSnapshot(this.replay, this.lastSnapshot));
     this.dirtyTicks = 0;
   }
 
-  private recordAcceptedCommand(command: RaidDefenseCommand, snapshot: SnapshotView) {
+  private recordAcceptedCommand(command: RaidDefenseCommand, tick: number) {
+    this.replay.recorded_through_tick = tick;
     if (command.type === "advance_tick") {
-      const last = this.save.entries.at(-1);
-      if (last?.kind === "advance_ticks") {
-        last.count += 1;
-      } else {
-        this.save.entries.push({ kind: "advance_ticks", count: 1 });
-      }
       this.dirtyTicks += 1;
     } else {
-      this.save.entries.push({ kind: "command", command });
+      this.replay.actions.push({
+        tick,
+        sequence: this.replay.actions.length,
+        player_id: LOCAL_PLAYER_ID,
+        command,
+      });
     }
-
-    this.save.checksum = snapshot.checksum;
-    this.save.tick = snapshot.tick;
-    this.save.wave = snapshot.wave;
-    this.save.completed_waves = snapshot.completed_waves;
 
     if (command.type !== "advance_tick" || this.dirtyTicks >= TICKS_PER_PERSIST) {
       this.flushSave();
